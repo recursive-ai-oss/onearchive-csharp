@@ -12,7 +12,7 @@ text300k-l19	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1
 text300k-nocheck	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	89428	0		zstd -5 --no-check -c input
 text300k-nosize-pipe	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	89429	0		cat input | zstd -5 -c
 text300k-nosize-flag	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	89429	0		zstd -5 --no-content-size -c input
-text300k-long27	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	74840	134217728		zstd -19 --long=27 -c input
+text300k-long27	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	74837	134217728		cat input | zstd -19 --long=27 -c
 text300k-ultra22-pipe	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	74837	134217728		cat input | zstd --ultra -22 -c
 bin200k-l3	204800	28cf1990a983910093a26a610db9deff37fca8a959028509029f9cd26dc71253	64543	0		zstd -3 -c input
 bin200k-l12	204800	28cf1990a983910093a26a610db9deff37fca8a959028509029f9cd26dc71253	61590	0		zstd -12 -c input

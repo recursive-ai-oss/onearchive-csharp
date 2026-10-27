@@ -36,10 +36,6 @@ public static class Zstd
             {
                 hint = (long)header.ContentSize;
             }
-            else
-            {
-                hint = Math.Min(plausible, options.MaxOutputSize);
-            }
         }
 
         byte[] output = new byte[Math.Min(hint, Array.MaxLength)];

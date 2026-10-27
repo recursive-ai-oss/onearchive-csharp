@@ -133,7 +133,7 @@ for lvl in (1, 3, 9, 19):
 add("text300k-nocheck", text300k, ["-5", "--no-check"])
 add("text300k-nosize-pipe", text300k, ["-5"], pipe=True)
 add("text300k-nosize-flag", text300k, ["-5", "--no-content-size"], pipe=False)
-add("text300k-long27", text300k, ["-19", "--long=27"], maxwindow=128 << 20)
+add("text300k-long27", text300k, ["-19", "--long=27"], maxwindow=128 << 20, pipe=True)
 add("text300k-ultra22-pipe", text300k, ["--ultra", "-22"], maxwindow=128 << 20, pipe=True)
 add("bin200k-l3", bin200k, ["-3"])
 add("bin200k-l12", bin200k, ["-12"])
