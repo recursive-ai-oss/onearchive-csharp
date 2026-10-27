@@ -225,6 +225,19 @@ public class ZstdLongDistanceTests
         }
     }
 
+    [Theory]
+    [InlineData(10)]
+    [InlineData(12)]
+    [InlineData(16)]
+    public void WindowsBelowABlockAreDeclaredAsABlock(int windowLog)
+    {
+        // A block may not exceed the window, so a small explicit window is written as 2^17 while matching keeps to the small one.
+        byte[] data = ZstdEncoderTests.Text(600_000, 12);
+        byte[] frame = Zstd.Zstd.Compress(data, new ZstdCompressionOptions { Level = 3, WindowLog = windowLog, WriteContentSize = false });
+        Assert.Equal((17 - 10) << 3, frame[5]);
+        Assert.Equal(data, Zstd.Zstd.Decompress(frame));
+    }
+
     [Fact]
     public void BadParallelOptionsAreRejected()
     {

@@ -202,7 +202,10 @@ public sealed partial class ZstdEncoder
         }
 
         // The header states the window asked for; matching never reaches past 2^30 bytes, the most a window buffer can hold.
-        _headerWindowLog = p.WindowLog;
+        // Blocks are cut every 128 KiB, and a block may not exceed the window (RFC 8878 3.1.1.2.3), so a window log below 17 asked for
+        // explicitly is declared as 17 in the header while matching keeps to the smaller window. Windows chosen by the level tables are
+        // only that small for sources that fit them whole, where the frame is single-segment.
+        _headerWindowLog = _options.WindowLog != 0 ? Math.Max(p.WindowLog, 17) : p.WindowLog;
         if (p.WindowLog > MaxMatchWindowLog)
         {
             p = new ZstdCompressionParameters
