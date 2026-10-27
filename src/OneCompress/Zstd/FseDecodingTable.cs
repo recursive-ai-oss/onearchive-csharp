@@ -15,13 +15,32 @@ public struct FseEntry
     public byte Symbol { get; internal set; }
 }
 
-/// <summary>A table row with the sequence code it stands for already looked up: one cache line holds everything a sequence step needs.</summary>
-internal struct SequenceEntry
+/// <summary>
+/// A table row with the sequence code it stands for already looked up, packed in one 64-bit value so that a sequence step
+/// reads each row with a single load. Layout from the least significant bit: Next (16 bits), Total (8), NumBits (8), Extra (8),
+/// Base (24). Fields are placed so that the sequence loop can use a shifted copy of the row directly as a bit count, and so
+/// that adding three rows adds their Totals without carrying into anything (Next is below 1536 and a Total at most 40).
+/// </summary>
+internal readonly struct SequenceEntry
 {
-    public uint Base;       // baseline value of the literals length or match length code; 1 << code for offsets
-    public ushort Next;     // FSE baseline: the next state is Next plus NumBits bits
-    public byte NumBits;    // FSE bits for the next state
-    public byte Extra;      // extra bits that follow the code (for offsets, the code itself)
+    private readonly ulong _bits;
+
+    public SequenceEntry(uint baseValue, int next, int numBits, int extra)
+    {
+        _bits = (uint)next | ((ulong)(uint)(numBits + extra) << 16) | ((ulong)(uint)numBits << 24) | ((ulong)(uint)extra << 32) | ((ulong)baseValue << 40);
+    }
+
+    /// <summary>Baseline value of the literals length or match length code; zero for offsets, whose base is <c>1 &lt;&lt; Extra</c>.</summary>
+    public uint Base => (uint)(_bits >> 40);
+
+    /// <summary>FSE baseline: the next state is Next plus NumBits bits.</summary>
+    public uint Next => (ushort)_bits;
+
+    /// <summary>FSE bits for the next state.</summary>
+    public int NumBits => (byte)(_bits >> 24);
+
+    /// <summary>Extra bits that follow the code (for offsets, the code itself).</summary>
+    public int Extra => (byte)(_bits >> 32);
 }
 
 /// <summary>
@@ -104,7 +123,7 @@ public sealed class FseDecodingTable
                     break;
             }
 
-            array[state] = new SequenceEntry { Base = baseValue, Next = (ushort)(e.Baseline + (kind << MaxAccuracyLog)), NumBits = e.NumBits, Extra = (byte)extra };
+            array[state] = new SequenceEntry(kind == 1 ? 0 : baseValue, e.Baseline + (kind << MaxAccuracyLog), e.NumBits, extra);
         }
 
         Volatile.Write(ref _sequenceKind, kind);

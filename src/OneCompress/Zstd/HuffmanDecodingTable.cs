@@ -13,6 +13,7 @@ public sealed class HuffmanDecodingTable
     /// <summary>The longest code length the format allows.</summary>
     public const int MaxBits = ZstdFormat.HuffmanMaxBits;
 
+    // Indexed by the next TableBits bits of the stream; a code of length L owns the 2^(TableBits - L) entries that start with it.
     private readonly ushort[] _table = new ushort[1 << MaxBits]; // (symbol << 8) | code length
     private readonly byte[] _weights = new byte[260]; // 255 weights plus room for the final writes of the two-state loop
     private FseDecodingTable? _weightTable;
@@ -320,109 +321,125 @@ public sealed class HuffmanDecodingTable
         Span<byte> out3 = destination.Slice(2 * part, part);
         Span<byte> out4 = destination[(3 * part)..];
 
-        // The four streams are independent, so decoding them in step lets the processor overlap their table
-        // lookups. The fourth stream is the shortest, so the joint loop runs as far as it has whole groups of four.
+        // The four streams are independent, so decoding them in step lets the processor overlap their table lookups.
+        // The fourth stream is the shortest, so the joint loop runs as far as it has whole groups of four symbols.
+        //
+        // Each stream's register keeps its unread bits at the top, then a single 1 bit (a sentinel), then zeros. A symbol
+        // is looked up by the top MaxBits bits and consumed by shifting the register left by its code length; the sentinel
+        // moves up with the shift, so its position (the number of trailing zeros) tells at the next refill how many bits
+        // were used, with no separate counter. A round decodes four symbols per stream, using at most 44 bits of the 56 or
+        // more available, then refills: the bytes used are stepped back over and the register is rebuilt from the eight bytes
+        // at the new position, with the sentinel placed under the bits already used of the lowest of them (1 to 8 bits).
         ushort[] table = _table;
-        int tableBits = _tableBits;
-        int i = 0;
+        int shift = 64 - _tableBits;
+        int rounds = lastPart >> 2;
+        nint p1 = bits1.Pointer, p2 = bits2.Pointer, p3 = bits3.Pointer, p4 = bits4.Pointer;
+        ulong v1 = (bits1.Container << bits1.Consumed) | (1UL << (bits1.Consumed - 1));
+        ulong v2 = (bits2.Container << bits2.Consumed) | (1UL << (bits2.Consumed - 1));
+        ulong v3 = (bits3.Container << bits3.Consumed) | (1UL << (bits3.Consumed - 1));
+        ulong v4 = (bits4.Container << bits4.Consumed) | (1UL << (bits4.Consumed - 1));
+        nint i = 0;
 
-        // The fast loop keeps each stream's register in local variables. It runs while every stream still has at least
-        // eight unread bytes, so a refill is always "step back by the whole bytes consumed" (at most 6 after four
-        // symbols of at most 11 bits, plus the 7 spare bits), and stops short of the streams' ends; the general
-        // code below finishes them.
-        ulong c1 = bits1.Container, c2 = bits2.Container, c3 = bits3.Container, c4 = bits4.Container;
-        int k1 = bits1.Consumed, k2 = bits2.Consumed, k3 = bits3.Consumed, k4 = bits4.Consumed;
-        int pos1 = bits1.Pointer, pos2 = bits2.Pointer, pos3 = bits3.Pointer, pos4 = bits4.Pointer;
-        int shift = 64 - tableBits;
-        int joint = lastPart & ~3;
-        while (i < joint && pos1 >= 8 && pos2 >= 8 && pos3 >= 8 && pos4 >= 8)
+        // A round steps a stream back by at most 6 bytes and needs 8 bytes below the register to refill from, so a stream
+        // at position P supports (P - 8) / 6 + 1 more rounds (none if P < 8). Rounds usually use far fewer bytes, so the
+        // allowance is worked out again after each batch until it runs out.
+        while (true)
         {
+            nint minPosition = Math.Min(Math.Min(p1, p2), Math.Min(p3, p4));
+            int batch = minPosition < 8 ? 0 : (int)Math.Min(rounds - (i >> 2), ((minPosition - 8) / 6) + 1);
+            if (batch <= 0)
             {
-                ushort e1 = Raw.Get(table, (int)((c1 << k1) >> shift)); // the index has tableBits bits; the table is longer
-                k1 += e1 & 0xFF;
-                Raw.Set(out1, i, (byte)(e1 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e2 = Raw.Get(table, (int)((c2 << k2) >> shift)); // the index has tableBits bits; the table is longer
-                k2 += e2 & 0xFF;
-                Raw.Set(out2, i, (byte)(e2 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e3 = Raw.Get(table, (int)((c3 << k3) >> shift)); // the index has tableBits bits; the table is longer
-                k3 += e3 & 0xFF;
-                Raw.Set(out3, i, (byte)(e3 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e4 = Raw.Get(table, (int)((c4 << k4) >> shift)); // the index has tableBits bits; the table is longer
-                k4 += e4 & 0xFF;
-                Raw.Set(out4, i, (byte)(e4 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                break;
             }
 
+            for (int round = 0; round < batch; round++)
             {
-                ushort e1 = Raw.Get(table, (int)((c1 << k1) >> shift)); // the index has tableBits bits; the table is longer
-                k1 += e1 & 0xFF;
-                Raw.Set(out1, i + 1, (byte)(e1 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e2 = Raw.Get(table, (int)((c2 << k2) >> shift)); // the index has tableBits bits; the table is longer
-                k2 += e2 & 0xFF;
-                Raw.Set(out2, i + 1, (byte)(e2 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e3 = Raw.Get(table, (int)((c3 << k3) >> shift)); // the index has tableBits bits; the table is longer
-                k3 += e3 & 0xFF;
-                Raw.Set(out3, i + 1, (byte)(e3 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e4 = Raw.Get(table, (int)((c4 << k4) >> shift)); // the index has tableBits bits; the table is longer
-                k4 += e4 & 0xFF;
-                Raw.Set(out4, i + 1, (byte)(e4 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-            }
+                {
+                    ushort e1 = Raw.Get(table, (nuint)(v1 >> shift)); // the index has tableBits bits; the table is longer
+                    v1 <<= e1; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out1, i + 0, (byte)(e1 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e2 = Raw.Get(table, (nuint)(v2 >> shift)); // the index has tableBits bits; the table is longer
+                    v2 <<= e2; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out2, i + 0, (byte)(e2 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e3 = Raw.Get(table, (nuint)(v3 >> shift)); // the index has tableBits bits; the table is longer
+                    v3 <<= e3; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out3, i + 0, (byte)(e3 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e4 = Raw.Get(table, (nuint)(v4 >> shift)); // the index has tableBits bits; the table is longer
+                    v4 <<= e4; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out4, i + 0, (byte)(e4 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                }
 
-            {
-                ushort e1 = Raw.Get(table, (int)((c1 << k1) >> shift)); // the index has tableBits bits; the table is longer
-                k1 += e1 & 0xFF;
-                Raw.Set(out1, i + 2, (byte)(e1 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e2 = Raw.Get(table, (int)((c2 << k2) >> shift)); // the index has tableBits bits; the table is longer
-                k2 += e2 & 0xFF;
-                Raw.Set(out2, i + 2, (byte)(e2 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e3 = Raw.Get(table, (int)((c3 << k3) >> shift)); // the index has tableBits bits; the table is longer
-                k3 += e3 & 0xFF;
-                Raw.Set(out3, i + 2, (byte)(e3 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e4 = Raw.Get(table, (int)((c4 << k4) >> shift)); // the index has tableBits bits; the table is longer
-                k4 += e4 & 0xFF;
-                Raw.Set(out4, i + 2, (byte)(e4 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-            }
+                {
+                    ushort e1 = Raw.Get(table, (nuint)(v1 >> shift)); // the index has tableBits bits; the table is longer
+                    v1 <<= e1; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out1, i + 1, (byte)(e1 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e2 = Raw.Get(table, (nuint)(v2 >> shift)); // the index has tableBits bits; the table is longer
+                    v2 <<= e2; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out2, i + 1, (byte)(e2 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e3 = Raw.Get(table, (nuint)(v3 >> shift)); // the index has tableBits bits; the table is longer
+                    v3 <<= e3; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out3, i + 1, (byte)(e3 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e4 = Raw.Get(table, (nuint)(v4 >> shift)); // the index has tableBits bits; the table is longer
+                    v4 <<= e4; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out4, i + 1, (byte)(e4 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                }
 
-            {
-                ushort e1 = Raw.Get(table, (int)((c1 << k1) >> shift)); // the index has tableBits bits; the table is longer
-                k1 += e1 & 0xFF;
-                Raw.Set(out1, i + 3, (byte)(e1 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e2 = Raw.Get(table, (int)((c2 << k2) >> shift)); // the index has tableBits bits; the table is longer
-                k2 += e2 & 0xFF;
-                Raw.Set(out2, i + 3, (byte)(e2 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e3 = Raw.Get(table, (int)((c3 << k3) >> shift)); // the index has tableBits bits; the table is longer
-                k3 += e3 & 0xFF;
-                Raw.Set(out3, i + 3, (byte)(e3 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-                ushort e4 = Raw.Get(table, (int)((c4 << k4) >> shift)); // the index has tableBits bits; the table is longer
-                k4 += e4 & 0xFF;
-                Raw.Set(out4, i + 3, (byte)(e4 >> 8)); // i + 3 < joint <= lastPart <= every output's length
-            }
+                {
+                    ushort e1 = Raw.Get(table, (nuint)(v1 >> shift)); // the index has tableBits bits; the table is longer
+                    v1 <<= e1; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out1, i + 2, (byte)(e1 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e2 = Raw.Get(table, (nuint)(v2 >> shift)); // the index has tableBits bits; the table is longer
+                    v2 <<= e2; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out2, i + 2, (byte)(e2 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e3 = Raw.Get(table, (nuint)(v3 >> shift)); // the index has tableBits bits; the table is longer
+                    v3 <<= e3; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out3, i + 2, (byte)(e3 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e4 = Raw.Get(table, (nuint)(v4 >> shift)); // the index has tableBits bits; the table is longer
+                    v4 <<= e4; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out4, i + 2, (byte)(e4 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                }
 
-            // Refill: the register starts at the lowest byte not yet consumed; q + 8 <= stream length holds because q
-            // only moves down from length - 8.
-            pos1 -= k1 >> 3;
-            k1 &= 7;
-            c1 = Raw.ReadUInt64(stream1, pos1);
-            pos2 -= k2 >> 3;
-            k2 &= 7;
-            c2 = Raw.ReadUInt64(stream2, pos2);
-            pos3 -= k3 >> 3;
-            k3 &= 7;
-            c3 = Raw.ReadUInt64(stream3, pos3);
-            pos4 -= k4 >> 3;
-            k4 &= 7;
-            c4 = Raw.ReadUInt64(stream4, pos4);
-            i += 4;
+                {
+                    ushort e1 = Raw.Get(table, (nuint)(v1 >> shift)); // the index has tableBits bits; the table is longer
+                    v1 <<= e1; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out1, i + 3, (byte)(e1 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e2 = Raw.Get(table, (nuint)(v2 >> shift)); // the index has tableBits bits; the table is longer
+                    v2 <<= e2; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out2, i + 3, (byte)(e2 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e3 = Raw.Get(table, (nuint)(v3 >> shift)); // the index has tableBits bits; the table is longer
+                    v3 <<= e3; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out3, i + 3, (byte)(e3 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                    ushort e4 = Raw.Get(table, (nuint)(v4 >> shift)); // the index has tableBits bits; the table is longer
+                    v4 <<= e4; // the code length is the low byte; a shift count is taken modulo 64 and the length is below 64
+                    Raw.Set(out4, i + 3, (byte)(e4 >> 8)); // i + 3 < 4 * rounds <= lastPart <= every output's length
+                }
+
+                uint t1 = (uint)BitOperations.TrailingZeroCount(v1);
+                p1 -= (nint)(t1 >> 3);
+                v1 = (Raw.ReadUInt64(stream1, p1) << (int)((t1 & 7) + 1)) | (1UL << (int)(t1 & 7)); // p1 + 8 <= the stream's length: it only moves down from length - 8
+                uint t2 = (uint)BitOperations.TrailingZeroCount(v2);
+                p2 -= (nint)(t2 >> 3);
+                v2 = (Raw.ReadUInt64(stream2, p2) << (int)((t2 & 7) + 1)) | (1UL << (int)(t2 & 7)); // p2 + 8 <= the stream's length: it only moves down from length - 8
+                uint t3 = (uint)BitOperations.TrailingZeroCount(v3);
+                p3 -= (nint)(t3 >> 3);
+                v3 = (Raw.ReadUInt64(stream3, p3) << (int)((t3 & 7) + 1)) | (1UL << (int)(t3 & 7)); // p3 + 8 <= the stream's length: it only moves down from length - 8
+                uint t4 = (uint)BitOperations.TrailingZeroCount(v4);
+                p4 -= (nint)(t4 >> 3);
+                v4 = (Raw.ReadUInt64(stream4, p4) << (int)((t4 & 7) + 1)) | (1UL << (int)(t4 & 7)); // p4 + 8 <= the stream's length: it only moves down from length - 8
+                i += 4;
+            }
         }
 
-        bits1.Restore(c1, k1, pos1);
-        bits2.Restore(c2, k2, pos2);
-        bits3.Restore(c3, k3, pos3);
-        bits4.Restore(c4, k4, pos4);
+        // Hand each register back to its reader: the bytes at the position, and the bits of them already used.
+        bits1.Restore(Raw.ReadUInt64(stream1, p1), BitOperations.TrailingZeroCount(v1) + 1, (int)p1);
+        bits2.Restore(Raw.ReadUInt64(stream2, p2), BitOperations.TrailingZeroCount(v2) + 1, (int)p2);
+        bits3.Restore(Raw.ReadUInt64(stream3, p3), BitOperations.TrailingZeroCount(v3) + 1, (int)p3);
+        bits4.Restore(Raw.ReadUInt64(stream4, p4), BitOperations.TrailingZeroCount(v4) + 1, (int)p4);
 
-        DecodeSymbols(ref bits1, out1[i..]);
-        DecodeSymbols(ref bits2, out2[i..]);
-        DecodeSymbols(ref bits3, out3[i..]);
-        DecodeSymbols(ref bits4, out4[i..]);
+        DecodeSymbols(ref bits1, out1[(int)i..]);
+        DecodeSymbols(ref bits2, out2[(int)i..]);
+        DecodeSymbols(ref bits3, out3[(int)i..]);
+        DecodeSymbols(ref bits4, out4[(int)i..]);
         if (!bits1.IsFinished)
         {
             ZstdFormat.ThrowCorrupt(offset1, "a Huffman stream that is consumed exactly by its symbols");

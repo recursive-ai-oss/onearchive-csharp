@@ -258,7 +258,6 @@ internal sealed class ZstdBlockDecoder
     {
         if (sequenceCount < SmallBlockSequences)
         {
-            // Expanding the tables costs more than a handful of sequences take to decode the plain way.
             return ExecuteFewSequences(
                 ref sequences, sequenceCount, literals, buffer, position, end, ref reps, windowSize, frameOutput, dictionary,
                 streamOffset, out literalPosition);
@@ -345,8 +344,9 @@ internal sealed class ZstdBlockDecoder
     }
 
     // Runs sequences while each needs only one refill, the stream is not near its start and every copy is the plain
-    // 16-byte-piece kind. Never handles the last sequence (index `last`), which has no state update bits. Contains no
-    // calls: that, and the few variables, keep the loop's state in registers.
+    // piecewise kind. Never handles the last sequence (index `last`), which has no state update bits. Contains no
+    // calls, uses native-width indices and reads each table row as one 64-bit value (see SequenceEntry): that keeps the
+    // loop's variables in registers, which matters more here than any instruction count.
     private static void RunFast(
         ref SequenceState st,
         SequenceEntry[] rows,
@@ -354,36 +354,37 @@ internal sealed class ZstdBlockDecoder
         int last,
         ReadOnlySpan<byte> literals,
         Span<byte> buffer,
-        int limit,
-        int window)
+        int limitInt,
+        int windowInt)
     {
-        uint llState = st.LiteralLengthState;
-        uint ofState = st.OffsetState;
-        uint mlState = st.MatchLengthState;
-        int current = st.Current;
-        int litPos = st.LiteralPosition;
+        nuint llState = st.LiteralLengthState;
+        nuint ofState = st.OffsetState;
+        nuint mlState = st.MatchLengthState;
+        nint current = st.Current;
+        nint litPos = st.LiteralPosition;
         int i = st.Index;
         uint r1 = st.Reps.Offset1;
         uint r2 = st.Reps.Offset2;
         uint r3 = st.Reps.Offset3;
-        int litSafe = literals.Length - 32;
+        nint litSafe = literals.Length - 32;
+        nint limit = limitInt;
+        nint window = windowInt;
 
         // The unread bits of the stream: 8 * Pointer + 64 - Consumed. A refill moves Pointer down by the whole bytes
         // consumed, so with U unread bits the register starts at byte (U - 57) >> 3 and its first unread bit is
         // U - 8 * that bit-index of the register. Fewer than 121 unread bits means Pointer < 8: leave it to the general code.
-        int unread = (st.Pointer << 3) + 64 - st.Consumed;
-        int startUnread = unread;
+        nint unread = (st.Pointer << 3) + 64 - st.Consumed;
+        nint startUnread = unread;
 
         while (i < last && unread >= 121)
         {
-            // Each state is below its table's size (see ZstdSequenceDecoder.Next); the rows are read field by field from the table.
-            ref readonly SequenceEntry ll = ref Raw.Ref(rows, (int)llState);
-            ref readonly SequenceEntry of = ref Raw.Ref(rows, (int)ofState);
-            ref readonly SequenceEntry ml = ref Raw.Ref(rows, (int)mlState);
-            int ofBits = of.Extra;
-            int mlBits = ml.Extra;
-            int llBits = ll.Extra;
-            int total = ofBits + mlBits + llBits + ll.NumBits + ml.NumBits + of.NumBits;
+            // Each state is below its table's size (see ZstdSequenceDecoder.Next).
+            ulong ll = Raw.Row(rows, llState);
+            ulong of = Raw.Row(rows, ofState);
+            ulong ml = Raw.Row(rows, mlState);
+
+            // Adding the rows adds their Total fields (bits 16 to 23) without carries from or into them.
+            int total = (byte)((ll + ml + of) >> 16);
             if (total > 56)
             {
                 break;
@@ -391,21 +392,28 @@ internal sealed class ZstdBlockDecoder
 
             // One refill covers the whole step: the register starts at the byte p = (unread - 57) >> 3 (at least 8 here, so the
             // load cannot reach past the start of the stream) and holds at least 57 unread bits, the step needs at most 56.
-            // Each field ends at a position known from the table rows alone, so the six reads are independent of each other.
-            int p = (unread - 57) >> 3;
-            ulong c = Raw.ReadUInt64(data, p);
-            int sh = unread - (p << 3) - ofBits;
-            uint offsetValue = of.Base + Field(c, sh, ofBits);
-            sh -= mlBits;
-            int matchLength = (int)(ml.Base + Field(c, sh, mlBits));
-            sh -= llBits;
-            int literalLength = (int)(ll.Base + Field(c, sh, llBits));
-            sh -= ll.NumBits;
-            llState = ll.Next + Field(c, sh, ll.NumBits);
-            sh -= ml.NumBits;
-            mlState = ml.Next + Field(c, sh, ml.NumBits);
-            sh -= of.NumBits;
-            ofState = of.Next + Field(c, sh, of.NumBits);
+            // Shifting it right by the unread bits below the step leaves the step's bits at the bottom: from the top the
+            // offset, match length and literals length extra bits, then the three state updates, the offset's last. Each
+            // field is cut from the bottom up. A row shifted right by 24 or 32 has the bit count in its low byte (the bits
+            // above are other fields, which the count's use ignores).
+            ulong c = Raw.ReadUInt64(data, (unread - 57) >> 3) >> (int)(((unread - 57) & 7) + 57 - total);
+            uint n = (uint)(of >> 24);
+            ofState = (ushort)of + Bits(c, n);
+            c >>= (int)n;
+            n = (uint)(ml >> 24);
+            mlState = (ushort)ml + Bits(c, n);
+            c >>= (int)n;
+            n = (uint)(ll >> 24);
+            llState = (ushort)ll + Bits(c, n);
+            c >>= (int)n;
+            n = (uint)(ll >> 32);
+            nint literalLength = (nint)((uint)(ll >> 40) + Bits(c, n));
+            c >>= (int)n;
+            n = (uint)(ml >> 32);
+            nint matchLength = (nint)((uint)(ml >> 40) + Bits(c, n));
+            c >>= (int)n;
+            n = (uint)(of >> 32);
+            uint offsetValue = (1u << (int)n) + Bits(c, n);
             unread -= total;
             i++;
 
@@ -415,8 +423,8 @@ internal sealed class ZstdBlockDecoder
             {
                 st.Pending = 1;
                 st.OffsetValue = offsetValue;
-                st.MatchLength = matchLength;
-                st.LiteralLength = literalLength;
+                st.MatchLength = (int)matchLength;
+                st.LiteralLength = (int)literalLength;
                 break;
             }
 
@@ -424,7 +432,7 @@ internal sealed class ZstdBlockDecoder
             Raw.Copy16(buffer, current + 16, literals, litPos + 16);
             if (literalLength > 32)
             {
-                for (int k = 32; k < literalLength; k += 16)
+                for (nint k = 32; k < literalLength; k += 16)
                 {
                     Raw.Copy16(buffer, current + k, literals, litPos + k);
                 }
@@ -433,34 +441,63 @@ internal sealed class ZstdBlockDecoder
             litPos += literalLength;
             current += literalLength;
 
-            // RFC 8878 §3.1.1.5: resolve the offset value against the repeat offsets.
-            var repeats = new ZstdRepeatOffsets { Offset1 = r1, Offset2 = r2, Offset3 = r3 };
-            uint offset = repeats.Resolve(offsetValue, literalLength);
-            r1 = repeats.Offset1;
-            r2 = repeats.Offset2;
-            r3 = repeats.Offset3;
+            // RFC 8878 §3.1.1.5: resolve the offset value against the repeat offsets: values above 3 are new offsets.
+            uint offset;
+            if (offsetValue > 3)
+            {
+                offset = offsetValue - 3;
+                r3 = r2;
+                r2 = r1;
+                r1 = offset;
+            }
+            else
+            {
+                // With no literals, repeat codes 1, 2 and 3 mean the second offset, the third, and the first minus one.
+                uint index = offsetValue - 1 + (literalLength == 0 ? 1u : 0u);
+                if (index == 0)
+                {
+                    offset = r1;
+                }
+                else
+                {
+                    offset = index == 1 ? r2 : (index == 2 ? r3 : r1 - 1);
+                    r3 = index == 1 ? r3 : r2;
+                    r2 = r1;
+                    r1 = offset;
+                }
+            }
 
             // RFC 8878 §5: a match reaches back at most a window and no further than the start of the buffer (which holds
-            // at least the window's worth of history). An offset that fails these, or is below 16, or ends past the limit,
+            // at least the window's worth of history). An offset that fails these, or is below 8, or ends past the limit,
             // goes to the general code, which also tells a dictionary match from corrupt data.
-            if (offset < 16 || offset > (uint)Math.Min(current, window) || current + matchLength > limit)
+            if (offset < 8 || offset > (nuint)current || offset > (nuint)window || current + matchLength > limit)
             {
                 st.Pending = 2;
                 st.OffsetValue = offset;
-                st.MatchLength = matchLength;
+                st.MatchLength = (int)matchLength;
                 break;
             }
 
-            // Pieces of 16 bytes that read only bytes written before the piece starts (the offset is at least 16) and
-            // overshoot by less than 32 bytes, inside the buffer and the block (limit).
-            int from = current - (int)offset;
-            Raw.Copy16(buffer, current, buffer, from);
-            Raw.Copy16(buffer, current + 16, buffer, from + 16);
-            if (matchLength > 32)
+            // Pieces of 16 (or 8) bytes that read only bytes written before the piece starts (the offset is at least the
+            // piece size) and overshoot by less than 32 bytes, inside the buffer and the block (limit).
+            nint from = current - (nint)offset;
+            if (offset >= 16)
             {
-                for (int k = 32; k < matchLength; k += 16)
+                Raw.Copy16(buffer, current, buffer, from);
+                Raw.Copy16(buffer, current + 16, buffer, from + 16);
+                if (matchLength > 32)
                 {
-                    Raw.Copy16(buffer, current + k, buffer, from + k);
+                    for (nint k = 32; k < matchLength; k += 16)
+                    {
+                        Raw.Copy16(buffer, current + k, buffer, from + k);
+                    }
+                }
+            }
+            else
+            {
+                for (nint k = 0; k < matchLength; k += 8)
+                {
+                    Raw.Copy8(buffer, current + k, buffer, from + k);
                 }
             }
 
@@ -469,16 +506,16 @@ internal sealed class ZstdBlockDecoder
 
         if (unread != startUnread)
         {
-            int p = (unread - 57) >> 3;
+            int p = (int)((unread - 57) >> 3);
             st.Pointer = p;
-            st.Consumed = 64 + (p << 3) - unread;
+            st.Consumed = 64 + (p << 3) - (int)unread;
         }
 
-        st.LiteralLengthState = llState;
-        st.OffsetState = ofState;
-        st.MatchLengthState = mlState;
-        st.Current = current;
-        st.LiteralPosition = litPos;
+        st.LiteralLengthState = (uint)llState;
+        st.OffsetState = (uint)ofState;
+        st.MatchLengthState = (uint)mlState;
+        st.Current = (int)current;
+        st.LiteralPosition = (int)litPos;
         st.Index = i;
         st.Reps = new ZstdRepeatOffsets { Offset1 = r1, Offset2 = r2, Offset3 = r3 };
     }
@@ -524,7 +561,7 @@ internal sealed class ZstdBlockDecoder
                 SequenceEntry of = Raw.Get(rows, (int)st.OffsetState);
                 SequenceEntry ml = Raw.Get(rows, (int)st.MatchLengthState);
                 ReloadBits(data, ref st.Container, ref st.Consumed, ref st.Pointer);
-                offsetValue = of.Base + ReadBits(st.Container, ref st.Consumed, of.Extra);
+                offsetValue = (1u << of.Extra) + ReadBits(st.Container, ref st.Consumed, of.Extra);
                 if (of.Extra > 20)
                 {
                     ReloadBits(data, ref st.Container, ref st.Consumed, ref st.Pointer);
@@ -620,6 +657,12 @@ internal sealed class ZstdBlockDecoder
             container = Raw.ReadUInt64(data, ptr);
         }
     }
+
+    // The low n bits of c, where n is the low byte of `n` (0 to 56); the bits above it are ignored: BZHI reads only the low byte and
+    // a C# shift count is taken modulo 64.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint Bits(ulong c, uint n) =>
+        (uint)(Bmi2.X64.IsSupported ? Bmi2.X64.ZeroHighBits(c, n) : c & ~(~0UL << (int)n));
 
     // The n bits (0 to 56) of c that end sh bits above its least significant bit.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
