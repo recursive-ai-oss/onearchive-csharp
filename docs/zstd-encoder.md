@@ -239,3 +239,21 @@ sizes 0.2 to 1.1% smaller; snapshots and saves (hundreds of bytes to 6 KB) run a
 
 The unchecked accessors (`Raw`) are worth 5 to 7% of the encoder's speed: the same code built in the `Checked` configuration (every accessor
 bounds-checked) runs at 564/598 (level -5), 400/430 (level 1) and 259/273 MB/s (level 3), match finding 10% slower and block writing level.
+
+## Results: long-distance matching and jobs (zstd 1.5.7)
+
+Method as above, `run.sh --ref-opts ... --ours-opts ...` (`zstd -b<L> -e<L> -T<n> [--long=27]` against `ZstdEncodeBench big ... --workers n --job auto [--long 27]`, best of 3 s).
+`time ratio` is our time over the tool's. x64: Ryzen 9 7950X3D, 32 cores, load 2 to 7 from other work; arm64: Apple M2, 8 cores, load 3 to 6.
+Sizes are the same on both machines. Jobs cost 0.03% in size (silesia.tar level 1: 73,520,243 bytes as one job, 73,540,841 with jobs).
+
+| file, level | size vs tool | x64 time ratio: 1 thread, long | 4 jobs at once, long | 8 | 16 | arm64: 1 thread, long | 4 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| silesia.tar 1 | +0.57% | 1.44 | 1.13 | 0.67 | 0.62 | 1.38 | 1.06 | 0.85 |
+| silesia.tar 3 | +1.04% | 1.28 | 1.22 | 0.88 | 0.71 | 1.31 | 1.26 | 1.16 |
+| enwik8 1 | +0.68% | 1.57 | 1.83 | 1.04 | 0.93 | 1.53 | 1.65 | 1.22 |
+| enwik8 3 | +0.69% | 1.44 | 1.76 | 1.19 | 1.12 | 1.39 | 1.85 | 1.46 |
+
+The long-distance matcher alone scans 2.1 GB/s of silesia.tar (x64). On an input with far repeats (1.2 GB, three 32 MB pieces recurring
+at about 96 MB with one byte in 64 KiB changed) the output is 47% smaller than the tool's at levels 1 and 3, at 1.18 and 0.90 times its time.
+With jobs and no long matching the ratio of times is 1.25 to 1.5 (the single-thread gap) at 4 to 16 jobs, and size is +0.34% (level 1) and
++0.82% (level 3) on silesia.tar.
