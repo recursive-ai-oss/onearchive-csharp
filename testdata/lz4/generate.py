@@ -125,6 +125,7 @@ def add(name, data, args, pipe=False, dictionary=""):
         comp = run(args + ["-c", "-q", tmp])
         os.remove(tmp)
         shown = "lz4 " + " ".join(args) + " -c input"
+    shown = shown.replace(HERE + os.sep, "")
     with open(os.path.join(OUT, name + ".lz4"), "wb") as f:
         f.write(comp)
     blobs[name] = comp

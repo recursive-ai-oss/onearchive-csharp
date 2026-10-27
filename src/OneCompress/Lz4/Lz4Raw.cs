@@ -40,15 +40,4 @@ internal static class Lz4Raw
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(destination), destinationIndex), v);
 #endif
     }
-
-    /// <summary>Reads <c>span[index]</c>. The caller guarantees <c>0 &lt;= index &lt; span.Length</c>.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte Get(ReadOnlySpan<byte> span, int index)
-    {
-#if CHECKED
-        return span[index];
-#else
-        return Unsafe.Add(ref MemoryMarshal.GetReference(span), index);
-#endif
-    }
 }

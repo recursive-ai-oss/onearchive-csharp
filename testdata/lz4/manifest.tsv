@@ -35,12 +35,12 @@ period100k-9-B4-BD	102400	490ab62e1ee220e00a753abd6ea5c40ef48c4d4eb820f06f192120
 random70k-1	71680	df878b96b867b8bae2d2928ba89877120ac534d25db4e454d0e962f7a930bc63	71699		lz4 -1 -c input
 random70k-B4-BX-BD	71680	df878b96b867b8bae2d2928ba89877120ac534d25db4e454d0e962f7a930bc63	71711		lz4 -1 -B4 -BX -BD -c input
 random70k-legacy	71680	df878b96b867b8bae2d2928ba89877120ac534d25db4e454d0e962f7a930bc63	71971		lz4 -l -1 -c input
-payload2100-dict8k	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	169	dict8k.bin	lz4 -1 -D testdata/lz4/dict8k.bin -c input
-payload2100-dict8k-hc	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	165	dict8k.bin	lz4 -12 -D testdata/lz4/dict8k.bin -c input
-payload2101-dict8k	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	161	dict8k.bin	lz4 -1 -D testdata/lz4/dict8k.bin -c input
-payload2101-dict8k-hc	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	160	dict8k.bin	lz4 -12 -D testdata/lz4/dict8k.bin -c input
+payload2100-dict8k	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	169	dict8k.bin	lz4 -1 -D dict8k.bin -c input
+payload2100-dict8k-hc	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	165	dict8k.bin	lz4 -12 -D dict8k.bin -c input
+payload2101-dict8k	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	161	dict8k.bin	lz4 -1 -D dict8k.bin -c input
+payload2101-dict8k-hc	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	160	dict8k.bin	lz4 -12 -D dict8k.bin -c input
 payload2102-nodict	232	7f8ccda6cc7abfe921e463d5069804a758c8433aa0970d85ec206723158b5bcb	189		lz4 -1 -c input
-text100k-dict100k	100000	a942593ff9d307ab0e37fedccf588a04d7b45e528add48da619dfcc8a3bc0618	27439	dict100k.bin	lz4 -3 -B4 -D testdata/lz4/dict100k.bin -c input
-text100k-dict8k-BD	80000	46256e54bc864e976eda26682b34d24035e2408b3e7db24680a709ab9e652c13	31719	dict8k.bin	lz4 -BD -B4 -3 -D testdata/lz4/dict8k.bin -c input
+text100k-dict100k	100000	a942593ff9d307ab0e37fedccf588a04d7b45e528add48da619dfcc8a3bc0618	27439	dict100k.bin	lz4 -3 -B4 -D dict100k.bin -c input
+text100k-dict8k-BD	80000	46256e54bc864e976eda26682b34d24035e2408b3e7db24680a709ab9e652c13	31719	dict8k.bin	lz4 -BD -B4 -3 -D dict8k.bin -c input
 concat-skippable	301	6139b8d8f2fd6d3795295585e18e7bb0fc14717ae755b319e743bd8eb5a6f302	435		skippable frames (magic 0, 15, 3) around text300-1, onebyte and empty
 concat-mixed	205100	fcc715bccef768bcd704a007ca3ddbd9974e0e1acf461b1b8e87bf0fde23a7f5	76854		text100k-legacy, text300-9 and text100k-B4-BD concatenated

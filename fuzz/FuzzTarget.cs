@@ -23,5 +23,8 @@ internal static class FuzzTargets
         new FuzzTarget("noop", static data => _ = data.Length, static _ => false),
         ZstdTargets.Plain,
         ZstdTargets.WithDictionary,
+        Lz4Targets.Frame,
+        Lz4Targets.FrameWithDictionary,
+        Lz4Targets.Block,
     ];
 }
