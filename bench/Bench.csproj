@@ -9,6 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- bench/Micro is its own project. -->
+    <Compile Remove="Micro/**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../src/OneCompress/OneCompress.csproj" />
     <ProjectReference Include="../src/OneArchive/OneArchive.csproj" />
   </ItemGroup>
