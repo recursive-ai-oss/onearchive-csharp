@@ -234,10 +234,65 @@ public sealed class HuffmanDecodingTable
             int start = rankStart[w];
             rankStart[w] += length;
             ushort entry = (ushort)((s << 8) | (maxBits + 1 - w));
-            table.AsSpan(start, length).Fill(entry);
+            if (length < 16)
+            {
+                // Most symbols own a few rows; a loop beats a call to Fill for those.
+                for (int k = 0; k < length; k++)
+                {
+                    table[start + k] = entry;
+                }
+            }
+            else
+            {
+                table.AsSpan(start, length).Fill(entry);
+            }
         }
 
         _tableBits = maxBits;
+        _pairs = null;
+    }
+
+    private uint[]? _pairs;
+
+    /// <summary>
+    /// Returns the pair table of this table (see <see cref="BuildPairs"/>), building it on first use. Only for a table that is never
+    /// rebuilt after it is first used for decoding (a dictionary's): a rebuild drops the pair table, but a decoder that already holds
+    /// it would go on using the old one. Safe to call from several threads, which may build the same table twice.
+    /// </summary>
+    internal uint[] GetPairs()
+    {
+        uint[]? pairs = Volatile.Read(ref _pairs);
+        if (pairs is null)
+        {
+            pairs = new uint[1 << _tableBits];
+            BuildPairs(pairs);
+            pairs = Interlocked.CompareExchange(ref _pairs, pairs, null) ?? pairs;
+        }
+
+        return pairs;
+    }
+
+    /// <summary>
+    /// Builds a table that gives two symbols per lookup where two codes fit in the <see cref="TableBits"/> bits looked at and one
+    /// otherwise. An entry holds, from the least significant bit: the bits to consume (8 bits), the number of symbols (8), the first
+    /// symbol (8) and the second (8, meaningless when the count is 1). The symbols are the ones the single-symbol table gives in
+    /// turn: a second code counts only when all of its bits are among the bits looked at.
+    /// </summary>
+    private void BuildPairs(uint[] pairs)
+    {
+        int bits = _tableBits;
+        int mask = (1 << bits) - 1;
+        ushort[] table = _table;
+        for (int i = 0; i <= mask; i++)
+        {
+            ushort first = table[i];
+            int length1 = first & 0xFF;
+            ushort second = table[(i << length1) & mask];
+            int length2 = second & 0xFF;
+            pairs[i] = length1 + length2 <= bits
+                ? (uint)(length1 + length2) | (2u << 8) | ((uint)(first >> 8) << 16) | ((uint)(second >> 8) << 24)
+                : (uint)length1 | (1u << 8) | ((uint)(first >> 8) << 16);
+        }
     }
 
     /// <summary>Decodes a single Huffman-coded stream (RFC 8878 §4.2.2) into <paramref name="destination"/>.</summary>
@@ -245,7 +300,12 @@ public sealed class HuffmanDecodingTable
     /// <param name="destination">Receives exactly <c>destination.Length</c> symbols.</param>
     /// <param name="streamOffset">Offset of <paramref name="stream"/> in the compressed input, for error messages.</param>
     /// <exception cref="CompressionFormatException">The stream does not hold exactly that many symbols.</exception>
-    public void DecodeStream(ReadOnlySpan<byte> stream, Span<byte> destination, long streamOffset = 0)
+    public void DecodeStream(ReadOnlySpan<byte> stream, Span<byte> destination, long streamOffset = 0) =>
+        DecodeStream(stream, destination, streamOffset, null);
+
+    // With `pairs` (see GetPairs) two symbols are decoded per lookup where possible, which shortens the chain of dependent lookups
+    // that bounds the speed of a single stream.
+    internal void DecodeStream(ReadOnlySpan<byte> stream, Span<byte> destination, long streamOffset, uint[]? pairs)
     {
         if (_tableBits == 0)
         {
@@ -253,7 +313,38 @@ public sealed class HuffmanDecodingTable
         }
 
         var bits = new ZstdReverseBitReader(stream, streamOffset);
-        DecodeSymbols(ref bits, destination);
+        int done = 0;
+        if (pairs is not null && stream.Length >= 8)
+        {
+            // The register keeps the unread bits at the top, then a 1 bit and zeros; see DecodeFourStreams for how the 1 bit
+            // counts the bits used. A round of four lookups uses at most 44 bits of the 56 or more available and gives at most
+            // eight symbols, which must fit in what is left of the destination; the stream must have eight bytes below the
+            // register for the refill.
+            int shift = 64 - _tableBits;
+            nint p = bits.Pointer;
+            ulong v = (bits.Container << bits.Consumed) | (1UL << (bits.Consumed - 1));
+            nint o = 0;
+            nint limit = destination.Length - 8;
+            while (o <= limit && p >= 8)
+            {
+                for (int step = 0; step < 4; step++)
+                {
+                    uint e = Raw.Get(pairs, (nuint)(v >> shift)); // the index has _tableBits bits and pairs has 1 << _tableBits entries
+                    v <<= (int)e; // the bits to consume are the low byte, below 64
+                    Raw.WriteUInt16(destination, o, (ushort)(e >> 16)); // o <= length - 8 at the start of the round; a step moves it by at most 2
+                    o += (nint)((e >> 8) & 3);
+                }
+
+                uint t = (uint)BitOperations.TrailingZeroCount(v);
+                p -= (nint)(t >> 3);
+                v = ((Raw.ReadUInt64(stream, p) << 1) | 1) << (int)(t & 7); // p + 8 <= stream.Length: p only moves down from Length - 8
+            }
+
+            bits.Restore(Raw.ReadUInt64(stream, p), BitOperations.TrailingZeroCount(v) + 1, (int)p);
+            done = (int)o;
+        }
+
+        DecodeSymbols(ref bits, destination[done..]);
         if (!bits.IsFinished)
         {
             ZstdFormat.ThrowCorrupt(streamOffset, "a Huffman stream that is consumed exactly by its symbols");
@@ -329,7 +420,8 @@ public sealed class HuffmanDecodingTable
         // moves up with the shift, so its position (the number of trailing zeros) tells at the next refill how many bits
         // were used, with no separate counter. A round decodes four symbols per stream, using at most 44 bits of the 56 or
         // more available, then refills: the bytes used are stepped back over and the register is rebuilt from the eight bytes
-        // at the new position, with the sentinel placed under the bits already used of the lowest of them (1 to 8 bits).
+        // at the new position, with the sentinel placed under the bits already used of the lowest of them (1 to 8 bits): (W << 1 | 1) << k is the bytes shifted
+        // left by k + 1 with a 1 in bit k, and the bits shifted out of the top are the ones already used.
         ushort[] table = _table;
         int shift = 64 - _tableBits;
         int rounds = lastPart >> 2;
@@ -416,16 +508,16 @@ public sealed class HuffmanDecodingTable
 
                 uint t1 = (uint)BitOperations.TrailingZeroCount(v1);
                 p1 -= (nint)(t1 >> 3);
-                v1 = (Raw.ReadUInt64(stream1, p1) << (int)((t1 & 7) + 1)) | (1UL << (int)(t1 & 7)); // p1 + 8 <= the stream's length: it only moves down from length - 8
+                v1 = ((Raw.ReadUInt64(stream1, p1) << 1) | 1) << (int)(t1 & 7); // p1 + 8 <= the stream's length: it only moves down from length - 8
                 uint t2 = (uint)BitOperations.TrailingZeroCount(v2);
                 p2 -= (nint)(t2 >> 3);
-                v2 = (Raw.ReadUInt64(stream2, p2) << (int)((t2 & 7) + 1)) | (1UL << (int)(t2 & 7)); // p2 + 8 <= the stream's length: it only moves down from length - 8
+                v2 = ((Raw.ReadUInt64(stream2, p2) << 1) | 1) << (int)(t2 & 7); // p2 + 8 <= the stream's length: it only moves down from length - 8
                 uint t3 = (uint)BitOperations.TrailingZeroCount(v3);
                 p3 -= (nint)(t3 >> 3);
-                v3 = (Raw.ReadUInt64(stream3, p3) << (int)((t3 & 7) + 1)) | (1UL << (int)(t3 & 7)); // p3 + 8 <= the stream's length: it only moves down from length - 8
+                v3 = ((Raw.ReadUInt64(stream3, p3) << 1) | 1) << (int)(t3 & 7); // p3 + 8 <= the stream's length: it only moves down from length - 8
                 uint t4 = (uint)BitOperations.TrailingZeroCount(v4);
                 p4 -= (nint)(t4 >> 3);
-                v4 = (Raw.ReadUInt64(stream4, p4) << (int)((t4 & 7) + 1)) | (1UL << (int)(t4 & 7)); // p4 + 8 <= the stream's length: it only moves down from length - 8
+                v4 = ((Raw.ReadUInt64(stream4, p4) << 1) | 1) << (int)(t4 & 7); // p4 + 8 <= the stream's length: it only moves down from length - 8
                 i += 4;
             }
         }
