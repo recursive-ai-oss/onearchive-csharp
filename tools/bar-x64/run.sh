@@ -24,7 +24,7 @@
 #   BAR_COMMIT       free text recorded in machine.txt (for example the commit hash)
 #   BAR_FILES        whole-file inputs (default "silesia.tar enwik8")
 #   BAR_SCALE        divides every step's expected duration (for dry runs on tiny inputs; default 1)
-#   DOTNET_ROOT      dotnet install (default ~/dotnet10 when it exists)
+#   DOTNET_ROOT      dotnet install (~/dotnet10 when it exists, whatever the environment says)
 # Pass/miss rule: compressed size within 1% of the reference and our rate at least 0.87 of the reference's rate.
 set -uo pipefail
 
@@ -42,7 +42,7 @@ done
 case "$chunk" in 1|2) ;; *) echo "usage: run.sh <1|2> [--only \"step ...\"] [--list]" >&2; exit 2 ;; esac
 
 home="${ONEARCHIVE_HOME:-$HOME/onearchive}"
-[ -d "$HOME/dotnet10" ] && export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/dotnet10}"
+[ -d "$HOME/dotnet10" ] && export DOTNET_ROOT="$HOME/dotnet10"
 [ -n "${DOTNET_ROOT:-}" ] && export PATH="$DOTNET_ROOT:$PATH"
 export PATH="$home/tools/bin:$PATH"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 MSBUILDDISABLENODEREUSE=1
