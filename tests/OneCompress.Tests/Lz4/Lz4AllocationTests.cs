@@ -3,6 +3,9 @@ using RecursiveAI.OneCompress.Lz4;
 
 namespace RecursiveAI.OneCompress.Tests;
 
+// Run alone: another test thread compiling or allocating at the same moment would only blur the count.
+[CollectionDefinition("Lz4 allocation", DisableParallelization = true)]
+[Collection("Lz4 allocation")]
 public class Lz4AllocationTests
 {
     // Runs `once` until batches of 1000 calls allocate nothing, then requires the next batches to allocate nothing too.

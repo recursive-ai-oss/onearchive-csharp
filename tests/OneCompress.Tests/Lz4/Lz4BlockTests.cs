@@ -120,6 +120,70 @@ public class Lz4BlockTests
     }
 
     [Fact]
+    public void RandomLongBlocksOfShortSequencesTakeTheFastPathAndAgreeWithTheSimpleRule()
+    {
+        // Many sequences, mostly with literal and match lengths below 15 (some far longer) and offsets across the copy-width
+        // boundaries (1 to 40, some to 400), so the wide-copy loop runs for most of the block and the general code finishes it.
+        var r = new Random(2024);
+        for (int round = 0; round < 400; round++)
+        {
+            int produced = 0;
+            var seqs = new List<Sequence>();
+            int count = r.Next(10, 400);
+            for (int i = 0; i < count; i++)
+            {
+                int lit = r.Next(5) == 0 ? r.Next(15, 300) : r.Next(0, 15);
+                if (produced + lit == 0)
+                {
+                    lit = 1;
+                }
+
+                int offset = r.Next(1, Math.Min(produced + lit, r.Next(6) == 0 ? 400 : 40) + 1);
+                int len = r.Next(5) == 0 ? r.Next(19, 400) : r.Next(4, 19);
+                seqs.Add(new Sequence(Filler(lit, r.Next()), offset, len));
+                produced += lit + len;
+            }
+
+            seqs.Add(new Sequence(Filler(r.Next(12, 30), r.Next()), 0, 0));
+            Sequence[] all = [.. seqs];
+            byte[] expected = Expand([], all);
+            byte[] block = Block(all);
+            foreach (int spare in new[] { 0, 1, 16, 39, 40, 41, 100 })
+            {
+                byte[] buffer = new byte[expected.Length + spare];
+                Assert.True(Lz4BlockDecoder.TryDecode(block, buffer, 0, out int written), $"round {round} spare {spare}");
+                Assert.Equal(expected.Length, written);
+                Assert.True(expected.AsSpan().SequenceEqual(buffer.AsSpan(0, written)), $"round {round} spare {spare}");
+            }
+
+            // One byte short: must be reported, never overrun.
+            Assert.False(Lz4BlockDecoder.TryDecode(block, new byte[expected.Length - 1], 0, out _));
+
+            // An offset error planted in the middle is found at the right input offset.
+            byte[] bad = (byte[])block.Clone();
+            int at = FindOffsetField(all, 5);
+            bad[at] = 0;
+            bad[at + 1] = 0;
+            var e = Assert.Throws<CompressionFormatException>(() => Lz4Block.Decompress(bad));
+            Assert.Equal(at, e.Offset);
+        }
+    }
+
+    // Input position of the offset field of the n-th sequence.
+    private static int FindOffsetField(Sequence[] sequences, int n)
+    {
+        static int ExtensionBytes(int length) => length < 15 ? 0 : ((length - 15) / 255) + 1;
+        int position = 0;
+        for (int i = 0; i < n; i++)
+        {
+            Sequence s = sequences[i];
+            position += 1 + ExtensionBytes(s.Literals.Length) + s.Literals.Length + 2 + ExtensionBytes(s.MatchLength - 4);
+        }
+
+        return position + 1 + ExtensionBytes(sequences[n].Literals.Length) + sequences[n].Literals.Length;
+    }
+
+    [Fact]
     public void BlockCanReachIntoTheDictionary()
     {
         byte[] dictionary = Bytes("0123456789abcdefghijklmnopqrstuvwxyz");

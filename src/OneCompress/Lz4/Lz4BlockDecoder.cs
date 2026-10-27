@@ -118,6 +118,15 @@ public static class Lz4BlockDecoder
 
         while (true)
         {
+            // The fast loop takes every complete sequence it can prove safe; the general code below handles the rest (the
+            // ends of the spans, malformed sequences and the end of the block), one sequence at a time.
+            int before = ip;
+            (ip, op, lastMatchStart) = FastLoop(src, dst, ip, op, lastMatchStart);
+            if (ip != before)
+            {
+                onlySequence = false;
+            }
+
             if (ip >= iend)
             {
                 // The block ended after a match (or was empty): the last sequence must carry literals only.
@@ -174,10 +183,17 @@ public static class Lz4BlockDecoder
                 break;
             }
 
-            // Short literal runs are copied as one wide block; the bytes after the run are overwritten by what follows.
-            if (literalLength <= 16 && iend - ip >= 16 && oend - op >= 16)
+            // Literals go in 16-byte steps when both spans have 16 bytes to spare beyond the run (the surplus is overwritten
+            // by what follows); near the ends of the spans the copy is exact.
+            if (literalLength <= iend - ip - 16 && literalLength <= oend - op - 16)
             {
-                Lz4Raw.Copy16(dst, op, src, ip);
+                int k = 0;
+                do
+                {
+                    Lz4Raw.Copy16(dst, op + k, src, ip + k);
+                    k += 16;
+                }
+                while (k < literalLength);
             }
             else
             {
@@ -219,7 +235,7 @@ public static class Lz4BlockDecoder
             }
 
             int offsetAt = ip;
-            int offset = src[ip] | (src[ip + 1] << 8);
+            int offset = Lz4Raw.ReadUInt16(src, ip);
             ip += 2;
             if (offset == 0)
             {
@@ -267,7 +283,48 @@ public static class Lz4BlockDecoder
             int matchLength = (int)matchExtended;
             lastMatchStart = op;
             onlySequence = false;
-            CopyMatch(dst, op, offset, matchLength);
+
+            // Match bytes are copied in increasing order, so a match longer than its offset repeats the last `offset` bytes.
+            int mp = op - offset;
+            int room = oend - op;
+            if (offset >= 16 && room >= matchLength + 16)
+            {
+                // Sixteen-byte steps never read bytes the same step writes (offset >= 16) and overshoot by at most 15 bytes,
+                // which the room check covers.
+                int k = 0;
+                do
+                {
+                    Lz4Raw.Copy16(dst, op + k, dst, mp + k);
+                    k += 16;
+                }
+                while (k < matchLength);
+            }
+            else if (offset >= 8 && room >= matchLength + 8)
+            {
+                int k = 0;
+                do
+                {
+                    Lz4Raw.Copy8(dst, op + k, dst, mp + k);
+                    k += 8;
+                }
+                while (k < matchLength);
+            }
+            else if (offset >= matchLength)
+            {
+                dst.Slice(mp, matchLength).CopyTo(dst.Slice(op));
+            }
+            else if (offset >= 8)
+            {
+                for (int k = 0; k < matchLength; k++)
+                {
+                    dst[op + k] = dst[mp + k];
+                }
+            }
+            else
+            {
+                Lz4Raw.RepeatShort(dst, op, offset, matchLength);
+            }
+
             op += matchLength;
         }
 
@@ -276,51 +333,190 @@ public static class Lz4BlockDecoder
         return result;
     }
 
-    // Copies matchLength bytes from offset bytes back; the caller has checked offset <= op and matchLength <= room.
-    // When offset < matchLength the source overlaps what is being written, which repeats the last offset bytes.
-    private static void CopyMatch(Span<byte> dst, int op, int offset, int matchLength)
+    // The fast loop. It decodes complete sequences, with wide copies, for as long as the input has 19 bytes left (a 16-byte
+    // literal copy and the 2-byte offset can read that far) and the output has 40 bytes of room (16 for the literals, then at
+    // most 24 for a short match), and returns where it stopped. A sequence it cannot prove safe or valid (length bytes that run
+    // out, too little room for the wide copies, a bad offset) is left undone, with the position back at its token, for the
+    // general code in Decode to finish or to report. The sequence is never the block's last: 19 bytes of input remain after its
+    // token, so the offset field exists.
+    private static (int Ip, int Op, int LastMatchStart) FastLoop(ReadOnlySpan<byte> src, Span<byte> dst, int ipStart, int opStart, int matchStart)
     {
-        int mp = op - offset;
-        int room = dst.Length - op;
-        if (offset >= 16 && room >= matchLength + 16)
+        nint ip = ipStart;
+        nint op = opStart;
+        nint ms = matchStart;
+        nint iend = src.Length;
+        nint oend = dst.Length;
+        nint inputLimit = iend - 19;
+        nint outputLimit = oend - 40;
+
+        while (ip < inputLimit && op < outputLimit)
         {
-            // Sixteen-byte steps never read bytes the same step writes (offset >= 16) and overshoot by at most 15 bytes,
-            // which the room check covers; the overshoot is overwritten by the next sequence.
-            int end = op + matchLength;
-            do
+            nint sequence = ip;
+            int token = Lz4Raw.Get(src, ip);  // ip < inputLimit < iend
+            ip++;
+            nint literals = token >> 4;
+            if (literals != 15)
             {
-                Lz4Raw.Copy16(dst, op, dst, mp);
-                op += 16;
-                mp += 16;
+                Lz4Raw.Copy16(dst, op, src, ip);
+                ip += literals;
+                op += literals;
             }
-            while (op < end);
-        }
-        else if (offset >= 8 && room >= matchLength + 8)
-        {
-            int end = op + matchLength;
-            do
+            else
             {
-                Lz4Raw.Copy8(dst, op, dst, mp);
-                op += 8;
-                mp += 8;
+                // Block format: 15 means length bytes follow, each added, and 255 means another follows.
+                nint p = ip;
+                nint l = 15;
+                int b;
+                do
+                {
+                    if (p >= iend || l > iend)
+                    {
+                        ip = sequence;
+                        goto exit;
+                    }
+
+                    b = Lz4Raw.Get(src, p);
+                    p++;
+                    l += b;
+                }
+                while (b == 255);
+
+                if (l > iend - p - 18 || l > oend - op - 40)
+                {
+                    ip = sequence;
+                    goto exit;
+                }
+
+                nint k = 0;
+                do
+                {
+                    Lz4Raw.Copy16(dst, op + k, src, p + k);
+                    k += 16;
+                }
+                while (k < l);
+
+                literals = l;
+                ip = p + l;
+                op += l;
             }
-            while (op < end);
-        }
-        else if (offset == 1)
-        {
-            dst.Slice(op, matchLength).Fill(dst[mp]);
-        }
-        else if (offset >= matchLength)
-        {
-            dst.Slice(mp, matchLength).CopyTo(dst.Slice(op));
-        }
-        else
-        {
-            for (int i = 0; i < matchLength; i++)
+
+            // At least 18 bytes of input follow the literals, so the offset can be read.
+            nint offset = Lz4Raw.ReadUInt16(src, ip);
+            ip += 2;
+            if ((nuint)(offset - 1) >= (nuint)op)
             {
-                dst[op + i] = dst[mp + i];
+                // Offset 0, or reaching before the start of the output: the general code reports it.
+                ip = sequence;
+                op -= literals;
+                goto exit;
             }
+
+            nint length = token & 15;
+            nint source = op - offset;
+            if (length != 15)
+            {
+                // Matches of 4 to 18 bytes: 24 bytes are always written (the surplus is overwritten by what follows), which
+                // costs less than a branch on the length.
+                length += Lz4Format.MinMatch;
+                ms = op;
+                if (offset >= 16)
+                {
+                    Lz4Raw.Copy16(dst, op, dst, source);
+                    Lz4Raw.Copy8(dst, op + 16, dst, source + 16);
+                }
+                else if (offset >= 8)
+                {
+                    Lz4Raw.Copy8(dst, op, dst, source);
+                    Lz4Raw.Copy8(dst, op + 8, dst, source + 8);
+                    Lz4Raw.Copy8(dst, op + 16, dst, source + 16);
+                }
+                else if (offset == 1)
+                {
+                    ulong v = (ulong)Lz4Raw.Get(dst, source) * 0x0101010101010101UL;
+                    Lz4Raw.Write8(dst, op, v);
+                    Lz4Raw.Write8(dst, op + 8, v);
+                    Lz4Raw.Write8(dst, op + 16, v);
+                }
+                else if (offset == 2)
+                {
+                    ulong v = (ulong)Lz4Raw.ReadUInt16(dst, source) * 0x0001000100010001UL;
+                    Lz4Raw.Write8(dst, op, v);
+                    Lz4Raw.Write8(dst, op + 8, v);
+                    Lz4Raw.Write8(dst, op + 16, v);
+                }
+                else if (offset == 4)
+                {
+                    ulong v = (ulong)Lz4Raw.ReadUInt32(dst, source) * 0x0000000100000001UL;
+                    Lz4Raw.Write8(dst, op, v);
+                    Lz4Raw.Write8(dst, op + 8, v);
+                    Lz4Raw.Write8(dst, op + 16, v);
+                }
+                else
+                {
+                    Lz4Raw.RepeatShort(dst, op, offset, length);
+                }
+            }
+            else
+            {
+                nint p = ip;
+                length = 15 + Lz4Format.MinMatch;
+                int b;
+                do
+                {
+                    if (p >= iend || length > oend)
+                    {
+                        ip = sequence;
+                        op -= literals;
+                        goto exit;
+                    }
+
+                    b = Lz4Raw.Get(src, p);
+                    p++;
+                    length += b;
+                }
+                while (b == 255);
+
+                if (length > oend - op - 16)
+                {
+                    ip = sequence;
+                    op -= literals;
+                    goto exit;
+                }
+
+                ms = op;
+                if (offset >= 16)
+                {
+                    nint k = 0;
+                    do
+                    {
+                        Lz4Raw.Copy16(dst, op + k, dst, source + k);
+                        k += 16;
+                    }
+                    while (k < length);
+                }
+                else if (offset >= 8)
+                {
+                    nint k = 0;
+                    do
+                    {
+                        Lz4Raw.Copy8(dst, op + k, dst, source + k);
+                        k += 8;
+                    }
+                    while (k < length);
+                }
+                else
+                {
+                    Lz4Raw.RepeatShort(dst, op, offset, length);
+                }
+
+                ip = p;
+            }
+
+            op += length;
         }
+
+    exit:
+        return ((int)ip, (int)op, (int)ms);
     }
 
     private static BlockResult Measure(ReadOnlySpan<byte> src, int history, out long size, out int errorOffset)
