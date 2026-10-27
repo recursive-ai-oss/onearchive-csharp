@@ -21,5 +21,7 @@ internal static class FuzzTargets
     [
         // Exercises the driver itself; never throws.
         new FuzzTarget("noop", static data => _ = data.Length, static _ => false),
+        ZstdTargets.Plain,
+        ZstdTargets.WithDictionary,
     ];
 }
