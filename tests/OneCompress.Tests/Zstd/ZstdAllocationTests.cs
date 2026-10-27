@@ -87,18 +87,27 @@ public class ZstdAllocationTests
             }
         }
 
-        for (int i = 0; i < 5; i++)
+        // The runtime's tiered compilation allocates a little on the calling thread while it warms up (more when the machine is
+        // busy), so run until several batches in a row are clean; an allocation per frame would break every batch.
+        long Batch()
         {
-            DecodeOnce();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 20; i++)
+            {
+                DecodeOnce();
+            }
+
+            return GC.GetAllocatedBytesForCurrentThread() - before;
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 20; i++)
+        int clean = 0;
+        var warmUp = System.Diagnostics.Stopwatch.StartNew();
+        while (clean < 4 || warmUp.ElapsedMilliseconds < 1500)
         {
-            DecodeOnce();
+            clean = Batch() == 0 ? clean + 1 : 0;
+            Thread.Sleep(30);
+            Assert.True(warmUp.ElapsedMilliseconds < 30_000, "allocations never settled");
         }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
     }
 
     [Theory]
