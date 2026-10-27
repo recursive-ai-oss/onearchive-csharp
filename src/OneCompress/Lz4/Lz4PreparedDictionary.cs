@@ -11,7 +11,7 @@ internal sealed class Lz4PreparedDictionary
     private static readonly ConditionalWeakTable<Lz4Dictionary, Lz4PreparedDictionary> s_cache = new();
 
     private readonly Lock _lock = new();
-    private uint[]? _fastTable;
+    private readonly uint[]?[] _fastTables = new uint[]?[Lz4FastBlockCompressor.MaxHashLog + 1];
     private HighIndex? _highSnapshot;
 
     private Lz4PreparedDictionary(Lz4Dictionary dictionary)
@@ -25,35 +25,32 @@ internal sealed class Lz4PreparedDictionary
         s_cache.GetValue(dictionary, static d => new Lz4PreparedDictionary(d));
 
     /// <summary>
-    /// The fast compressor's hash table over the dictionary: each entry is a position plus one, or zero for none. Later
-    /// positions replace earlier ones, as they do in a table built while compressing.
+    /// The fast compressor's hash table over the dictionary for a table of 2^<paramref name="hashLog"/> entries: each entry is a
+    /// position plus one, or zero for none. Later positions replace earlier ones, as they do in a table built while compressing.
     /// </summary>
-    public uint[] FastTable
+    public uint[] FastTable(int hashLog)
     {
-        get
+        if (Volatile.Read(ref _fastTables[hashLog]) is { } table)
         {
-            uint[]? table = Volatile.Read(ref _fastTable);
-            if (table is not null)
-            {
-                return table;
-            }
+            return table;
+        }
 
-            lock (_lock)
+        lock (_lock)
+        {
+            if (_fastTables[hashLog] is null)
             {
-                if (_fastTable is null)
+                var built = new uint[1 << hashLog];
+                ReadOnlySpan<byte> c = Content;
+                int shift = 64 - hashLog;
+                for (int i = 0; i + 8 <= c.Length; i++)
                 {
-                    var built = new uint[1 << Lz4FastBlockCompressor.HashLog];
-                    ReadOnlySpan<byte> c = Content;
-                    for (int i = 0; i + 8 <= c.Length; i++)
-                    {
-                        built[Lz4FastBlockCompressor.Hash(Lz4EncRaw.Read64(c, i))] = (uint)i + 1;
-                    }
-
-                    Volatile.Write(ref _fastTable, built);
+                    built[Lz4FastBlockCompressor.Hash(Lz4EncRaw.Read64(c, i), shift)] = (uint)i + 1;
                 }
 
-                return _fastTable;
+                Volatile.Write(ref _fastTables[hashLog], built);
             }
+
+            return _fastTables[hashLog]!;
         }
     }
 

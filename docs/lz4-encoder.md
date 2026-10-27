@@ -34,7 +34,8 @@ The range is -65536 to 12 (a level outside it is an `ArgumentOutOfRangeException
 |---|---|---|---|
 | 1, 0 | hash table | greedy | acceleration 1 |
 | -N | hash table | greedy | acceleration N + 1 (so `--fast=1` skips like acceleration 2) |
-| 2 to 6 | hash chain | lazy | chain candidates 3, 14, 40, 96, 320 |
+| 2 | hash table (2^17 entries, interior positions indexed every 2nd byte) | greedy | acceleration 1 |
+| 3 to 6 | hash chain | lazy | chain candidates 14, 40, 96, 320 |
 | 7 to 9 | hash chain | optimal | chain candidates 64, 80, 80; stop at match length 128, 128, 256 |
 | 10 to 12 | hash chain | optimal | chain candidates 96, 400, 1024; stop at match length 256, 256, 512 |
 
@@ -73,7 +74,6 @@ The range is -65536 to 12 (a level outside it is an `ArgumentOutOfRangeException
   dearer to reach and a four-byte match here would not improve the price four bytes on (a match starting here could be
   replaced by one starting a byte later). The plan ends where no match reaches further, or at the first match of at least the
   stop length, or when a match would reach 4096 bytes ahead; matches are then written front to back.
-- Level 2 is the first level that searches chains at all: three candidates per position.
 
 ## Dictionaries
 

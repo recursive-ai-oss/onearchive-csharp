@@ -35,33 +35,47 @@ internal readonly struct WithDictionary : IDictionaryMode
 /// </remarks>
 public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
 {
-    // Hash table of 2^12 entries (16 KiB), small enough to stay in the first-level cache.
-    internal const int HashLog = 12;
+    /// <summary>The default table size, 2^12 entries (16 KiB), small enough to stay in the first-level cache.</summary>
+    public const int DefaultHashLog = 12;
+
+    /// <summary>The largest table size, 2^20 entries (4 MiB).</summary>
+    public const int MaxHashLog = 20;
+
     private const int SkipTrigger = 6;
     private const long InitialOrigin = 1 << 16;
 
-    private readonly uint[] _table = new uint[1 << HashLog];
+    private readonly uint[] _table;
     private readonly int _acceleration;
+    private readonly int _hashLog;
+    private readonly int _stride;
     private long _origin = InitialOrigin;
     private int _used;
     private Lz4PreparedDictionary? _dictionary;
 
     /// <summary>Creates a fast compressor.</summary>
     /// <param name="acceleration">1 for the default fast level; larger values skip faster through incompressible data (level <c>1 - acceleration</c>), up to 65537.</param>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="acceleration"/> is outside 1 to 65537.</exception>
-    public Lz4FastBlockCompressor(int acceleration = 1)
+    /// <param name="hashLog">The table holds 2^<paramref name="hashLog"/> positions, from 8 to <see cref="MaxHashLog"/>; a larger table finds more of the older matches at the cost of memory and speed (level 2 uses 16).</param>
+    /// <param name="interiorStride">0 indexes only the probed positions and the one two bytes before a match's end; a positive value also indexes every <paramref name="interiorStride"/>th position inside each match (level 2 uses 2).</param>
+    /// <exception cref="ArgumentOutOfRangeException">An argument is out of range.</exception>
+    public Lz4FastBlockCompressor(int acceleration = 1, int hashLog = DefaultHashLog, int interiorStride = 0)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(acceleration, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(acceleration, 65537);
+        ArgumentOutOfRangeException.ThrowIfLessThan(hashLog, 8);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(hashLog, MaxHashLog);
+        ArgumentOutOfRangeException.ThrowIfNegative(interiorStride);
         _acceleration = acceleration;
+        _hashLog = hashLog;
+        _stride = interiorStride;
+        _table = new uint[1 << hashLog];
     }
 
     /// <summary>Gets the acceleration: 1 for level 1, and <c>1 - level</c> for lower levels.</summary>
     public int Acceleration => _acceleration;
 
-    /// <summary>Hashes the low five bytes of eight (a little-endian read) to a table index.</summary>
+    /// <summary>Hashes the low five bytes of eight (a little-endian read) to a table index of <c>64 - shift</c> bits.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static int Hash(ulong eightBytes) => (int)(((eightBytes << 24) * 889523592379UL) >> (64 - HashLog));
+    internal static int Hash(ulong eightBytes, int shift) => (int)(((eightBytes << 24) * 889523592379UL) >> shift);
 
     /// <inheritdoc />
     public override void SetDictionary(Lz4Dictionary? dictionary) =>
@@ -130,7 +144,8 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
         int matchLimit = n - Lz4Format.LastLiterals;
         uint org = (uint)_origin;
         uint[] table = _table;
-        uint[] dictTable = TMode.Enabled ? prepared!.FastTable : table;
+        int shift = 64 - _hashLog;
+        uint[] dictTable = TMode.Enabled ? prepared!.FastTable(_hashLog) : table;
         ReadOnlySpan<byte> dict = TMode.Enabled ? prepared!.Content : default;
         int dictLen = dict.Length;
         int searchBase = _acceleration << SkipTrigger;
@@ -138,7 +153,7 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
         if (ip <= mfLimit && start == 0)
         {
             // No match can start at the first byte; index it for the bytes that follow.
-            Lz4EncRaw.Put(table, Hash(Lz4EncRaw.Read64(src, 0)), org);
+            Lz4EncRaw.Put(table, Hash(Lz4EncRaw.Read64(src, 0), shift), org);
             ip = 1;
         }
 
@@ -152,7 +167,7 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
                 int forward = ip;
                 int step = 1;
                 int searchNb = searchBase;
-                int h = Hash(Lz4EncRaw.Read64(src, ip));
+                int h = Hash(Lz4EncRaw.Read64(src, ip), shift);
                 bool found = false;
                 while (true)
                 {
@@ -162,7 +177,7 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
                     uint entry = Lz4EncRaw.Get(table, h);
                     Lz4EncRaw.Put(table, h, org + (uint)ip);
                     cand = (int)(entry - org);
-                    int hNext = forward <= mfLimit ? Hash(Lz4EncRaw.Read64(src, forward)) : 0;
+                    int hNext = forward <= mfLimit ? Hash(Lz4EncRaw.Read64(src, forward), shift) : 0;
                     if ((uint)(ip - cand - 1) < Lz4Format.MaxOffset && Lz4EncRaw.Read32(src, cand) == Lz4EncRaw.Read32(src, ip))
                     {
                         found = true;
@@ -231,6 +246,16 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
             }
 
             op = Lz4BlockWriter.Sequence(dst, op, src, anchor, ip - anchor, ip - cand, length);
+            if (_stride > 0)
+            {
+                // The positions the greedy walk skipped over also become candidates for later matches.
+                int stop = Math.Min(ip + length, mfLimit + 1) - 1;
+                for (int q = ip + 1; q < stop; q += _stride)
+                {
+                    Lz4EncRaw.Put(table, Hash(Lz4EncRaw.Read64(src, q), shift), org + (uint)q);
+                }
+            }
+
             ip += length;
             anchor = ip;
             if (ip > mfLimit)
@@ -239,8 +264,8 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
             }
 
             // Index a position inside the match, then see whether another match starts right here.
-            Lz4EncRaw.Put(table, Hash(Lz4EncRaw.Read64(src, ip - 2)), org + (uint)(ip - 2));
-            int h2 = Hash(Lz4EncRaw.Read64(src, ip));
+            Lz4EncRaw.Put(table, Hash(Lz4EncRaw.Read64(src, ip - 2), shift), org + (uint)(ip - 2));
+            int h2 = Hash(Lz4EncRaw.Read64(src, ip), shift);
             uint e2 = Lz4EncRaw.Get(table, h2);
             Lz4EncRaw.Put(table, h2, org + (uint)ip);
             cand = (int)(e2 - org);
