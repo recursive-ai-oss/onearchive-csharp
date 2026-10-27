@@ -6,7 +6,7 @@ using RecursiveAI.Fuzz;
 // The same targets can be wrapped by a coverage-guided fuzzer later.
 if (args.Length < 1)
 {
-    Console.Error.WriteLine("usage: fuzz <target> [--seeds <dir>] [--out <dir>] [--iterations <n>] [--rng <n>]");
+    Console.Error.WriteLine("usage: fuzz <target> [--seeds <dir>] [--out <dir>] [--iterations <n>] [--seconds <n>] [--rng <n>]");
     Console.Error.WriteLine("targets: " + string.Join(", ", FuzzTargets.All.Select(static t => t.Name)));
     return 2;
 }
@@ -22,6 +22,7 @@ string? seedDir = null;
 string outDir = "findings";
 int iterations = 10_000;
 int rngSeed = 1;
+double seconds = 0;
 for (int i = 1; i + 1 < args.Length; i += 2)
 {
     switch (args[i])
@@ -29,6 +30,7 @@ for (int i = 1; i + 1 < args.Length; i += 2)
         case "--seeds": seedDir = args[i + 1]; break;
         case "--out": outDir = args[i + 1]; break;
         case "--iterations": iterations = int.Parse(args[i + 1], CultureInfo.InvariantCulture); break;
+        case "--seconds": seconds = double.Parse(args[i + 1], CultureInfo.InvariantCulture); break;
         case "--rng": rngSeed = int.Parse(args[i + 1], CultureInfo.InvariantCulture); break;
         default: Console.Error.WriteLine($"unknown option {args[i]}"); return 2;
     }
@@ -50,9 +52,14 @@ if (seeds.Count == 0)
 
 var rng = new Random(rngSeed);
 int findings = 0;
-for (int n = 0; n < iterations; n++)
+var clock = System.Diagnostics.Stopwatch.StartNew();
+long executed = 0;
+
+// With --seconds the run is bounded by time (and --iterations is ignored); otherwise by iterations.
+for (int n = 0; seconds > 0 ? clock.Elapsed.TotalSeconds < seconds : n < iterations; n++)
 {
-    byte[] input = Mutate(seeds[rng.Next(seeds.Count)], rng);
+    executed++;
+    byte[] input = Mutate(seeds[rng.Next(seeds.Count)], rng, seeds);
     try
     {
         target.Run(input);
@@ -71,17 +78,64 @@ for (int n = 0; n < iterations; n++)
     }
 }
 
-Console.WriteLine($"{target.Name}: {iterations} runs, {findings} findings");
+Console.WriteLine($"{target.Name}: {executed} runs in {clock.Elapsed.TotalSeconds:F0} s ({executed / Math.Max(1, clock.Elapsed.TotalSeconds):F0}/s), {findings} findings");
 return findings == 0 ? 0 : 1;
 
-static byte[] Mutate(byte[] seed, Random rng)
+static byte[] Mutate(byte[] seed, Random rng, List<byte[]> seeds)
 {
     var data = new List<byte>(seed);
     int edits = 1 + rng.Next(4);
     for (int e = 0; e < edits; e++)
     {
-        switch (rng.Next(4))
+        switch (rng.Next(9))
         {
+            case 4 when data.Count > 1:
+                {
+                    // Cut the tail off.
+                    int keep = rng.Next(data.Count);
+                    data.RemoveRange(keep, data.Count - keep);
+                    break;
+                }
+
+            case 5 when data.Count > 0:
+                {
+                    // Overwrite a short run with 0x00 or 0xFF, which often makes sizes and counts extreme.
+                    int at = rng.Next(data.Count);
+                    byte fill = rng.Next(2) == 0 ? (byte)0 : (byte)0xFF;
+                    for (int k = at; k < Math.Min(data.Count, at + 1 + rng.Next(8)); k++)
+                    {
+                        data[k] = fill;
+                    }
+
+                    break;
+                }
+
+            case 6:
+                {
+                    // Splice a piece of another seed in, mixing the structure of two frames.
+                    byte[] other = seeds[rng.Next(seeds.Count)];
+                    if (other.Length > 0)
+                    {
+                        int from = rng.Next(other.Length);
+                        int count = Math.Min(other.Length - from, 1 + rng.Next(64));
+                        data.InsertRange(rng.Next(data.Count + 1), other.AsSpan(from, count).ToArray());
+                    }
+
+                    break;
+                }
+
+            case 7 when data.Count > 0:
+                {
+                    // Duplicate a piece in place.
+                    int at = rng.Next(data.Count);
+                    int count = Math.Min(data.Count - at, 1 + rng.Next(32));
+                    data.InsertRange(at, data.GetRange(at, count));
+                    break;
+                }
+
+            case 8 when data.Count > 1:
+                data[rng.Next(data.Count)] += (byte)(rng.Next(2) == 0 ? 1 : 255);
+                break;
             case 0 when data.Count > 0:
                 data[rng.Next(data.Count)] ^= (byte)(1 << rng.Next(8));
                 break;

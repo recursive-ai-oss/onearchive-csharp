@@ -1,0 +1,38 @@
+# *** Zstandard CLI (64-bit) v1.5.7, by Yann Collet ***
+# name	size	sha256	compressed	maxwindow	dictionary	command
+empty-l3	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	13	0		zstd -3 -c input
+empty-pipe	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	13	0		cat input | zstd -3 -c
+onebyte	1	bbeebd879e1dff6918546dc0c179fdde505f2a21591c9a9c96e36b054ec5af83	14	0		zstd -3 -c input
+text300-l1	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	185	0		zstd -1 -c input
+text300-l3	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	186	0		zstd -3 -c input
+text300k-l1	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	94616	0		zstd -1 -c input
+text300k-l3	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	89117	0		zstd -3 -c input
+text300k-l9	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	85422	0		zstd -9 -c input
+text300k-l19	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	74840	0		zstd -19 -c input
+text300k-nocheck	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	89428	0		zstd -5 --no-check -c input
+text300k-nosize-pipe	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	89429	0		cat input | zstd -5 -c
+text300k-nosize-flag	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	89429	0		zstd -5 --no-content-size -c input
+text300k-long27	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	74837	134217728		cat input | zstd -19 --long=27 -c
+text300k-ultra22-pipe	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	74837	134217728		cat input | zstd --ultra -22 -c
+bin200k-l3	204800	28cf1990a983910093a26a610db9deff37fca8a959028509029f9cd26dc71253	64543	0		zstd -3 -c input
+bin200k-l12	204800	28cf1990a983910093a26a610db9deff37fca8a959028509029f9cd26dc71253	61590	0		zstd -12 -c input
+runs1m-l3	1048576	047c3e0c9543b00ce82e43b0b38067b8f42695459fd3cffeb3d5483f74e93f64	2256	0		zstd -3 -c input
+runs1m-l19	1048576	047c3e0c9543b00ce82e43b0b38067b8f42695459fd3cffeb3d5483f74e93f64	2701	0		zstd -19 -c input
+random64k-l3	65536	0541c074d38293854e549899a07146173ca7d075fb93086ff6667861ed8a773c	65550	0		zstd -3 -c input
+text300k-mt	307200	fc3b50fde39cac061ade51ffcaeff2ff3157465ec8d3f708e01ea2df70c1d412	89134	0		zstd -T4 -3 --zstd=wlog=18,strategy=2 -c input
+dict4-l3-p2100	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	66	0	dict4.zdict	zstd -3 -D testdata/zstd/dict4.zdict -c input
+dict4-l3-p2101	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	64	0	dict4.zdict	zstd -3 -D testdata/zstd/dict4.zdict -c input
+dict4-l19-p2100	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	77	0	dict4.zdict	zstd -19 -D testdata/zstd/dict4.zdict -c input
+dict4-l19-p2101	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	72	0	dict4.zdict	zstd -19 -D testdata/zstd/dict4.zdict -c input
+dict16-l3-p2100	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	66	0	dict16.zdict	zstd -3 -D testdata/zstd/dict16.zdict -c input
+dict16-l3-p2101	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	67	0	dict16.zdict	zstd -3 -D testdata/zstd/dict16.zdict -c input
+dict16-l19-p2100	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	65	0	dict16.zdict	zstd -19 -D testdata/zstd/dict16.zdict -c input
+dict16-l19-p2101	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	67	0	dict16.zdict	zstd -19 -D testdata/zstd/dict16.zdict -c input
+dict112-l3-p2100	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	67	0	dict112.zdict	zstd -3 -D testdata/zstd/dict112.zdict -c input
+dict112-l3-p2101	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	67	0	dict112.zdict	zstd -3 -D testdata/zstd/dict112.zdict -c input
+dict112-l19-p2100	230	7c0e29b08f459d7db114d51cf5c039a271db070472bfc8cd9ca88f3b20be7409	61	0	dict112.zdict	zstd -19 -D testdata/zstd/dict112.zdict -c input
+dict112-l19-p2101	208	77f4873f59cf9a709b6fdc4f872b45f4d5f5712b328e87166fbcc0d5d10627e8	60	0	dict112.zdict	zstd -19 -D testdata/zstd/dict112.zdict -c input
+dict16-noid	232	7f8ccda6cc7abfe921e463d5069804a758c8433aa0970d85ec206723158b5bcb	62	0	dict16.zdict	zstd -3 -D testdata/zstd/dict16.zdict --no-dictID -c input
+rawdict-l3	5000	f2bb0d149e030bf38e06c671df824f0339d6e1276d09ac20de4cf2fff9e1a406	1522	0	rawdict.bin	zstd -3 -D testdata/zstd/rawdict.bin -c input
+patchfrom-l3	409600	3edf9256ab185f786e795def8932561ca8c1ef5f09b214f51df8287757ef664b	1396	1048576	patchref.bin	zstd -3 --patch-from=patchref.bin -c input
+concat-skippable	301	6139b8d8f2fd6d3795295585e18e7bb0fc14717ae755b319e743bd8eb5a6f302	329	0		skippable frames (magic 0,15,3) around text300-l3 and onebyte
