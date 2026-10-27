@@ -15,7 +15,7 @@ work="${ONEARCHIVE_BENCH_TMP:-${TMPDIR:-/tmp}/zstd-game}"
 dll="${BENCH_DLL:?set BENCH_DLL to ZstdEncodeBench.dll}"
 dotnet="${DOTNET:-dotnet}"
 games="lanterns bricks solitaire"; kinds="frames snapshots saves"; sizes="4096 16384 65536 114688"; levels="1 2 3"
-train_files=5000; test_files=5000; timing=0
+train_files=2000; test_files=2000; timing=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --games) games="$2"; shift 2 ;;
@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 mkdir -p "$work"
-secs=0; [ "$timing" = 1 ] && secs=3
+secs=0; [ "$timing" = 1 ] && secs=2
 echo "# $("$zstd" --version | head -1); timing=$timing; train_files=$train_files test_files=$test_files"
 printf 'game\tkind\tdict\tlevel\tpayloads\tbytes\tref_bytes\tours_bytes\tdelta_pct\tref_payloads/s\tours_payloads/s\n'
 for g in $games; do for k in $kinds; do
@@ -40,10 +40,11 @@ for g in $games; do for k in $kinds; do
   for d in $sizes; do
     "$zstd" --train -q --maxdict="$d" -o "$work/dict" $(cat "$work/train.list") > /dev/null 2>&1 || { echo "train failed $g $k $d" >&2; continue; }
     for L in $levels; do
-      out=$("$zstd" -b"$L" -e"$L" -i"$secs" -D "$work/dict" $(cat "$work/test.list") 2>&1 | tr '\r' '\n' | grep 'MB/s' | tail -1)
-      bytes=$(echo "$out" | sed 's/.*:\s*\([0-9]*\) ->.*/\1/'); refc=$(echo "$out" | sed 's/.*-> *\([0-9]*\) (.*/\1/')
-      mbs=$(echo "$out" | sed 's/.*), *\([0-9.]*\) MB\/s.*/\1/'); n=$(wc -l < "$work/test.list")
-      refps=$(awk -v b="$bytes" -v m="$mbs" -v n="$n" 'BEGIN{ if (m>0) printf "%.0f", n/(b/(m*1e6)); else print 0 }')
+      out=$("$zstd" -b"$L" -e"$L" -i"$secs" -T1 -D "$work/dict" $(cat "$work/test.list") 2>&1 | tr '\r' '\n' | grep 'MB/s' | tail -1)
+      bytes=$(echo "$out" | awk '{for (i = 1; i <= NF; i++) if ($i == "->") print $(i - 1)}')
+      refc=$(echo "$out" | awk '{for (i = 1; i <= NF; i++) if ($i == "->") print $(i + 1)}')
+      mbs=$(echo "$out" | grep -o '[0-9.]* MB/s' | sed -n 1p | cut -d' ' -f1); n=$(wc -l < "$work/test.list" | tr -d ' ')
+      refps=$(awk -v b="$bytes" -v m="$mbs" -v n="$n" 'BEGIN{ if (m > 0 && b > 0) printf "%.0f", n/(b/(m*1e6)); else print 0 }')
       # Our encoder takes the directory; copy the chosen files' names into a limit.
       ours=$("$dotnet" "$dll" small "$work/dict" "$test" "$L" --seconds "$secs" --limit "$test_files")
       oc=$(echo "$ours" | sed 's/.*compressed=\([0-9]*\).*/\1/'); ops=$(echo "$ours" | sed 's/.*payloads\/s=\([0-9]*\).*/\1/')

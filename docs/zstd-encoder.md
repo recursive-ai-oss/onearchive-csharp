@@ -81,6 +81,11 @@ of the level definition, `ZstdCompressionParameters.CompressLiterals`.
   weights. Codes are limited to 11 bits: the Huffman tree is built by a two-queue merge, and too-long codes are shortened by
   lengthening the least frequent of the longest codes until the Kraft sum fits, then spare code space is given back to the most
   frequent symbols.
+- **Skipping work that cannot pay (small blocks):** a new Huffman tree is built only when the literals number at least 64 and an estimate of
+  its size (the entropy of the literals, rounded down by the integer logarithm's error, plus `8 + 3/8` bytes per distinct symbol for the
+  description) is below both the raw size and the cost of the previous tree. A new FSE table is tried only when the block has at least 64
+  sequences and the entropy of its codes plus 16 bits is below the cost of the best of repeat and predefined; with neither available a
+  table is always built. The estimates are integers; they decide bytes, so they are part of the format of our output.
 - **Sequences section:** for each of literal lengths, offsets and match lengths the cheapest of RLE (one symbol), repeat (the
   previous table from the frame or the dictionary), predefined and a new FSE table is chosen. Cost is in 1/256 bit, integer:
   blocks with at most 1,500 sequences price each choice by running the encoder's state machine over the symbols (the table
@@ -90,14 +95,16 @@ of the level definition, `ZstdCompressionParameters.CompressLiterals`.
 - **Normalization:** symbols that occur get at least one state; symbols with at most `total >> accuracyLog` occurrences get the
   "less than one" probability; the rest are scaled with rounding, then states are removed from or given to the symbols that lose
   or gain the fewest bits (ties: lower symbol first).
-- **Accuracy log:** `clamp(min(maxLog, sampleLog - 2) raised to min(sampleLog + 1, log2(maxSymbol) + 2), 5, maxLog)` with
-  `sampleLog = floor(log2(sequenceCount - 1))`; maximum 9 for literal and match lengths, 8 for offsets, 6 for Huffman weights.
+- **Accuracy log** of a new FSE table, from the number of symbols coded (`sampleLog = floor(log2(count - 1))`): start from
+  `min(maxLog, sampleLog - 2)`, raise it to at least `min(sampleLog + 1, floor(log2(maxSymbol)) + 2)`, and clamp to 5 up to
+  `maxLog`. `maxLog` is 9 for literal and match lengths, 8 for offsets, 6 for Huffman weights. These values were fitted to the
+  reference tool's table sizes by black-box comparison, not derived from a specification.
 
 ## Match finders (fast, double fast)
 
 - Hash: the low `minMatch` bytes of an 8-byte little-endian read, shifted up, multiplied by `0x9E3779B185EBCA87`, top `log` bits.
-  The double-fast long table hashes 8 bytes. Tables hold window positions as `uint`, 0 meaning empty (position 0 is never a
-  candidate). Candidates must be within the window size; the candidate is accepted when its first 4 bytes (double fast long: 8)
+  The double-fast long table hashes 8 bytes. Tables hold window positions as `uint`; an empty slot reads as position 0, which is checked like any
+  other candidate. Candidates must be within the window size; the candidate is accepted when its first 4 bytes (double fast long: 8)
   equal the current bytes.
 - **Fast:** each round hashes two neighbouring positions, `ip` and `ip + 1`, writes both into the table, and tests (in this order)
   the first repeat offset at `ip + step`, the candidate of `ip`, the candidate of `ip + 1`. With no match, `ip += step`. The
@@ -112,8 +119,11 @@ of the level definition, `ZstdCompressionParameters.CompressLiterals`.
   the window size (RFC 8878 section 3.1.1.1.2). Repeat offsets that reach before the frame start are tried against the
   dictionary. A match in the dictionary may run on into the start of the frame. The dictionary's search tables are built once per
   (minimum match, hash log, chain log, strategy) with an entry for every position (a later position replaces an earlier one with
-  the same hash). Without the dictionary-aware repeat check and the single-position loop, ratio on small payloads is up to 4%
-  worse. With a dictionary and the fast strategy, one position is tried per round (repeat at `ip + 1`, own table, dictionary table).
+  the same hash). With a dictionary and the fast strategy, one position is tried per round (repeat at `ip + 1`, own table, dictionary table).
+- **Tables of a small source with a dictionary:** the window log, minimum match and strategy come from the size class of source plus
+  dictionary, but the hash and chain tables a frame fills are sized for the source alone (`min(table, sourceWindowLog + 1)`, and
+  `sourceWindowLog` for the chain), so a 100-byte payload does not clear 100 KiB of table. The dictionary's own search index keeps the
+  sizes its length calls for (`DictionaryHashLog`, `DictionaryChainLog` in the parameters).
 - Window sliding (streams): the window buffer keeps the last `windowSize + 1` bytes; stored positions are rebased by the
   amount moved and those that fall below become 0. Matches never reach past the window size, so a stream and a one-shot call
   find the same matches.
@@ -133,3 +143,37 @@ and the repeat offsets start the frame's carried state, so the first block can u
 - Peak memory: `/usr/bin/time -v` on both sides.
 - Game snapshot data: `tools/zstd-encode-bench/game.sh` trains with `zstd --train` on seed 1 and compresses seed 2 one frame per
   payload.
+
+## Results (zstd 1.5.7, one thread, memory to memory)
+
+Method as above (`tools/zstd-encode-bench/run.sh`, `game.sh --timing`); `time ratio` is our time divided by the tool's, so the bar is 1.15.
+Sizes are identical on both machines (the output does not depend on the processor). x64: Ryzen 9 7950X3D, 32 cores, .NET 10.0.402, load 10 to 12
+from other work on the machine; arm64: Apple M2, 8 cores, load 2 to 4.
+
+| file, level | size vs tool | compress time ratio x64 | arm64 |
+|---|---|---|---|
+| silesia.tar -5 | -3.86% | 1.38 | 1.32 |
+| silesia.tar -1 | +0.20% | 1.43 | 1.33 |
+| silesia.tar 1 | +0.45% | 1.52 | 1.38 |
+| silesia.tar 2 | +0.36% | 1.46 | 1.30 |
+| silesia.tar 3 | +0.93% | 1.33 | 1.26 |
+| silesia.tar 4 | +0.93% | 1.49 | 1.32 |
+| enwik8 -5 | -0.23% | 1.35 | 1.33 |
+| enwik8 -1 | +0.36% | 1.34 | 1.36 |
+| enwik8 1 | +0.63% | 1.51 | 1.44 |
+| enwik8 2 | +0.41% | 1.74 | 1.33 |
+| enwik8 3 | +0.67% | 1.34 | 1.28 |
+| enwik8 4 | +0.69% | 1.37 | 1.33 |
+
+Sizes meet the bar at every level; compression speed does not yet (1.26 to 1.74 times the tool's time). Where the time goes at level 1 on
+silesia.tar (per 212 MB pass, x64): match finding about 290 ms, literals about 90 ms, sequence coding about 115 ms; the sequence
+coding took twice that before its loop was split out and its state kept in registers. Dynamic profile guidance in
+the JIT matters: without it the search loop is 30% slower.
+
+Game payloads with trained dictionaries (seed 2, one frame per payload, our size and payloads per second against the tool's; geometric
+means over three games, levels 1 to 3): frames (tens of bytes) are 1.0 to 1.4 times the tool's rate on x64 and 1.0 to 1.2 on arm64 with
+sizes 0.2 to 1.1% smaller; snapshots and saves (hundreds of bytes to 6 KB) run at 0.32 to 0.42 times the tool's rate with sizes
+2 to 10% smaller.
+
+The unchecked accessors (`Raw`) are worth 5 to 7% of the encoder's speed: the same code built in the `Checked` configuration (every accessor
+bounds-checked) runs at 564/598 (level -5), 400/430 (level 1) and 259/273 MB/s (level 3), match finding 10% slower and block writing level.

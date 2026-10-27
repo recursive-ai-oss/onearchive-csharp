@@ -26,6 +26,8 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
     private uint[] _secondary = [];
     private int _primaryLog;
     private int _secondaryLog;
+    private int _dictionaryPrimaryLog;
+    private int _dictionarySecondaryLog;
     private int _minMatch;
     private int _stride;
     private bool _double;
@@ -60,7 +62,9 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         }
 
         _dictionary = dictionary;
-        _dictionaryIndex = dictionary?.GetIndex(_minMatch, _primaryLog, _secondaryLog, _double);
+        _dictionaryPrimaryLog = parameters.DictionaryHashLog != 0 ? Math.Clamp(parameters.DictionaryHashLog, 6, 26) : _primaryLog;
+        _dictionarySecondaryLog = parameters.DictionaryChainLog != 0 ? Math.Clamp(parameters.DictionaryChainLog, 6, 26) : _secondaryLog;
+        _dictionaryIndex = dictionary?.GetIndex(_minMatch, _dictionaryPrimaryLog, _dictionarySecondaryLog, _double);
     }
 
     private static void Prepare(ref uint[] table, int size)
@@ -105,12 +109,17 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         ZstdSequenceStore store)
     {
         ArgumentNullException.ThrowIfNull(store);
+        store.BeginTracking(repeatOffsets);
         if ((uint)blockEnd > (uint)window.Length || blockStart < 0 || blockStart > blockEnd)
         {
             throw new ArgumentOutOfRangeException(nameof(blockEnd));
         }
 
-        if (_double)
+        if (_double && _dictionaryIndex is null)
+        {
+            FindDoubleNoDictionary(window, blockStart, blockEnd, windowStartPosition, repeatOffsets, store);
+        }
+        else if (_double)
         {
             FindDouble(window, blockStart, blockEnd, windowStartPosition, repeatOffsets, store);
         }
@@ -277,13 +286,13 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         ZstdRepeatOffsets reps,
         ZstdSequenceStore store)
     {
+        uint rep1 = reps.Offset1, rep2 = reps.Offset2, rep3 = reps.Offset3;
         uint[] table = _primary;
         int log = _primaryLog;
         int mls = _minMatch;
         int shift = 64 - (8 * mls);
         long windowSize = _windowSize;
         int baseStep = _stride;
-        ZstdDictionaryIndex? dictionaryIndex = _dictionaryIndex;
         int limit = end - 8;
         int ip = Math.Max(blockStart, 1);
         int anchor = blockStart;
@@ -296,8 +305,10 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
             // table indexes come from the hash, below 1 << log.
             int ip1 = ip + 1;
             int ip2 = ip + step;
-            int h0 = HashValue(Raw.ReadUInt64(window, ip), shift, log);
-            int h1 = HashValue(Raw.ReadUInt64(window, ip1), shift, log);
+            ulong v0 = Raw.ReadUInt64(window, ip);
+            ulong v1 = Raw.ReadUInt64(window, ip1);
+            int h0 = HashValue(v0, shift, log);
+            int h1 = HashValue(v1, shift, log);
             int candidate0 = (int)Raw.Get(table, h0);
             int candidate1 = (int)Raw.Get(table, h1);
             Raw.Set(table, h0, (uint)ip);
@@ -306,35 +317,24 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
             int matchStart;
             int matchLength;
             uint offset;
-            uint rep = reps.Offset1;
+            uint rep = rep1;
             if (ip2 + 4 <= end && rep <= (uint)ip2 && rep <= windowSize && Raw.ReadUInt32(window, ip2) == Raw.ReadUInt32(window, ip2 - (int)rep))
             {
                 matchStart = ip2;
                 offset = rep;
                 matchLength = 4 + Count(window, ip2 - (int)rep + 4, ip2 + 4, end);
             }
-            else if (dictionaryIndex is not null && (matchLength = DictionaryRepeatLength(window, ip2, end, windowStartPosition, rep)) > 0)
-            {
-                matchStart = ip2;
-                offset = rep;
-            }
-            else if (candidate0 != 0 && ip - candidate0 <= windowSize && Raw.ReadUInt32(window, candidate0) == Raw.ReadUInt32(window, ip))
+            else if (ip - candidate0 <= windowSize && Raw.ReadUInt32(window, candidate0) == (uint)v0)
             {
                 matchStart = ip;
                 offset = (uint)(ip - candidate0);
                 matchLength = 4 + Count(window, candidate0 + 4, ip + 4, end);
             }
-            else if (candidate1 != 0 && ip1 - candidate1 <= windowSize && Raw.ReadUInt32(window, candidate1) == Raw.ReadUInt32(window, ip1))
+            else if (ip1 - candidate1 <= windowSize && Raw.ReadUInt32(window, candidate1) == (uint)v1)
             {
                 matchStart = ip1;
                 offset = (uint)(ip1 - candidate1);
                 matchLength = 4 + Count(window, candidate1 + 4, ip1 + 4, end);
-            }
-            else if (dictionaryIndex is not null
-                && (TryDictionary(window, ip, anchor, end, windowStartPosition, dictionaryIndex.Primary, log, mls, false, out matchStart, out matchLength, out offset)
-                    || TryDictionary(window, ip1, anchor, end, windowStartPosition, dictionaryIndex.Primary, log, mls, false, out matchStart, out matchLength, out offset)))
-            {
-                // A match into the dictionary content.
             }
             else
             {
@@ -357,7 +357,7 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
                 matchLength++;
             }
 
-            Emit(window, store, anchor, matchStart, matchLength, offset, ref reps);
+            EmitLocal(window, store, anchor, matchStart, matchLength, offset, ref rep1, ref rep2, ref rep3);
             ip = matchStart + matchLength;
             anchor = ip;
             step = baseStep;
@@ -382,18 +382,18 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
 
             while (ip <= limit)
             {
-                uint second = reps.Offset2;
+                uint second = rep2;
                 int length;
                 if (second != 0 && second <= (uint)ip && second <= windowSize && Raw.ReadUInt32(window, ip) == Raw.ReadUInt32(window, ip - (int)second))
                 {
                     length = 4 + Count(window, ip - (int)second + 4, ip + 4, end);
                 }
-                else if (dictionaryIndex is null || (length = DictionaryRepeatLength(window, ip, end, windowStartPosition, second)) == 0)
+                else
                 {
                     break;
                 }
 
-                Emit(window, store, ip, ip, length, second, ref reps);
+                EmitLocal(window, store, ip, ip, length, second, ref rep1, ref rep2, ref rep3);
                 Raw.Set(table, HashValue(Raw.ReadUInt64(window, ip), shift, log), (uint)ip);
                 ip += length;
                 anchor = ip;
@@ -402,6 +402,7 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         }
 
         store.AppendLiterals(window[anchor..end]);
+        store.SetTrackedEnd(rep1, rep2, rep3);
     }
 
     // With a dictionary attached the search looks at one position at a time: the repeat offset, the table of the data so far,
@@ -454,7 +455,7 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
                 offset = (uint)(ip - candidate);
                 matchLength = 4 + Count(window, candidate + 4, ip + 4, end);
             }
-            else if (!TryDictionary(window, ip, anchor, end, windowStartPosition, dictionaryIndex.Primary, log, mls, false, out matchStart, out matchLength, out offset))
+            else if (!TryDictionary(window, ip, anchor, end, windowStartPosition, dictionaryIndex.Primary, _dictionaryPrimaryLog, mls, false, out matchStart, out matchLength, out offset))
             {
                 ip += baseStep + ((ip - anchor) >> 8);
                 continue;
@@ -584,8 +585,8 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
                 }
             }
             else if (dictionaryIndex is not null
-                && (TryDictionary(window, ip, anchor, end, windowStartPosition, dictionaryIndex.Primary, longLog, 8, true, out matchStart, out matchLength, out offset)
-                    || TryDictionary(window, ip, anchor, end, windowStartPosition, dictionaryIndex.Secondary!, shortLog, mls, false, out matchStart, out matchLength, out offset)))
+                && (TryDictionary(window, ip, anchor, end, windowStartPosition, dictionaryIndex.Primary, _dictionaryPrimaryLog, 8, true, out matchStart, out matchLength, out offset)
+                    || TryDictionary(window, ip, anchor, end, windowStartPosition, dictionaryIndex.Secondary!, _dictionarySecondaryLog, mls, false, out matchStart, out matchLength, out offset)))
             {
                 // A match into the dictionary content.
             }
@@ -652,6 +653,193 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         store.AppendLiterals(window[anchor..end]);
     }
 
+    private void FindDoubleNoDictionary(
+        ReadOnlySpan<byte> window,
+        int blockStart,
+        int end,
+        long windowStartPosition,
+        ZstdRepeatOffsets reps,
+        ZstdSequenceStore store)
+    {
+        uint[] longTable = _primary;
+        uint[] shortTable = _secondary;
+        int longLog = _primaryLog;
+        int shortLog = _secondaryLog;
+        int mls = _minMatch;
+        int shortShift = 64 - (8 * mls);
+        long windowSize = _windowSize;
+        uint rep1 = reps.Offset1, rep2 = reps.Offset2, rep3 = reps.Offset3;
+        int limit = end - 8;
+        int ip = Math.Max(blockStart, 1);
+        int anchor = blockStart;
+        while (ip <= limit)
+        {
+            // Bounds: ip <= end - 8 so the eight-byte read at ip is inside the window; table indexes come from the hashes.
+            ulong value = Raw.ReadUInt64(window, ip);
+            int hl = HashValue(value, 0, longLog);
+            int hs = HashValue(value, shortShift, shortLog);
+            int candidateLong = (int)Raw.Get(longTable, hl);
+            int candidateShort = (int)Raw.Get(shortTable, hs);
+            Raw.Set(longTable, hl, (uint)ip);
+            Raw.Set(shortTable, hs, (uint)ip);
+
+            int matchStart;
+            int matchLength;
+            uint offset;
+            int ip1 = ip + 1;
+            uint rep = rep1;
+            if (rep <= (uint)ip1 && rep <= windowSize && Raw.ReadUInt32(window, ip1) == Raw.ReadUInt32(window, ip1 - (int)rep))
+            {
+                matchStart = ip1;
+                offset = rep;
+                matchLength = 4 + Count(window, ip1 - (int)rep + 4, ip1 + 4, end);
+            }
+            else if (ip - candidateLong <= windowSize && Raw.ReadUInt64(window, candidateLong) == value)
+            {
+                matchStart = ip;
+                offset = (uint)(ip - candidateLong);
+                matchLength = 8 + Count(window, candidateLong + 8, ip + 8, end);
+            }
+            else if (ip - candidateShort <= windowSize && Raw.ReadUInt32(window, candidateShort) == (uint)value)
+            {
+                // A short match: see whether the next position has a long one, which is worth more.
+                matchStart = ip;
+                offset = (uint)(ip - candidateShort);
+                matchLength = 4 + Count(window, candidateShort + 4, ip + 4, end);
+                if (ip1 <= limit)
+                {
+                    ulong ahead = Raw.ReadUInt64(window, ip1);
+                    int hl1 = HashValue(ahead, 0, longLog);
+                    int candidateLong1 = (int)Raw.Get(longTable, hl1);
+                    Raw.Set(longTable, hl1, (uint)ip1);
+                    if (ip1 - candidateLong1 <= windowSize && Raw.ReadUInt64(window, candidateLong1) == ahead)
+                    {
+                        matchStart = ip1;
+                        offset = (uint)(ip1 - candidateLong1);
+                        matchLength = 8 + Count(window, candidateLong1 + 8, ip1 + 8, end);
+                    }
+                }
+            }
+            else
+            {
+                ip += 1 + ((ip - anchor) >> 8);
+                continue;
+            }
+
+            int source = matchStart - (int)offset;
+            while (matchStart > anchor && source > 0 && Raw.ByteAt(window, matchStart - 1) == Raw.ByteAt(window, source - 1))
+            {
+                matchStart--;
+                source--;
+                matchLength++;
+            }
+
+            EmitLocal(window, store, anchor, matchStart, matchLength, offset, ref rep1, ref rep2, ref rep3);
+            ip = matchStart + matchLength;
+            anchor = ip;
+            if (ip > limit)
+            {
+                break;
+            }
+
+            int a = matchStart + 2;
+            if (a <= limit)
+            {
+                ulong v = Raw.ReadUInt64(window, a);
+                Raw.Set(longTable, HashValue(v, 0, longLog), (uint)a);
+                Raw.Set(shortTable, HashValue(v, shortShift, shortLog), (uint)a);
+            }
+
+            int b = ip - 2;
+            if (b <= limit && b > 0)
+            {
+                ulong v = Raw.ReadUInt64(window, b);
+                Raw.Set(longTable, HashValue(v, 0, longLog), (uint)b);
+                Raw.Set(shortTable, HashValue(v, shortShift, shortLog), (uint)b);
+            }
+
+            while (ip <= limit)
+            {
+                uint second = rep2;
+                int length;
+                if (second != 0 && second <= (uint)ip && second <= windowSize && Raw.ReadUInt32(window, ip) == Raw.ReadUInt32(window, ip - (int)second))
+                {
+                    length = 4 + Count(window, ip - (int)second + 4, ip + 4, end);
+                }
+                else
+                {
+                    break;
+                }
+
+                EmitLocal(window, store, ip, ip, length, second, ref rep1, ref rep2, ref rep3);
+                ulong v = Raw.ReadUInt64(window, ip);
+                Raw.Set(longTable, HashValue(v, 0, longLog), (uint)ip);
+                Raw.Set(shortTable, HashValue(v, shortShift, shortLog), (uint)ip);
+                ip += length;
+                anchor = ip;
+            }
+        }
+
+        store.AppendLiterals(window[anchor..end]);
+        store.SetTrackedEnd(rep1, rep2, rep3);
+    }
+
+    // As Emit, with the repeat offsets in the caller's locals so they stay in registers. The block's offsets are handed to the
+    // store once, when the search ends (SetTrackedEnd).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void EmitLocal(
+        ReadOnlySpan<byte> window,
+        ZstdSequenceStore store,
+        int anchor,
+        int matchStart,
+        int matchLength,
+        uint offset,
+        ref uint rep1,
+        ref uint rep2,
+        ref uint rep3)
+    {
+        uint literalLength = (uint)(matchStart - anchor);
+        uint offsetValue;
+        if (literalLength > 0)
+        {
+            // RFC 8878 3.1.2.5: with literals, offset codes 1 to 3 mean the three most recent offsets.
+            if (offset == rep1)
+            {
+                offsetValue = 1;
+            }
+            else if (offset == rep2)
+            {
+                offsetValue = 2;
+                rep2 = rep1;
+                rep1 = offset;
+            }
+            else if (offset == rep3)
+            {
+                offsetValue = 3;
+                rep3 = rep2;
+                rep2 = rep1;
+                rep1 = offset;
+            }
+            else
+            {
+                offsetValue = offset + 3;
+                rep3 = rep2;
+                rep2 = rep1;
+                rep1 = offset;
+            }
+        }
+        else
+        {
+            var r = new ZstdRepeatOffsets { Offset1 = rep1, Offset2 = rep2, Offset3 = rep3 };
+            offsetValue = r.Apply(offset, 0);
+            rep1 = r.Offset1;
+            rep2 = r.Offset2;
+            rep3 = r.Offset3;
+        }
+
+        store.AppendTracked(window, anchor, literalLength, (uint)matchLength, offset, offsetValue);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Emit(
         ReadOnlySpan<byte> window,
@@ -663,7 +851,8 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         ref ZstdRepeatOffsets reps)
     {
         uint literalLength = (uint)(matchStart - anchor);
-        store.Append(window, anchor, literalLength, (uint)matchLength, offset);
-        reps.Apply(offset, literalLength);
+        uint offsetValue = reps.Apply(offset, literalLength);
+        store.AppendTracked(window, anchor, literalLength, (uint)matchLength, offset, offsetValue);
+        store.SetTrackedEnd(reps.Offset1, reps.Offset2, reps.Offset3);
     }
 }

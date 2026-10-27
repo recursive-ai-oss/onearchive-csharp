@@ -34,6 +34,9 @@ public sealed class ZstdBlockWriter
     /// </summary>
     public const int DestinationSlack = 320;
 
+    private const int MinimumSequencesForNewTable = 64;
+    private const int MinimumLiteralsForNewTree = 64;
+
     // Blocks with at most this many sequences price each table choice by running the encoder's state machine; larger blocks
     // use the histogram estimate, which is within a fraction of a percent there and costs less.
     private const int ExactCostLimit = 1500;
@@ -48,7 +51,20 @@ public sealed class ZstdBlockWriter
     private byte[] _llCodes = new byte[256];
     private byte[] _mlCodes = new byte[256];
     private byte[] _ofCodes = new byte[256];
-    private uint[] _ofValues = new uint[256];
+    private SequenceCode[] _seqCodes = new SequenceCode[256];
+    private uint[] _resolvedOffsets = new uint[256];
+
+    // Everything the bitstream loop needs of one sequence, in one record: its three codes and its extra bits (literal-length and
+    // match-length extras packed side by side, then the offset's), so the loop reads one array.
+    private struct SequenceCode
+    {
+        public byte Ll;
+        public byte Ml;
+        public byte Of;
+        public byte LlMlBits;
+        public uint LlMlExtra;
+        public uint OfExtra;
+    }
     private readonly uint[] _histogram4 = new uint[4 * 256];
     private readonly uint[] _literalHistogram = new uint[256];
     private readonly uint[][] _codeHistogram = [new uint[64], new uint[64], new uint[64]];
@@ -232,7 +248,7 @@ public sealed class ZstdBlockWriter
             return p;
         }
 
-        int q = WriteSequences(store.Sequences, destination, p, limit, out ZstdRepeatOffsets reps);
+        int q = WriteSequences(store, destination, p, limit, out ZstdRepeatOffsets reps);
         if (q < 0)
         {
             return -1;
@@ -290,7 +306,28 @@ public sealed class ZstdBlockWriter
         HuffmanEncodingTable candidate = _previousHuffman == _ownHuffman[0] ? _ownHuffman[1] : _ownHuffman[0];
         int descriptionSize = 0;
         bool singleStream = n < 256;
-        if (candidate.Build(histogram, maxSymbol))
+
+        // The previous tree's cost is cheap to know. A new tree costs about the entropy of the literals plus its description
+        // (roughly 8 bytes and 3 bits per distinct symbol); when the best alternative at hand (the previous tree, else raw) is no
+        // dearer than that, building a tree cannot pay. Small blocks with a dictionary, which is most of what the fast levels
+        // see, skip the tree build this way.
+        int previousCost = int.MaxValue;
+        if (_previousHuffman is not null && _previousHuffman.TryEncodedBits(histogram, maxSymbol, out long previousBits))
+        {
+            int streamBytes = StreamBytes(previousBits, singleStream, n);
+            previousCost = CompressedHeaderSize(n, streamBytes, singleStream) + streamBytes;
+        }
+
+        bool tryNew = n >= MinimumLiteralsForNewTree;
+        if (tryNew)
+        {
+            int estimate = CompressedHeaderSize(n, 0, singleStream) + 8 + ((distinct * 3) / 8)
+                + StreamBytes(ZstdCost.EntropyLowerBound(histogram, maxSymbol, n) / ZstdCost.Bit, singleStream, n);
+            tryNew = estimate < Math.Min(rawCost, previousCost);
+        }
+
+        bool built = tryNew && candidate.Build(histogram, maxSymbol);
+        if (built)
         {
             descriptionSize = candidate.WriteDescription(_description);
             if (descriptionSize > 0)
@@ -306,16 +343,10 @@ public sealed class ZstdBlockWriter
             }
         }
 
-        if (_previousHuffman is not null && _previousHuffman.CanEncode(histogram, maxSymbol))
+        if (previousCost < bestCost)
         {
-            long bits = _previousHuffman.EncodedBits(histogram, maxSymbol);
-            int streamBytes = StreamBytes(bits, singleStream, n);
-            int cost = CompressedHeaderSize(n, streamBytes, singleStream) + streamBytes;
-            if (cost < bestCost)
-            {
-                bestCost = cost;
-                choice = 2;
-            }
+            bestCost = previousCost;
+            choice = 2;
         }
 
         if (choice == 0)
@@ -435,6 +466,28 @@ public sealed class ZstdBlockWriter
 
     private int Histogram(ReadOnlySpan<byte> data, uint[] histogram)
     {
+        if (data.Length < 1024)
+        {
+            // Small blocks: one table, no merge.
+            Array.Clear(histogram);
+            foreach (byte value in data)
+            {
+                histogram[value]++;
+            }
+
+            int top = 0;
+            for (int s = 255; s > 0; s--)
+            {
+                if (histogram[s] != 0)
+                {
+                    top = s;
+                    break;
+                }
+            }
+
+            return top;
+        }
+
         uint[] h4 = _histogram4;
         Array.Clear(h4);
         int i = 0;
@@ -475,51 +528,107 @@ public sealed class ZstdBlockWriter
         Repeat = 3,
     }
 
-    private int WriteSequences(ReadOnlySpan<ZstdSequence> sequences, Span<byte> destination, int p, int limit, out ZstdRepeatOffsets reps)
+    // Turns the sequences into codes, extra bits and code histograms, resolving repeat offsets as it goes. A method of its own so
+    // that its few live values stay in registers.
+    private static void ComputeCodes(
+        ReadOnlySpan<ZstdSequence> sequences,
+        SequenceCode[] seqCodes,
+        uint[] llHistogram,
+        uint[] ofHistogram,
+        uint[] mlHistogram,
+        ReadOnlySpan<uint> offsetValues,
+        out int maxLl,
+        out int maxOf,
+        out int maxMl)
     {
+        int nseq = sequences.Length;
+        maxLl = 0;
+        maxOf = 0;
+        maxMl = 0;
+        ReadOnlySpan<byte> llLookup = s_literalLengthCodes;
+        ReadOnlySpan<byte> mlLookup = s_matchLengthCodes;
+        for (int i = 0; i < nseq; i++)
+        {
+            // i < nseq <= every code array's length (EnsureCodeCapacity); codes are at most 52, inside the histograms' 53+ entries.
+            ZstdSequence s = Raw.Get(sequences, i);
+            uint ofValue = Raw.Get(offsetValues, i);
+            uint lls = s.LiteralLength;
+            int ll = lls < 64 ? Raw.Get(llLookup, (int)lls) : BitOperations.Log2(lls) + 19;
+            uint m = s.MatchLength - 3;
+            int ml = m < 128 ? Raw.Get(mlLookup, (int)m) : BitOperations.Log2(m) + 36;
+            int of = BitOperations.Log2(ofValue);
+            int llBitCount = Raw.Get(ZstdFormat.LiteralLengthBits, ll);
+            int mlBitCount = Raw.Get(ZstdFormat.MatchLengthBits, ml);
+            ref SequenceCode record = ref Raw.RefRw(seqCodes, i);
+            record.Ll = (byte)ll;
+            record.Ml = (byte)ml;
+            record.Of = (byte)of;
+            record.LlMlBits = (byte)(llBitCount + mlBitCount);
+            record.LlMlExtra = (lls - Raw.Get(ZstdFormat.LiteralLengthBase, ll)) | ((s.MatchLength - Raw.Get(ZstdFormat.MatchLengthBase, ml)) << llBitCount);
+            record.OfExtra = ofValue - (1u << of);
+            Raw.RefRw(llHistogram, ll)++;
+            Raw.RefRw(mlHistogram, ml)++;
+            Raw.RefRw(ofHistogram, of)++;
+            maxLl = Math.Max(maxLl, ll);
+            maxMl = Math.Max(maxMl, ml);
+            maxOf = Math.Max(maxOf, of);
+        }
+
+    }
+
+    // Sequences with no literals are rare; they use the shifted repeat-offset meaning (RFC 8878 §3.1.2.5), kept in one place.
+    private static uint ApplyZeroLiteralRepeat(uint offset, ref uint rep1, ref uint rep2, ref uint rep3)
+    {
+        var r = new ZstdRepeatOffsets { Offset1 = rep1, Offset2 = rep2, Offset3 = rep3 };
+        uint value = r.Apply(offset, 0);
+        rep1 = r.Offset1;
+        rep2 = r.Offset2;
+        rep3 = r.Offset3;
+        return value;
+    }
+
+    private int WriteSequences(ZstdSequenceStore store, Span<byte> destination, int p, int limit, out ZstdRepeatOffsets reps)
+    {
+        ReadOnlySpan<ZstdSequence> sequences = store.Sequences;
         int nseq = sequences.Length;
         EnsureCodeCapacity(nseq);
         byte[] llCodes = _llCodes;
         byte[] mlCodes = _mlCodes;
         byte[] ofCodes = _ofCodes;
-        uint[] ofValues = _ofValues;
+        SequenceCode[] seqCodes = _seqCodes;
         uint[] llHistogram = _codeHistogram[0];
         uint[] ofHistogram = _codeHistogram[1];
         uint[] mlHistogram = _codeHistogram[2];
         Array.Clear(llHistogram);
         Array.Clear(ofHistogram);
         Array.Clear(mlHistogram);
-        reps = _repeatOffsets;
-        int maxLl = 0;
-        int maxOf = 0;
-        int maxMl = 0;
-        for (int i = 0; i < nseq; i++)
+        ReadOnlySpan<uint> offsetValues;
+        if (store.TryGetTracked(_repeatOffsets, out offsetValues, out ZstdRepeatOffsets trackedEnd))
         {
-            ZstdSequence s = sequences[i];
-            uint ofValue = reps.Apply(s.Offset, s.LiteralLength);
-            int ll = LiteralLengthCode(s.LiteralLength);
-            int ml = MatchLengthCode(s.MatchLength);
-            int of = BitOperations.Log2(ofValue);
-            llCodes[i] = (byte)ll;
-            mlCodes[i] = (byte)ml;
-            ofCodes[i] = (byte)of;
-            ofValues[i] = ofValue;
-            llHistogram[ll]++;
-            mlHistogram[ml]++;
-            ofHistogram[of]++;
-            if (ll > maxLl)
+            // The match finder resolved the repeat offsets as it went.
+            reps = trackedEnd;
+        }
+        else
+        {
+            reps = _repeatOffsets;
+            uint[] resolved = _resolvedOffsets.Length >= nseq ? _resolvedOffsets : (_resolvedOffsets = new uint[Math.Max(nseq, _resolvedOffsets.Length * 2)]);
+            for (int i = 0; i < nseq; i++)
             {
-                maxLl = ll;
+                resolved[i] = reps.Apply(sequences[i].Offset, sequences[i].LiteralLength);
             }
 
-            if (ml > maxMl)
-            {
-                maxMl = ml;
-            }
+            offsetValues = resolved;
+        }
 
-            if (of > maxOf)
+        ComputeCodes(sequences, seqCodes, llHistogram, ofHistogram, mlHistogram, offsetValues, out int maxLl, out int maxOf, out int maxMl);
+        if (nseq <= ExactCostLimit)
+        {
+            // Small blocks price their table choices exactly, which walks the code sequences.
+            for (int i = 0; i < nseq; i++)
             {
-                maxOf = of;
+                llCodes[i] = seqCodes[i].Ll;
+                mlCodes[i] = seqCodes[i].Ml;
+                ofCodes[i] = seqCodes[i].Of;
             }
         }
 
@@ -598,7 +707,14 @@ public sealed class ZstdBlockWriter
             }
 
             int accuracyLog = FseEncodingTable.OptimalAccuracyLog(maxLogs[k], nseq, maxSymbol);
-            if (distinct <= (1 << accuracyLog))
+
+            // A new table costs at least the entropy of the codes plus a two-byte description. When repeating the previous table or
+            // the predefined one is already cheaper than that, normalizing and building a table cannot pay; and a block of fewer
+            // than 64 sequences hardly ever repays a table of its own, so it chooses between the two without trying one.
+            bool tryNew = bestCost == int.MaxValue
+                || (nseq >= MinimumSequencesForNewTable
+                    && ZstdCost.EntropyLowerBound(histogram, maxSymbol, nseq) + (16 * ZstdCost.Bit) < bestCost);
+            if (tryNew && distinct <= (1 << accuracyLog))
             {
                 FseEncodingTable.Normalize(_normalized, accuracyLog, histogram, (uint)nseq, maxSymbol);
                 ReadOnlySpan<short> counts = _normalized.AsSpan(0, maxSymbol + 1);
@@ -669,40 +785,195 @@ public sealed class ZstdBlockWriter
         FseEncodingTable? llTable = chosen[0];
         FseEncodingTable? ofTable = chosen[1];
         FseEncodingTable? mlTable = chosen[2];
-        var writer = new ZstdBitWriter(destination[p..]);
-        int last = nseq - 1;
-        int llState = llTable?.InitialState(llCodes[last]) ?? 0;
-        int ofState = ofTable?.InitialState(ofCodes[last]) ?? 0;
-        int mlState = mlTable?.InitialState(mlCodes[last]) ?? 0;
-        WriteExtras(ref writer, sequences[last], ofValues[last], ofCodes[last], llCodes[last], mlCodes[last]);
-        for (int i = last - 1; i >= 0; i--)
+        int total = EncodeBitstream(seqCodes, nseq, llTable, ofTable, mlTable, destination[p..], p, limit);
+        if (total < 0)
         {
-            if (ofTable is not null)
-            {
-                ofState = ofTable.Encode(ofState, ofCodes[i], out uint b, out int c);
-                writer.Add(b, c);
-            }
+            return -1;
+        }
 
-            if (mlTable is not null)
+        total += p;
+        for (int k = 0; k < 3; k++)
+        {
+            if (modes[k] == Mode.Compressed)
             {
-                mlState = mlTable.Encode(mlState, mlCodes[i], out uint b, out int c);
-                writer.Add(b, c);
+                _previous[k] = chosen[k];
             }
-
-            if (llTable is not null)
+            else if (modes[k] != Mode.Repeat)
             {
-                llState = llTable.Encode(llState, llCodes[i], out uint b, out int c);
-                writer.Add(b, c);
-            }
-
-            writer.Flush();
-            WriteExtras(ref writer, sequences[i], ofValues[i], ofCodes[i], llCodes[i], mlCodes[i]);
-            if (p + writer.Position > limit)
-            {
-                return -1;
+                _previous[k] = null;
             }
         }
 
+        return total;
+    }
+
+    // The bitstream of the sequences section, written backward (RFC 8878 §4.1 and §3.1.1.3.2.1): the last sequence's states come
+    // first, then each earlier sequence as its three state transitions followed by its extra bits in the reverse of the order the
+    // decoder reads them (literal length, match length, offset). Returns the byte count, or -1 if it passes the limit.
+    // `start` is the size of the section so far and only serves the limit check. Each Write64 below lands inside `output`: the
+    // size check at the end of every sequence keeps the position at most `limit`, and the destination has the writer's slack beyond.
+    private static int EncodeBitstream(
+        SequenceCode[] codes,
+        int nseq,
+        FseEncodingTable? llTable,
+        FseEncodingTable? ofTable,
+        FseEncodingTable? mlTable,
+        Span<byte> output,
+        int start,
+        int limit)
+    {
+        int last = nseq - 1;
+        SequenceCode first = codes[last];
+        int llState = llTable?.InitialState(first.Ll) ?? 0;
+        int ofState = ofTable?.InitialState(first.Of) ?? 0;
+        int mlState = mlTable?.InitialState(first.Ml) ?? 0;
+        ulong container = 0;
+        int bitCount = 0;
+        int position = 0;
+
+        // The last sequence's extras (up to 32 + 31 bits, flushed in between).
+        container = first.LlMlExtra;
+        bitCount = first.LlMlBits;
+        Raw.WriteUInt64(output, position, container);
+        position += bitCount >> 3;
+        container >>= bitCount & ~7;
+        bitCount &= 7;
+        container |= (ulong)first.OfExtra << bitCount;
+        bitCount += first.Of;
+        Raw.WriteUInt64(output, position, container);
+        position += bitCount >> 3;
+        container >>= bitCount & ~7;
+        bitCount &= 7;
+
+        if (llTable is not null && ofTable is not null && mlTable is not null)
+        {
+            // The common case: all three tables in use. Per-table arrays are read through locals.
+            ushort[] llNext = llTable.StateTable;
+            ushort[] ofNext = ofTable.StateTable;
+            ushort[] mlNext = mlTable.StateTable;
+            FseEncodingTable.SymbolTransform[] llT = llTable.Transforms;
+            FseEncodingTable.SymbolTransform[] ofT = ofTable.Transforms;
+            FseEncodingTable.SymbolTransform[] mlT = mlTable.Transforms;
+            for (int i = last - 1; i >= 0; i--)
+            {
+                // Bounds: i < nseq <= codes.Length; the codes are at most 52 and the transform arrays have 256 entries; a valid
+                // state shifted down by the bits it emits indexes inside the table (see FseEncodingTable.Encode).
+                ref SequenceCode sc = ref Raw.RefRw(codes, i);
+                FseEncodingTable.SymbolTransform t = Raw.Get(ofT, sc.Of);
+                uint nb = ((uint)ofState + t.NbBits) >> 16;
+                container |= (ulong)((uint)ofState & ((1u << (int)nb) - 1)) << bitCount;
+                bitCount += (int)nb;
+                ofState = Raw.Get(ofNext, (ofState >> (int)nb) + t.FindState);
+
+                t = Raw.Get(mlT, sc.Ml);
+                nb = ((uint)mlState + t.NbBits) >> 16;
+                container |= (ulong)((uint)mlState & ((1u << (int)nb) - 1)) << bitCount;
+                bitCount += (int)nb;
+                mlState = Raw.Get(mlNext, (mlState >> (int)nb) + t.FindState);
+
+                t = Raw.Get(llT, sc.Ll);
+                nb = ((uint)llState + t.NbBits) >> 16;
+                container |= (ulong)((uint)llState & ((1u << (int)nb) - 1)) << bitCount;
+                bitCount += (int)nb;
+                llState = Raw.Get(llNext, (llState >> (int)nb) + t.FindState);
+
+                // At most 27 bits of states and 7 left over make 34; literal-length and match-length extras of up to 28 bits
+                // fit beside them. Larger ones (rare) go in two halves with a flush between.
+                uint extra = sc.LlMlExtra;
+                int extraBits = sc.LlMlBits;
+                if (extraBits > 28)
+                {
+                    container |= (ulong)(extra & 0xFFFF) << bitCount;
+                    bitCount += 16;
+                    Raw.WriteUInt64(output, position, container);
+                    position += bitCount >> 3;
+                    container >>= bitCount & ~7;
+                    bitCount &= 7;
+                    extra >>= 16;
+                    extraBits -= 16;
+                }
+
+                container |= (ulong)extra << bitCount;
+                bitCount += extraBits;
+                Raw.WriteUInt64(output, position, container);
+                position += bitCount >> 3;
+                container >>= bitCount & ~7;
+                bitCount &= 7;
+                container |= (ulong)sc.OfExtra << bitCount;
+                bitCount += sc.Of;
+                Raw.WriteUInt64(output, position, container);
+                position += bitCount >> 3;
+                container >>= bitCount & ~7;
+                bitCount &= 7;
+                if (start + position > limit)
+                {
+                    return -1;
+                }
+            }
+        }
+        else
+        {
+            // Some table is a run-length table: it emits nothing.
+            for (int i = last - 1; i >= 0; i--)
+            {
+                SequenceCode sc = codes[i];
+                if (ofTable is not null)
+                {
+                    ofState = ofTable.Encode(ofState, sc.Of, out uint b, out int c);
+                    container |= (ulong)b << bitCount;
+                    bitCount += c;
+                }
+
+                if (mlTable is not null)
+                {
+                    mlState = mlTable.Encode(mlState, sc.Ml, out uint b, out int c);
+                    container |= (ulong)b << bitCount;
+                    bitCount += c;
+                }
+
+                if (llTable is not null)
+                {
+                    llState = llTable.Encode(llState, sc.Ll, out uint b, out int c);
+                    container |= (ulong)b << bitCount;
+                    bitCount += c;
+                }
+
+                // Extras as above.
+                uint extra = sc.LlMlExtra;
+                int extraBits = sc.LlMlBits;
+                if (extraBits > 28)
+                {
+                    container |= (ulong)(extra & 0xFFFF) << bitCount;
+                    bitCount += 16;
+                    Raw.WriteUInt64(output, position, container);
+                    position += bitCount >> 3;
+                    container >>= bitCount & ~7;
+                    bitCount &= 7;
+                    extra >>= 16;
+                    extraBits -= 16;
+                }
+
+                container |= (ulong)extra << bitCount;
+                bitCount += extraBits;
+                Raw.WriteUInt64(output, position, container);
+                position += bitCount >> 3;
+                container >>= bitCount & ~7;
+                bitCount &= 7;
+                container |= (ulong)sc.OfExtra << bitCount;
+                bitCount += sc.Of;
+                Raw.WriteUInt64(output, position, container);
+                position += bitCount >> 3;
+                container >>= bitCount & ~7;
+                bitCount &= 7;
+                if (start + position > limit)
+                {
+                    return -1;
+                }
+            }
+        }
+
+        var writer = new ZstdBitWriter(output);
+        writer.Restore(container, bitCount, position);
         if (mlTable is not null)
         {
             writer.Add((uint)(mlState - (1 << mlTable.AccuracyLog)), mlTable.AccuracyLog);
@@ -719,35 +990,8 @@ public sealed class ZstdBlockWriter
         }
 
         writer.Flush();
-        int total = p + writer.CloseBackward();
-        if (total >= limit)
-        {
-            return -1;
-        }
-
-        for (int k = 0; k < 3; k++)
-        {
-            if (modes[k] == Mode.Compressed)
-            {
-                _previous[k] = chosen[k];
-            }
-            else if (modes[k] != Mode.Repeat)
-            {
-                _previous[k] = null;
-            }
-        }
-
-        return total;
-    }
-
-    // The extra bits of a sequence, in the reverse of the order the decoder reads them: literals length, match length, offset.
-    private static void WriteExtras(ref ZstdBitWriter writer, in ZstdSequence s, uint ofValue, int ofCode, int llCode, int mlCode)
-    {
-        writer.Add(s.LiteralLength - ZstdFormat.LiteralLengthBase[llCode], ZstdFormat.LiteralLengthBits[llCode]);
-        writer.Add(s.MatchLength - ZstdFormat.MatchLengthBase[mlCode], ZstdFormat.MatchLengthBits[mlCode]);
-        writer.Flush();
-        writer.Add(ofValue - (1u << ofCode), ofCode);
-        writer.Flush();
+        int size = writer.CloseBackward();
+        return start + size >= limit ? -1 : size;
     }
 
     private void EnsureCodeCapacity(int count)
@@ -761,6 +1005,6 @@ public sealed class ZstdBlockWriter
         _llCodes = new byte[size];
         _mlCodes = new byte[size];
         _ofCodes = new byte[size];
-        _ofValues = new uint[size];
+        _seqCodes = new SequenceCode[size];
     }
 }

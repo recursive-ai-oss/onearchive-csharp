@@ -40,6 +40,34 @@ internal ref struct ZstdBitWriter
     }
 
     /// <summary>Stores the complete bytes of the container.</summary>
+    /// <summary>Hands out the writer's state so a hot loop can keep it in registers; give it back with <see cref="Restore"/>.</summary>
+    public readonly void Save(out ulong container, out int bitCount, out int position)
+    {
+        container = _container;
+        bitCount = _bitCount;
+        position = _position;
+    }
+
+    /// <summary>Takes back the state handed out by <see cref="Save"/>.</summary>
+    public void Restore(ulong container, int bitCount, int position)
+    {
+        _container = container;
+        _bitCount = bitCount;
+        _position = position;
+    }
+
+    /// <summary>Writes whole bytes of the container without checking that the destination has room for eight bytes at the position.</summary>
+    public void FlushRaw()
+    {
+        // The caller keeps Position + 8 inside the destination (the block writer's slack covers the bytes past its size limit).
+        Raw.WriteUInt64(_destination, _position, _container);
+        int bytes = _bitCount >> 3;
+        _position += bytes;
+        _container >>= bytes << 3;
+        _bitCount &= 7;
+    }
+
+    /// <summary>Writes whole bytes of the container to the destination and keeps the remaining bits.</summary>
     public void Flush()
     {
         BinaryPrimitives.WriteUInt64LittleEndian(_destination[_position..], _container);

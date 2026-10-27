@@ -61,7 +61,9 @@ internal static class ZstdEncoderTargets
         };
 
         byte[] frame = streamed ? Stream(data, options, piece, (flags & 8) != 0) : Zstd.Compress(data, options);
-        if (frame.Length > ZstdEncoder.GetMaxCompressedLength(data.Length) + 16)
+        // A flush after every piece ends a block early, and each such block costs a header of its own.
+        long flushAllowance = streamed && (flags & 8) != 0 ? 4L * ((data.Length / piece) + 2) : 0;
+        if (frame.Length > ZstdEncoder.GetMaxCompressedLength(data.Length) + 16 + flushAllowance)
         {
             throw new InvalidOperationException($"frame of {frame.Length} bytes exceeds the bound for {data.Length}");
         }

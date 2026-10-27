@@ -30,6 +30,10 @@ public sealed class ZstdSequenceStore
 {
     private byte[] _literals;
     private ZstdSequence[] _sequences;
+    private uint[] _offsetValues;
+    private bool _tracked;
+    private ZstdRepeatOffsets _trackedStart;
+    private ZstdRepeatOffsets _trackedEnd;
     private int _literalCount;
     private int _sequenceCount;
 
@@ -44,6 +48,7 @@ public sealed class ZstdSequenceStore
         // Literals get a margin so finders can copy them a word at a time past the end. Sequences grow on demand.
         _literals = new byte[blockSize + 64];
         _sequences = new ZstdSequence[Math.Min((blockSize / 8) + 16, 4096)];
+        _offsetValues = new uint[_sequences.Length];
     }
 
     /// <summary>Gets the largest block this store was sized for.</summary>
@@ -66,6 +71,7 @@ public sealed class ZstdSequenceStore
     {
         _literalCount = 0;
         _sequenceCount = 0;
+        _tracked = false;
     }
 
     /// <summary>Appends literals that are not followed by a match yet (or that end the block).</summary>
@@ -87,8 +93,11 @@ public sealed class ZstdSequenceStore
         AddSequence(literalLength, matchLength, offset);
     }
 
-    /// <summary>Appends a sequence whose literals are <c>window[anchor..anchor + literalLength]</c>, then the match.</summary>
-    internal void Append(ReadOnlySpan<byte> window, int anchor, uint literalLength, uint matchLength, uint offset)
+    // Appends a sequence whose literals are window[anchor..anchor + literalLength], then the match. A finder that resolves repeat
+    // offsets itself (it must, to find repeat matches) passes the offset value it coded: 1 to 3 for a repeat, otherwise
+    // offset + 3. The block writer then skips resolving them again, provided the store's chain started from the offsets the
+    // writer holds (see BeginTracking and TryGetTracked).
+    internal void AppendTracked(ReadOnlySpan<byte> window, int anchor, uint literalLength, uint matchLength, uint offset, uint offsetValue)
     {
         int ll = (int)literalLength;
         byte[] literals = _literals;
@@ -103,7 +112,48 @@ public sealed class ZstdSequenceStore
         }
 
         _literalCount += ll;
-        AddSequence(literalLength, matchLength, offset);
+        if (_sequenceCount == _sequences.Length)
+        {
+            Grow();
+        }
+
+        ref ZstdSequence seq = ref _sequences[_sequenceCount];
+        seq.LiteralLength = literalLength;
+        seq.MatchLength = matchLength;
+        seq.Offset = offset;
+        _offsetValues[_sequenceCount++] = offsetValue;
+    }
+
+    /// <summary>Records the offsets in force after the block's last sequence.</summary>
+    internal void SetTrackedEnd(uint offset1, uint offset2, uint offset3) =>
+        _trackedEnd = new ZstdRepeatOffsets { Offset1 = offset1, Offset2 = offset2, Offset3 = offset3 };
+
+    private void Grow()
+    {
+        Array.Resize(ref _sequences, _sequences.Length * 2);
+        Array.Resize(ref _offsetValues, _sequences.Length);
+    }
+
+    /// <summary>Starts offset tracking for a block: the offsets in force before its first sequence. Only an empty store can be tracked.</summary>
+    internal void BeginTracking(in ZstdRepeatOffsets start)
+    {
+        _tracked = _sequenceCount == 0;
+        _trackedStart = start;
+        _trackedEnd = start;
+    }
+
+    /// <summary>
+    /// The resolved offset values and the offsets in force after the last sequence, if every sequence was added with them
+    /// and the chain began at <paramref name="expectedStart"/>.
+    /// </summary>
+    internal bool TryGetTracked(in ZstdRepeatOffsets expectedStart, out ReadOnlySpan<uint> offsetValues, out ZstdRepeatOffsets end)
+    {
+        offsetValues = _offsetValues.AsSpan(0, _sequenceCount);
+        end = _trackedEnd;
+        return _tracked
+            && _trackedStart.Offset1 == expectedStart.Offset1
+            && _trackedStart.Offset2 == expectedStart.Offset2
+            && _trackedStart.Offset3 == expectedStart.Offset3;
     }
 
     /// <summary>Records a sequence whose literals were already appended with <see cref="AppendLiterals"/> or written through <see cref="LiteralBuffer"/>.</summary>
@@ -111,9 +161,10 @@ public sealed class ZstdSequenceStore
     {
         if (_sequenceCount == _sequences.Length)
         {
-            Array.Resize(ref _sequences, _sequences.Length * 2);
+            Grow();
         }
 
+        _tracked = false;
         ref ZstdSequence s = ref _sequences[_sequenceCount++];
         s.LiteralLength = literalLength;
         s.MatchLength = matchLength;

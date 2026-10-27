@@ -51,6 +51,16 @@ public readonly struct ZstdCompressionParameters
     /// <summary>Gets the log of the size of the main hash table.</summary>
     public int HashLog { get; init; }
 
+    /// <summary>
+    /// Gets the log of the size of the main hash table of the dictionary's own search index, or 0 when it is the same as
+    /// <see cref="HashLog"/>. A small source compressed with a large dictionary works on small tables of its own and looks the
+    /// dictionary up in an index built once, whose size suits the dictionary.
+    /// </summary>
+    public int DictionaryHashLog { get; init; }
+
+    /// <summary>Gets the log of the size of the dictionary index's secondary table, or 0 when it is the same as <see cref="ChainLog"/>.</summary>
+    public int DictionaryChainLog { get; init; }
+
     /// <summary>Gets the number of search attempts for the chain and tree strategies.</summary>
     public int SearchLog { get; init; }
 
@@ -134,8 +144,27 @@ public readonly struct ZstdCompressionParameters
 
         hashLog = Math.Min(hashLog, windowLog + 1);
         chainLog = Math.Min(chainLog, windowLog);
+        int dictionaryHashLog = 0;
+        int dictionaryChainLog = 0;
+        if (dictionarySize > 0 && contentSize >= 0)
+        {
+            // The tables the source fills need only suit the source; the dictionary keeps the sizes its own length calls for.
+            int sourceWindowLog = Math.Min(windowLog, Math.Max(contentSize <= 1 ? 0 : BitOperations.Log2((ulong)(contentSize - 1)) + 1, MinWindowLog));
+            int smallHashLog = Math.Min(hashLog, sourceWindowLog + 1);
+            int smallChainLog = Math.Min(chainLog, sourceWindowLog);
+            if (smallHashLog != hashLog || smallChainLog != chainLog)
+            {
+                dictionaryHashLog = hashLog;
+                dictionaryChainLog = chainLog;
+                hashLog = smallHashLog;
+                chainLog = smallChainLog;
+            }
+        }
+
         return new ZstdCompressionParameters
         {
+            DictionaryHashLog = dictionaryHashLog,
+            DictionaryChainLog = dictionaryChainLog,
             WindowLog = windowLog,
             ChainLog = chainLog,
             HashLog = hashLog,

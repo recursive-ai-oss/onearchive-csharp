@@ -40,19 +40,71 @@ for (int i = 3; i < args.Length; i++)
     }
 }
 
-double Best(Action run)
+double Best(Action run) => BestOf(run, out _, out _);
+
+// Runs once to warm up, then repeatedly for the given number of seconds; returns the best time and reports the median and worst.
+double BestOf(Action run, out double median, out double worst)
 {
     run();
-    double best = double.MaxValue;
+    var times = new List<double>();
     var total = Stopwatch.StartNew();
-    while (total.Elapsed.TotalSeconds < seconds)
+    while (total.Elapsed.TotalSeconds < seconds || times.Count < 3)
     {
         long t = Stopwatch.GetTimestamp();
         run();
-        best = Math.Min(best, Stopwatch.GetElapsedTime(t).TotalSeconds);
+        times.Add(Stopwatch.GetElapsedTime(t).TotalSeconds);
     }
 
-    return best;
+    times.Sort();
+    median = times[times.Count / 2];
+    worst = times[^1];
+    return times[0];
+}
+
+if (args[0] == "split")
+{
+    // Match finding and block writing timed apart (one frame, 128 KiB blocks, no window sliding: the whole file is the window).
+    int level = int.Parse(args[2], CultureInfo.InvariantCulture);
+    byte[] data = File.ReadAllBytes(args[1]);
+    var parameters = ZstdCompressionParameters.Resolve(level, data.Length, 0);
+    var finder = new ZstdFastMatchFinder();
+    var writer = new ZstdBlockWriter();
+    var store = new ZstdSequenceStore();
+    byte[] target = new byte[(1 << 17) + 4096];
+    double findTime = 0, writeTime = 0, best = double.MaxValue;
+    long total = 0;
+    var clock = Stopwatch.StartNew();
+    int passes = 0;
+    while (clock.Elapsed.TotalSeconds < seconds || findTime == 0)
+    {
+        passes++;
+        double f = 0, w = 0;
+        total = 0;
+        finder.BeginFrame(parameters, null);
+        writer.BeginFrame(null, parameters.CompressLiterals);
+        for (int start = 0; start < data.Length; start += 1 << 17)
+        {
+            int end = Math.Min(data.Length, start + (1 << 17));
+            store.Clear();
+            long t0 = Stopwatch.GetTimestamp();
+            finder.FindSequences(data, start, end, 0, writer.RepeatOffsets, store);
+            long t1 = Stopwatch.GetTimestamp();
+            total += writer.WriteBlock(data.AsSpan(start, end - start), store, false, target);
+            long t2 = Stopwatch.GetTimestamp();
+            f += Stopwatch.GetElapsedTime(t0, t1).TotalSeconds;
+            w += Stopwatch.GetElapsedTime(t1, t2).TotalSeconds;
+        }
+
+        if (f + w < best)
+        {
+            best = f + w;
+            findTime = f;
+            writeTime = w;
+        }
+    }
+
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"split level={level} compressed={total} find={data.Length / findTime / 1e6:F0} MB/s write={data.Length / writeTime / 1e6:F0} MB/s total={data.Length / best / 1e6:F0} MB/s"));
+    return 0;
 }
 
 if (args[0] == "big")
@@ -80,7 +132,7 @@ if (args[0] == "big")
         }
     }
 
-    double compressTime = Best(Compress);
+    double compressTime = BestOf(Compress, out double compressMedian, out double compressWorst);
     long compressed = sizes.Sum(s => (long)s);
     var decoder = new ZstdDecoder(new ZstdDecompressionOptions
     {
@@ -108,7 +160,7 @@ if (args[0] == "big")
         }
     }
 
-    double decompressTime = Best(Decompress);
+    double decompressTime = BestOf(Decompress, out double decompressMedian, out double decompressWorst);
     ok = restored.AsSpan().SequenceEqual(data);
     if (outPath is not null)
     {
@@ -116,7 +168,7 @@ if (args[0] == "big")
     }
 
     Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-        $"big\t{Path.GetFileName(args[1])}\tlevel={level}\tsize={data.Length}\tcompressed={compressed}\tratio={(double)data.Length / compressed:F4}\tcompress={data.Length / compressTime / 1e6:F0} MB/s\tdecompress={data.Length / decompressTime / 1e6:F0} MB/s\troundtrip={(ok ? "ok" : "MISMATCH")}"));
+        $"big\t{Path.GetFileName(args[1])}\tlevel={level}\tsize={data.Length}\tcompressed={compressed}\tratio={(double)data.Length / compressed:F4}\tcompress={data.Length / compressTime / 1e6:F0} MB/s\tcompress_median={data.Length / compressMedian / 1e6:F0}\tcompress_min={data.Length / compressWorst / 1e6:F0}\tdecompress={data.Length / decompressTime / 1e6:F0} MB/s\tdecompress_median={data.Length / decompressMedian / 1e6:F0}\tdecompress_min={data.Length / decompressWorst / 1e6:F0}\troundtrip={(ok ? "ok" : "MISMATCH")}"));
     return ok ? 0 : 1;
 }
 

@@ -32,6 +32,34 @@ public sealed class HuffmanEncodingTable
     /// <summary>Gets the code length in bits of each symbol, 0 for symbols without a code.</summary>
     public ReadOnlySpan<byte> CodeLengths => _length;
 
+    // Counts up to this are sorted by counting rather than by comparison: small blocks, where the sort would be most of the work.
+    private const int SmallCountLimit = 1024;
+
+    // Orders keys (count << 8 | symbol) ascending, as Sort would, by bucketing on the count: symbols come in ascending order,
+    // so equal counts stay ordered by symbol.
+    private static void SortByCounting(Span<ulong> keys, int largest)
+    {
+        Span<ushort> start = stackalloc ushort[SmallCountLimit + 1];
+        start.Clear();
+        for (int i = 0; i < keys.Length; i++)
+        {
+            start[(int)(keys[i] >> 8) + 1]++;
+        }
+
+        for (int c = 1; c <= largest + 1; c++)
+        {
+            start[c] += start[c - 1];
+        }
+
+        Span<ulong> sorted = stackalloc ulong[256];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            sorted[start[(int)(keys[i] >> 8)]++] = keys[i];
+        }
+
+        sorted[..keys.Length].CopyTo(keys);
+    }
+
     /// <summary>
     /// Builds the code for a histogram of bytes: a Huffman tree whose depth is limited to <paramref name="maxBits"/> by
     /// lengthening the cheapest codes until the lengths satisfy the Kraft equality.
@@ -46,11 +74,14 @@ public sealed class HuffmanEncodingTable
         ArgumentOutOfRangeException.ThrowIfGreaterThan(maxBits, MaxBits);
         Span<ulong> keys = stackalloc ulong[256];
         int n = 0;
+        uint largest = 0;
         for (int s = 0; s <= maxSymbol; s++)
         {
-            if (histogram[s] != 0)
+            uint count = histogram[s];
+            if (count != 0)
             {
-                keys[n++] = ((ulong)histogram[s] << 8) | (uint)s;
+                keys[n++] = ((ulong)count << 8) | (uint)s;
+                largest = Math.Max(largest, count);
             }
         }
 
@@ -59,7 +90,15 @@ public sealed class HuffmanEncodingTable
             return false;
         }
 
-        keys[..n].Sort();
+        if (largest < SmallCountLimit)
+        {
+            SortByCounting(keys[..n], (int)largest);
+        }
+        else
+        {
+            keys[..n].Sort();
+        }
+
         Span<uint> weight = stackalloc uint[512];
         Span<ushort> parent = stackalloc ushort[512];
         Span<byte> depth = stackalloc byte[512];
@@ -304,6 +343,47 @@ public sealed class HuffmanEncodingTable
         return true;
     }
 
+    /// <summary>Adds up the bits of the literals of <paramref name="histogram"/> under this tree, in one pass, if every symbol that occurs has a code.</summary>
+    /// <param name="histogram">How often each symbol occurs.</param>
+    /// <param name="maxSymbol">The largest symbol that occurs.</param>
+    /// <param name="bits">The size of the coded symbols in bits, when the tree can code them.</param>
+    /// <returns>True if every symbol that occurs has a code.</returns>
+    internal bool TryEncodedBits(ReadOnlySpan<uint> histogram, int maxSymbol, out long bits)
+    {
+        bits = 0;
+        if (maxSymbol >= _symbolCount)
+        {
+            for (int s = _symbolCount; s <= maxSymbol; s++)
+            {
+                if (histogram[s] != 0)
+                {
+                    return false;
+                }
+            }
+
+            maxSymbol = _symbolCount - 1;
+        }
+
+        long total = 0;
+        for (int s = 0; s <= maxSymbol; s++)
+        {
+            uint count = histogram[s];
+            if (count != 0)
+            {
+                int length = _length[s];
+                if (length == 0)
+                {
+                    return false;
+                }
+
+                total += (long)count * length;
+            }
+        }
+
+        bits = total;
+        return true;
+    }
+
     /// <summary>Gets the size in bits of the literals coded with this table, in one stream or in four (add up to 7 bits of padding per stream).</summary>
     public long EncodedBits(ReadOnlySpan<uint> histogram, int maxSymbol)
     {
@@ -454,7 +534,7 @@ public sealed class HuffmanEncodingTable
         HuffmanDecodingTable verify = _verifyTable ??= new HuffmanDecodingTable();
         try
         {
-            verify.ReadDescription(destination[..(1 + total)]);
+            verify.ReadDescription(destination[..(1 + total)], 0, buildTable: false);
         }
         catch (CompressionFormatException)
         {

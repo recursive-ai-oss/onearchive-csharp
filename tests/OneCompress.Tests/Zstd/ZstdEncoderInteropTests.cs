@@ -164,7 +164,7 @@ public class ZstdEncoderInteropTests
                     failures.Add($"{group}/{c.File}/l{c.Level}/{c.Variant.Name}: tool output differs");
                 }
 
-                if (!Zstd.Zstd.Decompress(frame, new ZstdDecompressionOptions { MaxOutputSize = long.MaxValue, MaxWindowSize = 1L << 31 }).AsSpan().SequenceEqual(data))
+                if (!Zstd.Zstd.Decompress(frame, new ZstdDecompressionOptions { MaxOutputSize = long.MaxValue, MaxWindowSize = 1L << 31, Dictionary = c.Variant.Dictionary is null ? null : ZstdDictionary.Parse(File.ReadAllBytes(c.Variant.Dictionary)) }).AsSpan().SequenceEqual(data))
                 {
                     failures.Add($"{group}/{c.File}/l{c.Level}/{c.Variant.Name}: our decoder output differs");
                 }

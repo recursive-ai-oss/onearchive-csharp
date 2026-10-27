@@ -131,4 +131,26 @@ internal static class Raw
         return Unsafe.Add(ref MemoryMarshal.GetReference(span), index);
 #endif
     }
+
+    /// <summary>References <c>array[index]</c> for reading and writing without a bounds check. The caller guarantees <c>0 &lt;= index &lt; array.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T RefRw<T>(T[] array, int index)
+    {
+#if CHECKED
+        return ref array[index];
+#else
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), index);
+#endif
+    }
+
+    /// <summary>Writes eight bytes at <paramref name="index"/> as a little-endian integer. The caller guarantees <c>index + 8 &lt;= span.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void WriteUInt64(Span<byte> span, int index, ulong value)
+    {
+#if CHECKED
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(index, 8), value);
+#else
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), index), BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value));
+#endif
+    }
 }

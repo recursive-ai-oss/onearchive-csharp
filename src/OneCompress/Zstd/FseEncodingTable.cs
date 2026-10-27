@@ -19,8 +19,7 @@ public sealed class FseEncodingTable
     public const int MinAccuracyLog = 5;
 
     private readonly ushort[] _stateTable = new ushort[1 << MaxAccuracyLog];
-    private readonly int[] _deltaFindState = new int[256];
-    private readonly uint[] _deltaNbBits = new uint[256];
+    private readonly SymbolTransform[] _transform = new SymbolTransform[256];
     private readonly short[] _normalized = new short[256];
     private int _accuracyLog;
     private int _symbolCount;
@@ -254,21 +253,21 @@ public sealed class FseEncodingTable
             int c = normalizedCounts[s];
             if (c == 0)
             {
-                _deltaNbBits[s] = (uint)(((accuracyLog + 1) << 16) - tableSize);
-                _deltaFindState[s] = 0;
+                _transform[s].NbBits = (uint)(((accuracyLog + 1) << 16) - tableSize);
+                _transform[s].FindState = 0;
             }
             else if (c == 1 || c == -1)
             {
-                _deltaNbBits[s] = (uint)((accuracyLog << 16) - tableSize);
-                _deltaFindState[s] = total - 1;
+                _transform[s].NbBits = (uint)((accuracyLog << 16) - tableSize);
+                _transform[s].FindState = total - 1;
                 total++;
             }
             else
             {
                 int maxBitsOut = accuracyLog - BitOperations.Log2((uint)(c - 1));
                 int minStatePlus = c << maxBitsOut;
-                _deltaNbBits[s] = (uint)((maxBitsOut << 16) - minStatePlus);
-                _deltaFindState[s] = total - c;
+                _transform[s].NbBits = (uint)((maxBitsOut << 16) - minStatePlus);
+                _transform[s].FindState = total - c;
                 total += c;
             }
         }
@@ -278,23 +277,41 @@ public sealed class FseEncodingTable
         _accuracyLog = accuracyLog;
     }
 
+    /// <summary>Per symbol: how many bits a transition emits (in the high half, with a correction) and where its states start.</summary>
+    internal struct SymbolTransform
+    {
+        public uint NbBits;
+        public int FindState;
+    }
+
+    /// <summary>The next-state table, shared with the sequence loop of the block writer.</summary>
+    internal ushort[] StateTable => _stateTable;
+
+    /// <summary>The per-symbol transform table (256 entries), shared with the sequence loop of the block writer.</summary>
+    internal SymbolTransform[] Transforms => _transform;
+
     /// <summary>The state to start from when the first symbol to encode is <paramref name="symbol"/>; it costs no bits.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     internal int InitialState(int symbol)
     {
         int c = _normalized[symbol];
-        return _stateTable[_deltaFindState[symbol] + (c < 1 ? 1 : c)];
+        return _stateTable[_transform[symbol].FindState + (c < 1 ? 1 : c)];
     }
 
     /// <summary>
     /// Encodes <paramref name="symbol"/> from <paramref name="state"/> (a value from <c>1 &lt;&lt; AccuracyLog</c> up to twice that,
     /// minus one): returns the bits to store and their count through the out parameters, and the next state.
     /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     internal int Encode(int state, int symbol, out uint bits, out int bitCount)
     {
-        uint nb = ((uint)state + _deltaNbBits[symbol]) >> 16;
+        // Bounds: symbols are at most 255 (the delta arrays have 256 entries); a state in [1 << AccuracyLog, 2 << AccuracyLog)
+        // shifted down by nb lands in [1 << AccuracyLog - ... ] so that, plus the symbol's delta, the index stays inside the
+        // table (this is the property that makes the table a valid tANS encoder).
+        uint nb = ((uint)state + Raw.Get(_transform, symbol).NbBits) >> 16;
         bitCount = (int)nb;
         bits = (uint)state & ((1u << (int)nb) - 1);
-        return _stateTable[(state >> (int)nb) + _deltaFindState[symbol]];
+        return Raw.Get(_stateTable, (state >> (int)nb) + Raw.Get(_transform, symbol).FindState);
     }
 
     /// <summary>Whether the table can code <paramref name="symbol"/> (it has at least one state).</summary>
@@ -348,9 +365,9 @@ public sealed class FseEncodingTable
         long bits = _accuracyLog;
         for (int i = codes.Length - 2; i >= 0; i--)
         {
-            uint nb = ((uint)state + _deltaNbBits[codes[i]]) >> 16;
+            uint nb = ((uint)state + _transform[codes[i]].NbBits) >> 16;
             bits += nb;
-            state = _stateTable[(state >> (int)nb) + _deltaFindState[codes[i]]];
+            state = _stateTable[(state >> (int)nb) + _transform[codes[i]].FindState];
         }
 
         return (int)bits;

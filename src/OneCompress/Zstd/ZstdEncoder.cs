@@ -171,6 +171,8 @@ public sealed class ZstdEncoder
                 WindowLog = windowLog,
                 ChainLog = Math.Min(p.ChainLog, windowLog),
                 HashLog = Math.Min(p.HashLog, windowLog + 1),
+                DictionaryHashLog = p.DictionaryHashLog,
+                DictionaryChainLog = p.DictionaryChainLog,
                 SearchLog = p.SearchLog,
                 MinMatch = p.MinMatch,
                 TargetLength = p.TargetLength,
