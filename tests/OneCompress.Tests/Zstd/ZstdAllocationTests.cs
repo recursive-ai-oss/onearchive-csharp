@@ -45,8 +45,13 @@ public class ZstdAllocationTests
 
         // Any allocation per frame would add at least 1000 bytes to every batch. The runtime itself occasionally
         // allocates some thousand bytes on the calling thread once (tiered compilation bookkeeping), which is not ours.
-        var per = new List<long> { Batch(), Batch(), Batch(), Batch(), Batch() };
-        Assert.True(per.Count(a => a == 0) >= 4 && per.Max() < 10_000, string.Join(",", per));
+        var per = new List<long>();
+        for (int i = 0; i < 8; i++)
+        {
+            per.Add(Batch());
+        }
+
+        Assert.True(per.Count(a => a == 0) >= 5 && per.Max() < 10_000, string.Join(",", per));
         v.AssertMatches(output.AsSpan(0, v.Size));
     }
 

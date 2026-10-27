@@ -15,6 +15,15 @@ public struct FseEntry
     public byte Symbol { get; internal set; }
 }
 
+/// <summary>A table row with the sequence code it stands for already looked up: one cache line holds everything a sequence step needs.</summary>
+internal struct SequenceEntry
+{
+    public uint Base;       // baseline value of the literals length or match length code; 1 << code for offsets
+    public ushort Next;     // FSE baseline: the next state is Next plus NumBits bits
+    public byte NumBits;    // FSE bits for the next state
+    public byte Extra;      // extra bits that follow the code (for offsets, the code itself)
+}
+
 /// <summary>
 /// An FSE (finite state entropy) decoding table: what a normalized probability distribution turns into
 /// (RFC 8878 §4.1). An instance can be rebuilt many times, so a decoder keeps one per symbol type and
@@ -33,10 +42,74 @@ public sealed class FseDecodingTable
     /// <summary>Gets the accuracy log: the table has <c>1 &lt;&lt; AccuracyLog</c> rows.</summary>
     public int AccuracyLog => _accuracyLog;
 
+    /// <summary>Gets a number that changes each time the table is rebuilt.</summary>
+    internal int Version { get; private set; }
+
     /// <summary>Gets the largest symbol any row decodes to.</summary>
     public int MaxSymbol => _maxSymbol;
 
     internal FseEntry[] EntryArray => _entries;
+
+    private SequenceEntry[]? _sequenceEntries;
+    private int _sequenceKind = -1;
+
+    /// <summary>
+    /// Gets the rows with the symbol meanings of a sequence field expanded (0 literals length, 1 offset, 2 match length).
+    /// Computed on first use after the table was built; tables shared between threads are never rebuilt, and a racing
+    /// first use writes the same values. The next-state baselines are offset by <c>kind &lt;&lt; MaxAccuracyLog</c>, so the three
+    /// tables of a block can sit in one array and a state is an index into it.
+    /// </summary>
+    internal SequenceEntry[] GetSequenceEntries(int kind)
+    {
+        SequenceEntry[]? array = Volatile.Read(ref _sequenceEntries);
+        if (array is not null && Volatile.Read(ref _sequenceKind) == kind)
+        {
+            return array;
+        }
+
+        int limit = kind switch
+        {
+            0 => ZstdFormat.LiteralLengthMaxSymbol,
+            1 => ZstdFormat.OffsetMaxSymbol,
+            _ => ZstdFormat.MatchLengthMaxSymbol,
+        };
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(_maxSymbol, limit, nameof(kind));
+        if (array is null)
+        {
+            Interlocked.CompareExchange(ref _sequenceEntries, new SequenceEntry[1 << MaxAccuracyLog], null);
+            array = _sequenceEntries!;
+        }
+
+        // A table that is being rebuilt has a single user, so the kind is invalid while this runs.
+        Volatile.Write(ref _sequenceKind, -1);
+        int size = 1 << _accuracyLog;
+        for (int state = 0; state < size; state++)
+        {
+            FseEntry e = _entries[state];
+            uint baseValue;
+            int extra;
+            switch (kind)
+            {
+                case 0:
+                    baseValue = ZstdFormat.LiteralLengthBase[e.Symbol];
+                    extra = ZstdFormat.LiteralLengthBits[e.Symbol];
+                    break;
+                case 1:
+                    baseValue = 1u << e.Symbol;
+                    extra = e.Symbol;
+                    break;
+                default:
+                    baseValue = ZstdFormat.MatchLengthBase[e.Symbol];
+                    extra = ZstdFormat.MatchLengthBits[e.Symbol];
+                    break;
+            }
+
+            array[state] = new SequenceEntry { Base = baseValue, Next = (ushort)(e.Baseline + (kind << MaxAccuracyLog)), NumBits = e.NumBits, Extra = (byte)extra };
+        }
+
+        Volatile.Write(ref _sequenceKind, kind);
+        return array;
+    }
 
     /// <summary>Gets the rows of the table, indexed by state.</summary>
     public ReadOnlySpan<FseEntry> Entries => _entries.AsSpan(0, 1 << _accuracyLog);
@@ -228,6 +301,8 @@ public sealed class FseDecodingTable
 
         _accuracyLog = accuracyLog;
         _maxSymbol = normalizedCounts.Length - 1;
+        _sequenceKind = -1;
+        Version++;
     }
 
     /// <summary>Makes a table of a single symbol that costs no bits (the RLE mode, RFC 8878 §3.1.1.3.2.1).</summary>
@@ -237,5 +312,7 @@ public sealed class FseDecodingTable
         _entries[0] = new FseEntry { Symbol = symbol, NumBits = 0, Baseline = 0 };
         _accuracyLog = 0;
         _maxSymbol = symbol;
+        _sequenceKind = -1;
+        Version++;
     }
 }

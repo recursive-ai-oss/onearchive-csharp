@@ -36,6 +36,17 @@ internal static class Raw
 #endif
     }
 
+    /// <summary>References <c>array[index]</c> without a bounds check. The caller guarantees <c>0 &lt;= index &lt; array.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref readonly T Ref<T>(T[] array, int index)
+    {
+#if CHECKED
+        return ref array[index];
+#else
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), index);
+#endif
+    }
+
     /// <summary>Reads eight bytes at <paramref name="index"/> as a little-endian integer. The caller guarantees <c>index + 8 &lt;= span.Length</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ReadUInt64(ReadOnlySpan<byte> span, int index)
