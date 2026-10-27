@@ -414,12 +414,12 @@ public sealed class FseEncodingTable
         }
 
         FseEncodingTable t0 = tables[0], t1 = tables[1], t2 = tables[2], t3 = tables[3], t4 = tables[4], t5 = tables[5];
-        int s0 = t0.InitialState(codes0[n - 1]);
-        int s1 = t1.InitialState(codes0[n - 1]);
-        int s2 = t2.InitialState(codes1[n - 1]);
-        int s3 = t3.InitialState(codes1[n - 1]);
-        int s4 = t4.InitialState(codes2[n - 1]);
-        int s5 = t5.InitialState(codes2[n - 1]);
+        int q0 = t0.InitialState(codes0[n - 1]);
+        int q1 = t1.InitialState(codes0[n - 1]);
+        int q2 = t2.InitialState(codes1[n - 1]);
+        int q3 = t3.InitialState(codes1[n - 1]);
+        int q4 = t4.InitialState(codes2[n - 1]);
+        int q5 = t5.InitialState(codes2[n - 1]);
         long b0 = t0._accuracyLog, b1 = t1._accuracyLog, b2 = t2._accuracyLog, b3 = t3._accuracyLog, b4 = t4._accuracyLog, b5 = t5._accuracyLog;
         SymbolTransform[] f0 = t0._transform, f1 = t1._transform, f2 = t2._transform, f3 = t3._transform, f4 = t4._transform, f5 = t5._transform;
         ushort[] a0 = t0._stateTable, a1 = t1._stateTable, a2 = t2._stateTable, a3 = t3._stateTable, a4 = t4._stateTable, a5 = t5._stateTable;
@@ -434,15 +434,15 @@ public sealed class FseEncodingTable
             ref readonly SymbolTransform x3 = ref Raw.Ref(f3, c1);
             ref readonly SymbolTransform x4 = ref Raw.Ref(f4, c2);
             ref readonly SymbolTransform x5 = ref Raw.Ref(f5, c2);
-            uint n0 = ((uint)s0 + x0.NbBits) >> 16, n1 = ((uint)s1 + x1.NbBits) >> 16, n2 = ((uint)s2 + x2.NbBits) >> 16;
-            uint n3 = ((uint)s3 + x3.NbBits) >> 16, n4 = ((uint)s4 + x4.NbBits) >> 16, n5 = ((uint)s5 + x5.NbBits) >> 16;
+            uint n0 = ((uint)q0 + x0.NbBits) >> 16, n1 = ((uint)q1 + x1.NbBits) >> 16, n2 = ((uint)q2 + x2.NbBits) >> 16;
+            uint n3 = ((uint)q3 + x3.NbBits) >> 16, n4 = ((uint)q4 + x4.NbBits) >> 16, n5 = ((uint)q5 + x5.NbBits) >> 16;
             b0 += n0; b1 += n1; b2 += n2; b3 += n3; b4 += n4; b5 += n5;
-            s0 = Raw.Get(a0, (s0 >> (int)n0) + x0.FindState);
-            s1 = Raw.Get(a1, (s1 >> (int)n1) + x1.FindState);
-            s2 = Raw.Get(a2, (s2 >> (int)n2) + x2.FindState);
-            s3 = Raw.Get(a3, (s3 >> (int)n3) + x3.FindState);
-            s4 = Raw.Get(a4, (s4 >> (int)n4) + x4.FindState);
-            s5 = Raw.Get(a5, (s5 >> (int)n5) + x5.FindState);
+            q0 = Raw.Get(a0, (q0 >> (int)n0) + x0.FindState);
+            q1 = Raw.Get(a1, (q1 >> (int)n1) + x1.FindState);
+            q2 = Raw.Get(a2, (q2 >> (int)n2) + x2.FindState);
+            q3 = Raw.Get(a3, (q3 >> (int)n3) + x3.FindState);
+            q4 = Raw.Get(a4, (q4 >> (int)n4) + x4.FindState);
+            q5 = Raw.Get(a5, (q5 >> (int)n5) + x5.FindState);
         }
 
         bits[0] = (int)b0; bits[1] = (int)b1; bits[2] = (int)b2; bits[3] = (int)b3; bits[4] = (int)b4; bits[5] = (int)b5;
@@ -460,9 +460,9 @@ public sealed class FseEncodingTable
             throw new ArgumentException("The code spans must have the same nonzero length.");
         }
 
-        int s0 = t0.InitialState(codes0[n - 1]);
-        int s1 = t1.InitialState(codes1[n - 1]);
-        int s2 = t2.InitialState(codes2[n - 1]);
+        int q0 = t0.InitialState(codes0[n - 1]);
+        int q1 = t1.InitialState(codes1[n - 1]);
+        int q2 = t2.InitialState(codes2[n - 1]);
         long b0 = t0._accuracyLog, b1 = t1._accuracyLog, b2 = t2._accuracyLog;
         SymbolTransform[] f0 = t0._transform, f1 = t1._transform, f2 = t2._transform;
         ushort[] a0 = t0._stateTable, a1 = t1._stateTable, a2 = t2._stateTable;
@@ -472,11 +472,11 @@ public sealed class FseEncodingTable
             ref readonly SymbolTransform x0 = ref Raw.Ref(f0, Raw.Get(codes0, i));
             ref readonly SymbolTransform x1 = ref Raw.Ref(f1, Raw.Get(codes1, i));
             ref readonly SymbolTransform x2 = ref Raw.Ref(f2, Raw.Get(codes2, i));
-            uint n0 = ((uint)s0 + x0.NbBits) >> 16, n1 = ((uint)s1 + x1.NbBits) >> 16, n2 = ((uint)s2 + x2.NbBits) >> 16;
+            uint n0 = ((uint)q0 + x0.NbBits) >> 16, n1 = ((uint)q1 + x1.NbBits) >> 16, n2 = ((uint)q2 + x2.NbBits) >> 16;
             b0 += n0; b1 += n1; b2 += n2;
-            s0 = Raw.Get(a0, (s0 >> (int)n0) + x0.FindState);
-            s1 = Raw.Get(a1, (s1 >> (int)n1) + x1.FindState);
-            s2 = Raw.Get(a2, (s2 >> (int)n2) + x2.FindState);
+            q0 = Raw.Get(a0, (q0 >> (int)n0) + x0.FindState);
+            q1 = Raw.Get(a1, (q1 >> (int)n1) + x1.FindState);
+            q2 = Raw.Get(a2, (q2 >> (int)n2) + x2.FindState);
         }
 
         bits0 = (int)b0;
