@@ -25,6 +25,86 @@ internal static class Raw
 #endif
     }
 
+    /// <summary>Reads sequence table row <c>rows[index]</c> as its packed 64-bit value. The caller guarantees <c>index &lt; rows.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Row(SequenceEntry[] rows, nuint index)
+    {
+#if CHECKED
+        return Unsafe.As<SequenceEntry, ulong>(ref rows[checked((int)index)]);
+#else
+        return Unsafe.As<SequenceEntry, ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(rows), index));
+#endif
+    }
+
+    /// <summary>As <see cref="ReadUInt64(ReadOnlySpan{byte}, int)"/> with a native-width index.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong ReadUInt64(ReadOnlySpan<byte> span, nint index)
+    {
+#if CHECKED
+        return System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(checked((int)index), 8));
+#else
+        ulong value = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), index));
+        return BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value);
+#endif
+    }
+
+    /// <summary>As <see cref="Copy16(Span{byte}, int, ReadOnlySpan{byte}, int)"/> with native-width indices.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Copy16(Span<byte> destination, nint destinationIndex, ReadOnlySpan<byte> source, nint sourceIndex)
+    {
+#if CHECKED
+        source.Slice(checked((int)sourceIndex), 16).CopyTo(destination.Slice(checked((int)destinationIndex), 16));
+#else
+        Vector128<byte> v = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(source), sourceIndex));
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(destination), destinationIndex), v);
+#endif
+    }
+
+    /// <summary>As <see cref="Copy8(Span{byte}, int, ReadOnlySpan{byte}, int)"/> with native-width indices.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Copy8(Span<byte> destination, nint destinationIndex, ReadOnlySpan<byte> source, nint sourceIndex)
+    {
+#if CHECKED
+        source.Slice(checked((int)sourceIndex), 8).CopyTo(destination.Slice(checked((int)destinationIndex), 8));
+#else
+        ulong v = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetReference(source), sourceIndex));
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(destination), destinationIndex), v);
+#endif
+    }
+
+    /// <summary>Writes two bytes at <paramref name="index"/> as a little-endian integer. The caller guarantees <c>index + 2 &lt;= span.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void WriteUInt16(Span<byte> span, nint index, ushort value)
+    {
+#if CHECKED
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(checked((int)index), 2), value);
+#else
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), index), BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value));
+#endif
+    }
+
+    /// <summary>As <see cref="Get{T}(T[], int)"/> with a native-width index.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T Get<T>(T[] array, nuint index)
+    {
+#if CHECKED
+        return array[checked((int)index)];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), index);
+#endif
+    }
+
+    /// <summary>As <see cref="Set(Span{byte}, int, byte)"/> with a native-width index.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Set(Span<byte> span, nint index, byte value)
+    {
+#if CHECKED
+        span[checked((int)index)] = value;
+#else
+        Unsafe.Add(ref MemoryMarshal.GetReference(span), index) = value;
+#endif
+    }
+
     /// <summary>Reads <c>array[index]</c>. The caller guarantees <c>0 &lt;= index &lt; array.Length</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T Get<T>(T[] array, int index)
@@ -102,7 +182,7 @@ internal static class Raw
         return mask;
     }
 
-    /// <summary>As <see cref="Copy16"/> for eight bytes.</summary>
+    /// <summary>As <see cref="Copy16(Span{byte}, int, ReadOnlySpan{byte}, int)"/> for eight bytes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Copy8(Span<byte> destination, int destinationIndex, ReadOnlySpan<byte> source, int sourceIndex)
     {

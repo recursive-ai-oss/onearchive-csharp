@@ -15,13 +15,32 @@ public struct FseEntry
     public byte Symbol { get; internal set; }
 }
 
-/// <summary>A table row with the sequence code it stands for already looked up: one cache line holds everything a sequence step needs.</summary>
-internal struct SequenceEntry
+/// <summary>
+/// A table row with the sequence code it stands for already looked up, packed in one 64-bit value so that a sequence step
+/// reads each row with a single load. Layout from the least significant bit: Next (16 bits), Total (8), NumBits (8), Extra (8),
+/// Base (24). Fields are placed so that the sequence loop can use a shifted copy of the row directly as a bit count, and so
+/// that adding three rows adds their Totals without carrying into anything (Next is below 1536 and a Total at most 40).
+/// </summary>
+internal readonly struct SequenceEntry
 {
-    public uint Base;       // baseline value of the literals length or match length code; 1 << code for offsets
-    public ushort Next;     // FSE baseline: the next state is Next plus NumBits bits
-    public byte NumBits;    // FSE bits for the next state
-    public byte Extra;      // extra bits that follow the code (for offsets, the code itself)
+    private readonly ulong _bits;
+
+    public SequenceEntry(uint baseValue, int next, int numBits, int extra)
+    {
+        _bits = (uint)next | ((ulong)(uint)(numBits + extra) << 16) | ((ulong)(uint)numBits << 24) | ((ulong)(uint)extra << 32) | ((ulong)baseValue << 40);
+    }
+
+    /// <summary>Baseline value of the literals length or match length code; zero for offsets, whose base is <c>1 &lt;&lt; Extra</c>.</summary>
+    public uint Base => (uint)(_bits >> 40);
+
+    /// <summary>FSE baseline: the next state is Next plus NumBits bits.</summary>
+    public uint Next => (ushort)_bits;
+
+    /// <summary>FSE bits for the next state.</summary>
+    public int NumBits => (byte)(_bits >> 24);
+
+    /// <summary>Extra bits that follow the code (for offsets, the code itself).</summary>
+    public int Extra => (byte)(_bits >> 32);
 }
 
 /// <summary>
@@ -54,10 +73,9 @@ public sealed class FseDecodingTable
     private int _sequenceKind = -1;
 
     /// <summary>
-    /// Gets the rows with the symbol meanings of a sequence field expanded (0 literals length, 1 offset, 2 match length).
-    /// Computed on first use after the table was built; tables shared between threads are never rebuilt, and a racing
-    /// first use writes the same values. The next-state baselines are offset by <c>kind &lt;&lt; MaxAccuracyLog</c>, so the three
-    /// tables of a block can sit in one array and a state is an index into it.
+    /// Gets the rows of <see cref="FillSequenceEntries"/> for a table that is never rebuilt (a dictionary's or a predefined one),
+    /// computed on first use. Tables shared between threads are never rebuilt, and a racing first use writes the same values.
+    /// The caller must always ask for the same kind.
     /// </summary>
     internal SequenceEntry[] GetSequenceEntries(int kind)
     {
@@ -67,6 +85,24 @@ public sealed class FseDecodingTable
             return array;
         }
 
+        if (array is null)
+        {
+            Interlocked.CompareExchange(ref _sequenceEntries, new SequenceEntry[1 << MaxAccuracyLog], null);
+            array = _sequenceEntries!;
+        }
+
+        FillSequenceEntries(kind, array);
+        Volatile.Write(ref _sequenceKind, kind);
+        return array;
+    }
+
+    /// <summary>
+    /// Writes the rows with the symbol meanings of a sequence field expanded (0 literals length, 1 offset, 2 match length)
+    /// into <paramref name="destination"/>, one per state. The next-state baselines are offset by <c>kind &lt;&lt; MaxAccuracyLog</c>,
+    /// so the three tables of a block can sit in one array and a state is an index into it.
+    /// </summary>
+    internal void FillSequenceEntries(int kind, Span<SequenceEntry> destination)
+    {
         int limit = kind switch
         {
             0 => ZstdFormat.LiteralLengthMaxSymbol,
@@ -74,41 +110,28 @@ public sealed class FseDecodingTable
             _ => ZstdFormat.MatchLengthMaxSymbol,
         };
         ArgumentOutOfRangeException.ThrowIfGreaterThan(_maxSymbol, limit, nameof(kind));
-        if (array is null)
-        {
-            Interlocked.CompareExchange(ref _sequenceEntries, new SequenceEntry[1 << MaxAccuracyLog], null);
-            array = _sequenceEntries!;
-        }
-
-        // A table that is being rebuilt has a single user, so the kind is invalid while this runs.
-        Volatile.Write(ref _sequenceKind, -1);
         int size = 1 << _accuracyLog;
-        for (int state = 0; state < size; state++)
+        FseEntry[] entries = _entries;
+        destination = destination[..size];
+        int shift = kind << MaxAccuracyLog;
+        if (kind == 1)
         {
-            FseEntry e = _entries[state];
-            uint baseValue;
-            int extra;
-            switch (kind)
+            for (int state = 0; state < destination.Length; state++)
             {
-                case 0:
-                    baseValue = ZstdFormat.LiteralLengthBase[e.Symbol];
-                    extra = ZstdFormat.LiteralLengthBits[e.Symbol];
-                    break;
-                case 1:
-                    baseValue = 1u << e.Symbol;
-                    extra = e.Symbol;
-                    break;
-                default:
-                    baseValue = ZstdFormat.MatchLengthBase[e.Symbol];
-                    extra = ZstdFormat.MatchLengthBits[e.Symbol];
-                    break;
+                FseEntry e = entries[state];
+                destination[state] = new SequenceEntry(0, e.Baseline + shift, e.NumBits, e.Symbol);
             }
 
-            array[state] = new SequenceEntry { Base = baseValue, Next = (ushort)(e.Baseline + (kind << MaxAccuracyLog)), NumBits = e.NumBits, Extra = (byte)extra };
+            return;
         }
 
-        Volatile.Write(ref _sequenceKind, kind);
-        return array;
+        uint[] bases = kind == 0 ? ZstdFormat.LiteralLengthBase : ZstdFormat.MatchLengthBase;
+        byte[] bits = kind == 0 ? ZstdFormat.LiteralLengthBits : ZstdFormat.MatchLengthBits;
+        for (int state = 0; state < destination.Length; state++)
+        {
+            FseEntry e = entries[state];
+            destination[state] = new SequenceEntry(bases[e.Symbol], e.Baseline + shift, e.NumBits, bits[e.Symbol]);
+        }
     }
 
     /// <summary>Gets the rows of the table, indexed by state.</summary>
