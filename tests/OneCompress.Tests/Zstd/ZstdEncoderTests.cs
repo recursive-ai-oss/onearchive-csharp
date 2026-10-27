@@ -106,6 +106,20 @@ public class ZstdEncoderTests
     }
 
     [Fact]
+    public void MidLevelsFindMoreThanTheFastLevels()
+    {
+        // Repeated stretches at distances of a few bytes up to several hundred kilobytes: every strategy has something to find.
+        byte[] data = Text(700_000, 21);
+        int fast = Zstd.Zstd.Compress(data, new ZstdCompressionOptions { Level = 1 }).Length;
+        for (int level = 5; level <= 15; level++)
+        {
+            byte[] frame = Zstd.Zstd.Compress(data, new ZstdCompressionOptions { Level = level });
+            Assert.True(frame.Length < fast, $"level {level}: {frame.Length} bytes against {fast} at level 1");
+            Assert.True(Zstd.Zstd.Decompress(frame).AsSpan().SequenceEqual(data), $"level {level}");
+        }
+    }
+
+    [Fact]
     public void LevelsAboveTheImplementedRangeAreRejectedClearly()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = 16 }));

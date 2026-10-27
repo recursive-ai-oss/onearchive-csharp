@@ -5,9 +5,10 @@ namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>
 /// The greedy, lazy, lazy2 and binary-tree lazy2 strategies. Every position is entered into a hash table keyed on
-/// <see cref="ZstdCompressionParameters.MinMatch"/> bytes. Positions with the same hash form a chain (greedy, lazy, lazy2) or a
-/// binary search tree ordered by the bytes that follow (binary-tree lazy2); a search walks at most
-/// <c>1 &lt;&lt; SearchLog</c> of them and keeps the match with the best gain. The strategies differ in how the parse uses the
+/// <see cref="ZstdCompressionParameters.MinMatch"/> bytes. Greedy, lazy and lazy2 keep, for each hash, a short row of the newest
+/// positions with one tag byte per entry, so a search compares sixteen tags at once and touches the data only for entries that
+/// probably match; binary-tree lazy2 keeps a binary search tree per hash, ordered by the bytes that follow. A search visits at most
+/// <c>1 &lt;&lt; SearchLog</c> candidates and keeps the match with the best gain. The strategies differ in how the parse uses the
 /// search: greedy takes the first match found; lazy and lazy2 look one or two positions ahead and defer a match when a later
 /// one is clearly better (the classic lazy evaluation of LZ77 parsers, as in deflate's levels 4 to 9).
 /// </summary>
@@ -39,6 +40,16 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     // With nothing found the step grows by one for every 2^SkipShift bytes since the last match.
     private const int SkipShift = 8;
 
+    // Marks a stored tree position that was entered with a shortened comparison length (see TreeWalk).
+    private const uint TaintBit = 0x80000000u;
+    private const uint PositionMask = 0x7FFFFFFFu;
+
+    private byte[] _tags = [];
+    private uint[] _slots = [];
+    private byte[] _heads = [];
+    private int _rowLog;
+    private int _rowBits;
+    private int _rowMask;
     private uint[] _head = [];
     private uint[] _links = [];
     private uint[] _scratch = [];
@@ -76,14 +87,28 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         _minMatch = Math.Clamp(parameters.MinMatch, 3, 8);
         _shift = 64 - (8 * _minMatch);
         _hashLog = Math.Clamp(parameters.HashLog, 6, 26);
-        _linkLog = Math.Clamp(_tree ? parameters.ChainLog - 1 : parameters.ChainLog, 4, 25);
         _attempts = 1 << Math.Clamp(parameters.SearchLog, 0, 12);
         _nice = 256;
         _windowSize = parameters.WindowSize;
         _next = 1;
-
-        Prepare(ref _head, 1 << _hashLog);
-        Prepare(ref _links, (_tree ? 2 : 1) << _linkLog);
+        if (_tree)
+        {
+            _linkLog = Math.Clamp(parameters.ChainLog - 1, 4, 25);
+            Prepare(ref _head, 1 << _hashLog);
+            Prepare(ref _links, 2 << _linkLog);
+        }
+        else
+        {
+            // Rows of 16, 32 or 64 entries, as wide as the search is deep; the table holds 2^hashLog entries in all.
+            _rowLog = Math.Clamp(parameters.SearchLog, 4, 6);
+            _rowMask = (1 << _rowLog) - 1;
+            _rowBits = Math.Max(_hashLog - _rowLog, 1);
+            _attempts = Math.Min(_attempts, 1 << _rowLog);
+            int rows = 1 << _rowBits;
+            Prepare(ref _tags, rows << _rowLog);
+            Prepare(ref _slots, rows << _rowLog);
+            Prepare(ref _heads, rows);
+        }
 
         _dictionary = dictionary;
         _dictionaryIndex = null;
@@ -94,6 +119,18 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
             _dictionaryChainSize = 1 << chainLog;
             _dictionaryHashShift = _shift;
             _dictionaryIndex = dictionary.GetChainIndex(_minMatch, _dictionaryHashLog, chainLog);
+        }
+    }
+
+    private static void Prepare(ref byte[] table, int size)
+    {
+        if (table.Length < size)
+        {
+            table = new byte[size];
+        }
+        else
+        {
+            Array.Clear(table, 0, size);
         }
     }
 
@@ -113,37 +150,51 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     public override void Slide(int delta)
     {
         uint d = (uint)delta;
+        _next = Math.Max(1, _next - delta);
+        if (!_tree)
+        {
+            // Rows are rings of positions; only the positions change.
+            uint[] slots = _slots;
+            int count = 1 << (_rowBits + _rowLog);
+            for (int i = 0; i < count; i++)
+            {
+                slots[i] = Rebase(slots[i], d);
+            }
+
+            return;
+        }
+
         uint[] head = _head;
         int headSize = 1 << _hashLog;
         for (int i = 0; i < headSize; i++)
         {
-            uint e = head[i];
-            head[i] = e > d ? e - d : 0;
+            head[i] = Rebase(head[i], d);
         }
 
-        // A link is stored at the slot of its position modulo the table size, so moving every position down by delta turns
+        // A node is stored at the slot of its position modulo the table size, so moving every position down by delta turns
         // the table around by delta slots as well.
-        int per = _tree ? 2 : 1;
-        int slots = 1 << _linkLog;
-        int size = slots * per;
+        int slotCount = 1 << _linkLog;
+        int size = slotCount * 2;
         if (_scratch.Length < size)
         {
             _scratch = new uint[size];
         }
 
         Array.Copy(_links, _scratch, size);
-        int rotation = (int)(d & (uint)(slots - 1));
-        for (int i = 0; i < slots; i++)
+        int rotation = (int)(d & (uint)(slotCount - 1));
+        for (int i = 0; i < slotCount; i++)
         {
-            int source = ((i + rotation) & (slots - 1)) * per;
-            for (int k = 0; k < per; k++)
-            {
-                uint e = _scratch[source + k];
-                _links[(i * per) + k] = e > d ? e - d : 0;
-            }
+            int source = ((i + rotation) & (slotCount - 1)) * 2;
+            _links[i * 2] = Rebase(_scratch[source], d);
+            _links[(i * 2) + 1] = Rebase(_scratch[source + 1], d);
         }
+    }
 
-        _next = Math.Max(1, _next - delta);
+    // Moves a stored position down by d; positions that fall off the start become empty. The tree's taint mark is kept.
+    private static uint Rebase(uint stored, uint d)
+    {
+        uint position = stored & PositionMask;
+        return position > d ? (position - d) | (stored & TaintBit) : 0;
     }
 
     /// <inheritdoc />
@@ -291,82 +342,17 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
 
         int budget = _attempts;
         int minimum = _minMatch;
-        int h = Hash(window, p);
         if (!_tree)
         {
-            uint[] head = _head;
-            uint[] chain = _links;
-            int mask = (1 << _linkLog) - 1;
-            int next = _next;
-            while (next < p)
-            {
-                // Catch up: enter the positions skipped over by a match or a step.
-                int hq = Hash(window, next);
-                Raw.Set(chain, next & mask, Raw.Get(head, hq));
-                Raw.Set(head, hq, (uint)next);
-                next++;
-            }
-
-            uint candidate = Raw.Get(head, h);
-            Raw.Set(chain, p & mask, candidate);
-            Raw.Set(head, h, (uint)p);
+            CatchUpRows(window, p);
+            SearchRow(window, p, end, ref budget, ref bestLength, ref bestOffset, ref bestGain);
             _next = p + 1;
-
-            int low = Math.Max(p - mask - 1, 0);
-            int searchedLength = Math.Max(bestLength, minimum - 1);
-            while (candidate != 0 && (long)p - candidate <= windowSize && budget > 0)
-            {
-                budget--;
-                int c = (int)candidate;
-                if (p + searchedLength >= end)
-                {
-                    break;
-                }
-
-                if (Raw.ByteAt(window, c + searchedLength) == Raw.ByteAt(window, p + searchedLength))
-                {
-                    int length = ZstdFastMatchFinder.Count(window, c, p, end);
-                    if (length > searchedLength)
-                    {
-                        uint distance = (uint)(p - c);
-                        int g = (4 * length) - BitOperations.Log2(distance);
-                        if (g > bestGain)
-                        {
-                            bestGain = g;
-                            bestLength = length;
-                            bestOffset = distance;
-                            searchedLength = length;
-                        }
-                    }
-                }
-
-                // A link is only good while the slot still belongs to this position; an older candidate is used but not followed.
-                if (c <= low)
-                {
-                    break;
-                }
-
-                candidate = Raw.Get(chain, c & mask);
-            }
         }
         else
         {
-            // Only positions with a full nice length of bytes after them enter the tree, so that every node is ordered by the same
-            // number of bytes; the last few positions of a block are entered when the next block has made room, and are only
-            // searched from until then.
-            int insertLimit = end - _nice;
-            if (p <= insertLimit)
-            {
-                CatchUpTree(window, p, end);
-                TreeWalk(window, p, end, true, true, ref budget, ref bestLength, ref bestOffset, ref bestGain);
-                _next = p + 1;
-            }
-            else
-            {
-                CatchUpTree(window, insertLimit + 1, end);
-                TreeWalk(window, p, end, false, true, ref budget, ref bestLength, ref bestOffset, ref bestGain);
-            }
-
+            CatchUpTree(window, p, end);
+            TreeWalk(window, p, end, true, ref budget, ref bestLength, ref bestOffset, ref bestGain);
+            _next = p + 1;
             if (bestLength > 0 && bestLength >= Math.Min(_nice, end - p) && bestOffset <= (uint)p)
             {
                 // The tree compares no further than the nice length; the parse wants the whole match.
@@ -508,6 +494,102 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ulong RowHash(ReadOnlySpan<byte> window, int index) => (Raw.ReadUInt64(window, index) << _shift) * 0x9E3779B185EBCA87UL;
+
+    // Enters position q into its row: the newest entry goes in front of the older ones (the row is a ring, its head moves down by one).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void InsertRow(ulong hash, int q)
+    {
+        int row = (int)(hash >> (64 - _rowBits));
+        int slot = (row << _rowLog) + ((Raw.Get(_heads, row) - 1) & _rowMask);
+        Raw.Set(_heads, row, (byte)(slot & _rowMask));
+        Raw.Set(_tags, slot, (byte)(hash >> (56 - _rowBits)));
+        Raw.Set(_slots, slot, (uint)q);
+    }
+
+    // Enters the positions between the last entered one and p: those skipped over by a match or a step.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CatchUpRows(ReadOnlySpan<byte> window, int p)
+    {
+        for (int q = _next; q < p; q++)
+        {
+            InsertRow(RowHash(window, q), q);
+        }
+    }
+
+    // Visits the entries of p's row whose tag equals p's, newest first, and enters p. The tags are a filter: one byte per entry, compared
+    // sixteen at a time, so a search touches the window only for entries that probably match. The mask of equal tags is the same
+    // whether it is computed with vectors or without.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void SearchRow(ReadOnlySpan<byte> window, int p, int end, ref int budget, ref int bestLength, ref uint bestOffset, ref int bestGain)
+    {
+        ulong hash = RowHash(window, p);
+        int row = (int)(hash >> (64 - _rowBits));
+        byte tag = (byte)(hash >> (56 - _rowBits));
+        int rowBase = row << _rowLog;
+        int head = Raw.Get(_heads, row);
+        int size = _rowMask + 1;
+        ulong equal = 0;
+        for (int i = 0; i < size; i += 16)
+        {
+            equal |= (ulong)Raw.EqualMask16(_tags, rowBase + i, tag) << i;
+        }
+
+        // Bit 0 of the rotated mask is the head, the newest entry.
+        ulong all = size == 64 ? ulong.MaxValue : (1UL << size) - 1;
+        ulong mask = ((equal >> head) | (equal << ((size - head) & 63))) & all;
+        uint[] slots = _slots;
+        int searched = Math.Max(bestLength, _minMatch - 1);
+
+        // Entries run from the newest to the oldest, so the first one that is empty (0) or beyond the window ends the search.
+        uint oldest = (uint)Math.Max(p - _windowSize, 1);
+        int remaining = budget;
+        if (p + searched < end)
+        {
+            while (mask != 0 && remaining > 0)
+            {
+                int k = BitOperations.TrailingZeroCount(mask);
+                mask &= mask - 1;
+                uint candidate = Raw.Get(slots, rowBase + ((head + k) & _rowMask));
+                if (candidate < oldest)
+                {
+                    break;
+                }
+
+                remaining--;
+                int c = (int)candidate;
+
+                // A match longer than `searched` agrees with p on the four bytes that end at index `searched`; most candidates fail this.
+                if (searched >= 3
+                    ? Raw.ReadUInt32(window, c + searched - 3) == Raw.ReadUInt32(window, p + searched - 3)
+                    : Raw.ByteAt(window, c + searched) == Raw.ByteAt(window, p + searched))
+                {
+                    int length = ZstdFastMatchFinder.Count(window, c, p, end);
+                    if (length > searched)
+                    {
+                        uint distance = (uint)(p - c);
+                        int g = (4 * length) - BitOperations.Log2(distance);
+                        if (g > bestGain)
+                        {
+                            bestGain = g;
+                            bestLength = length;
+                            bestOffset = distance;
+                            searched = length;
+                            if (p + searched >= end)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        budget = remaining;
+        InsertRow(hash, p);
+    }
+
     // Enters the positions between the last entered one and p into the tree without looking for matches.
     private void CatchUpTree(ReadOnlySpan<byte> window, int p, int end)
     {
@@ -518,7 +600,7 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         while (next < p)
         {
             int budget = _attempts;
-            TreeWalk(window, next, end, true, false, ref budget, ref length, ref offset, ref gain);
+            TreeWalk(window, next, end, false, ref budget, ref length, ref offset, ref gain);
             next++;
         }
 
@@ -529,31 +611,37 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     // order of increasing length. The tree orders the strings starting at its positions; the new node takes the place of the
     // old root and the nodes met are split into those below and above it. When a comparison reaches the longest length the
     // search will use (the end of the block or the nice length) the new node takes over the children of the node compared.
-    private void TreeWalk(ReadOnlySpan<byte> window, int p, int end, bool insert, bool record, ref int budget, ref int bestLength, ref uint bestOffset, ref int bestGain)
+    //
+    // A node entered within the nice length of the end of a block was ordered by fewer bytes than the others, so what its
+    // place in the tree implies about common prefixes does not hold; such nodes carry TaintBit in their stored value, and a walk
+    // compares them from the first byte and forgets the prefix lengths it has relied on so far.
+    private void TreeWalk(ReadOnlySpan<byte> window, int p, int end, bool record, ref int budget, ref int bestLength, ref uint bestOffset, ref int bestGain)
     {
         uint[] head = _head;
         uint[] tree = _links;
         int mask = (1 << _linkLog) - 1;
         int h = Hash(window, p);
+        int maxLength = Math.Min(end - p, _nice);
         uint candidate = Raw.Get(head, h);
-        if (insert)
-        {
-            Raw.Set(head, h, (uint)p);
-        }
-
+        Raw.Set(head, h, maxLength < _nice ? (uint)p | TaintBit : (uint)p);
         int smallSlot = (p & mask) * 2;
         int largeSlot = smallSlot + 1;
         int low = Math.Max(p - mask - 1, 0);
-        int maxLength = insert ? _nice : Math.Min(end - p, _nice);
         int smallLength = 0;
         int largeLength = 0;
         int minimum = _minMatch;
         long windowSize = _windowSize;
-        while (candidate != 0 && (long)p - candidate <= windowSize && budget > 0)
+        while (candidate != 0 && budget > 0)
         {
+            int c = (int)(candidate & PositionMask);
+            if ((long)p - c > windowSize)
+            {
+                break;
+            }
+
             budget--;
-            int c = (int)candidate;
-            int length = Math.Min(smallLength, largeLength);
+            bool tainted = (candidate & TaintBit) != 0;
+            int length = tainted ? 0 : Math.Min(smallLength, largeLength);
             length += ZstdFastMatchFinder.Count(window, c + length, p + length, p + maxLength);
             if (record && length >= minimum)
             {
@@ -576,11 +664,6 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
             int node = (c & mask) * 2;
             if (length >= maxLength)
             {
-                if (!insert)
-                {
-                    return;
-                }
-
                 Raw.Set(tree, smallSlot, Raw.Get(tree, node));
                 Raw.Set(tree, largeSlot, Raw.Get(tree, node + 1));
                 return;
@@ -589,32 +672,29 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
             // Bounds: length < maxLength <= end - p, so both reads are inside the block.
             if (Raw.ByteAt(window, c + length) < Raw.ByteAt(window, p + length))
             {
-                if (insert)
+                Raw.Set(tree, smallSlot, candidate);
+                smallSlot = node + 1;
+                candidate = Raw.Get(tree, smallSlot);
+                smallLength = tainted ? 0 : length;
+                if (tainted)
                 {
-                    Raw.Set(tree, smallSlot, candidate);
-                    smallSlot = node + 1;
+                    largeLength = 0;
                 }
-
-                candidate = Raw.Get(tree, node + 1);
-                smallLength = length;
             }
             else
             {
-                if (insert)
+                Raw.Set(tree, largeSlot, candidate);
+                largeSlot = node;
+                candidate = Raw.Get(tree, largeSlot);
+                largeLength = tainted ? 0 : length;
+                if (tainted)
                 {
-                    Raw.Set(tree, largeSlot, candidate);
-                    largeSlot = node;
+                    smallLength = 0;
                 }
-
-                candidate = Raw.Get(tree, node);
-                largeLength = length;
             }
         }
 
-        if (insert)
-        {
-            Raw.Set(tree, smallSlot, 0u);
-            Raw.Set(tree, largeSlot, 0u);
-        }
+        Raw.Set(tree, smallSlot, 0u);
+        Raw.Set(tree, largeSlot, 0u);
     }
 }
