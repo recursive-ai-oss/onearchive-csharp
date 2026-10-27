@@ -110,6 +110,21 @@ public sealed class ZstdCompressionDictionary
         return new ZstdCompressionDictionary(id, content.ToArray(), ZstdRepeatOffsets.Initial, null, null, null, null);
     }
 
+    /// <summary>
+    /// Trains a Zstandard-format dictionary from sample payloads with the COVER family of algorithms. The result depends only on the
+    /// samples and the options. See <see cref="ZstdCoverTrainer"/> for the algorithm and its pieces.
+    /// </summary>
+    /// <param name="samples">The training samples; empty samples are ignored.</param>
+    /// <param name="options">The options; null means the defaults (FastCover with parameter search, 110 KiB).</param>
+    /// <param name="cancellationToken">Cancels a long search.</param>
+    /// <returns>The trained dictionary, ready to compress with. Use <see cref="ZstdDictionary.Train"/> for the bytes to save.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="samples"/> is null.</exception>
+    /// <exception cref="ArgumentException">An option is out of range.</exception>
+    /// <exception cref="CompressionDictionaryException">The samples hold fewer than 8 bytes in total.</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    public static ZstdCompressionDictionary Train(IReadOnlyList<ReadOnlyMemory<byte>> samples, ZstdDictionaryTrainingOptions? options = null, CancellationToken cancellationToken = default) =>
+        Parse(ZstdCoverTrainer.Train(samples, options, cancellationToken));
+
     private static FseEncodingTable ReadTable(ReadOnlySpan<byte> data, ref int p, int maxSymbol, int maxAccuracyLog)
     {
         Span<short> counts = stackalloc short[256];

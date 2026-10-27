@@ -61,6 +61,30 @@ if (withDictionary.Length >= 40 || !Zstd.Decompress(withDictionary, new ZstdDeco
     return 1;
 }
 
+// Dictionary training: small records in, a dictionary that loads in both directions and helps, the same bytes on a second run.
+var trainingSamples = new List<ReadOnlyMemory<byte>>();
+for (int i = 0; i < 300; i++)
+{
+    trainingSamples.Add(System.Text.Encoding.ASCII.GetBytes($"{{\"id\":{(i * 7919) % 1000},\"kind\":\"lantern\",\"pos\":[{i % 17},{i % 29}],\"state\":\"{(i % 3 == 0 ? "active" : "idle")}\"}}"));
+}
+
+var trainingOptions = new ZstdDictionaryTrainingOptions { DictionarySize = 2048, MaxDegreeOfParallelism = 2 };
+byte[] trained = ZstdDictionary.Train(trainingSamples, trainingOptions);
+if (!trained.AsSpan().SequenceEqual(ZstdDictionary.Train(trainingSamples, trainingOptions)))
+{
+    Console.Error.WriteLine("zstd dictionary training is not repeatable");
+    return 1;
+}
+
+var trainedForCompression = ZstdCompressionDictionary.Parse(trained);
+var trainedForDecoding = ZstdDictionary.Parse(trained);
+byte[] recordFrame = Zstd.Compress(trainingSamples[5].Span, new ZstdCompressionOptions { Level = 3, Dictionary = trainedForCompression });
+if (recordFrame.Length >= trainingSamples[5].Length / 2 || !Zstd.Decompress(recordFrame, new ZstdDecompressionOptions { Dictionary = trainedForDecoding }).AsSpan().SequenceEqual(trainingSamples[5].Span))
+{
+    Console.Error.WriteLine("zstd trained dictionary failed");
+    return 1;
+}
+
 var written = new MemoryStream();
 using (var compressing = new ZstdStream(written, new ZstdCompressionOptions { Level = 1 }, leaveOpen: true))
 {

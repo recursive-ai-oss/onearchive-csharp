@@ -27,6 +27,7 @@ internal static class FuzzTargets
         Lz4Targets.FrameWithDictionary,
         Lz4Targets.Block,
         ZstdEncoderTargets.RoundTrip,
+        ZstdTrainingTargets.RoundTrip,
         Lz4EncoderTargets.Frame,
         Lz4EncoderTargets.Block,
     ];

@@ -8,6 +8,7 @@
 #   --columns LIST     comma list of: jit aot scalar noavx threadsN wasm   (default: jit,aot,scalar,noavx,threadsN)
 #   --dotnet DIR       directory holding the dotnet executable (default: whatever is on PATH)
 #   --node DIR         Node.js prefix, for the wasm column (default: $HOME/onearchive/tools/node, then PATH)
+#   --filter TEXT      run only the entries whose name contains TEXT (for example zstd-train)
 #   --include-opt-in   also run the opt-in divergent entries (to demonstrate the comparison failing)
 #
 # Columns: jit = JIT, 1 thread; aot = NativeAOT publish; scalar = DOTNET_EnableHWIntrinsic=0;
@@ -25,6 +26,7 @@ while [ $# -gt 0 ]; do
     --dotnet) dotnet_dir="$2"; shift 2 ;;
     --node) node_dir="$2"; shift 2 ;;
     --include-opt-in) extra+=(--include-opt-in); shift ;;
+    --filter) extra+=(--filter "$2"); shift 2 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done

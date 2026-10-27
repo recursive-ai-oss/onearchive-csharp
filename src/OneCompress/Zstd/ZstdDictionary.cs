@@ -90,6 +90,21 @@ public sealed class ZstdDictionary
         return new ZstdDictionary(id, content.ToArray(), null, null, null, null, null);
     }
 
+    /// <summary>
+    /// Trains a Zstandard-format dictionary from sample payloads with the COVER family of algorithms. The result depends only on the
+    /// samples and the options. See <see cref="ZstdCoverTrainer"/> for the algorithm and its pieces.
+    /// </summary>
+    /// <param name="samples">The training samples; empty samples are ignored.</param>
+    /// <param name="options">The options; null means the defaults (FastCover with parameter search, 110 KiB).</param>
+    /// <param name="cancellationToken">Cancels a long search.</param>
+    /// <returns>The dictionary file's bytes, ready to save or to pass to <see cref="Parse"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="samples"/> is null.</exception>
+    /// <exception cref="ArgumentException">An option is out of range.</exception>
+    /// <exception cref="CompressionDictionaryException">The samples hold fewer than 8 bytes in total.</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    public static byte[] Train(IReadOnlyList<ReadOnlyMemory<byte>> samples, ZstdDictionaryTrainingOptions? options = null, CancellationToken cancellationToken = default) =>
+        ZstdCoverTrainer.Train(samples, options, cancellationToken);
+
     private static ZstdDictionary ParseFormatted(ReadOnlySpan<byte> data)
     {
         const string Format = "zstd dictionary";
