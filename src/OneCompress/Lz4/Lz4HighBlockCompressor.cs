@@ -298,14 +298,18 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int Hash(uint fourBytes) => (int)((fourBytes * 2654435761u) >> (32 - HashLog));
 
-    // Indexes every position from the first one not yet indexed up to, not including, target.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void InsertUpTo(ReadOnlySpan<byte> src, int target)
+    // Indexes every position from the first one not yet indexed up to, not including, target, remembering the values it
+    // overwrites (see CompressParked).
+    private void InsertRecording(ReadOnlySpan<byte> src, int target)
     {
+        if (target <= _next)
+        {
+            return;
+        }
+
         uint org = (uint)_origin;
         uint[] head = _head;
         ushort[] chain = _chain;
-        bool record = _recording;
         for (int p = _next; p < target; p++)
         {
             int h = Hash(Lz4EncRaw.Read32(src, p));
@@ -313,41 +317,71 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
             int prev = (int)(old - org);
             int delta = p - prev;
             int slot = (int)((org + (uint)p) & ChainMask);
-            if (record)
-            {
-                _undoHead[p - _undoBase] = old;
-                _undoChain[p - _undoBase] = Lz4EncRaw.Get(chain, slot);
-            }
-
+            _undoHead[p - _undoBase] = old;
+            _undoChain[p - _undoBase] = Lz4EncRaw.Get(chain, slot);
             Lz4EncRaw.Put(chain, slot, (prev >= 0 && delta <= Lz4Format.MaxOffset) ? (ushort)delta : (ushort)0);
             Lz4EncRaw.Put(head, h, org + (uint)p);
         }
 
-        if (target > _next)
-        {
-            _next = target;
-        }
+        _next = target;
     }
 
-    // The longest match for src[ip..] that is longer than `best`, searching at most `attempts` candidates on the chain.
-    // Returns the length (or `best` unchanged when nothing longer was found) and the offset of the match found.
+    // Indexes every position not yet indexed before `position`, then finds the longest match for src[position..] that is longer
+    // than `best`, searching at most `attempts` candidates on the chain. Returns the length (or `best` unchanged when nothing
+    // longer was found) and the offset of the match found.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int Find(ReadOnlySpan<byte> src, int position, int matchLimit, int best, int attempts, int nice, ref int offset)
     {
-        if (position + best >= matchLimit)
+        int from = _next;
+        if (_recording)
         {
-            return best;
+            InsertRecording(src, position);
+            from = position;
         }
 
-        // Native-width positions keep the address arithmetic free of sign extensions; every index below is a position inside
-        // the window or a hash/mask bounded by the table sizes.
-        uint org = (uint)_origin;
-        var head = new Lz4Table(_head);
-        var chain = new Lz4Table16(_chain);
-        nint ip = position;
-        uint first = Lz4EncRaw.Read32(src, ip);
+        long found = FindChain(new Lz4In(src), new Lz4Table(_head), new Lz4Table16(_chain), (uint)_origin, from, position, matchLimit, best, attempts, nice, offset);
+        if (position > _next)
+        {
+            _next = position;
+        }
+
+        offset = (int)found;
+        return (int)(found >> 32);
+    }
+
+    // The chain walk, in a method of its own so that its few live values stay in registers instead of sharing the parser's.
+    // Returns the length in the high 32 bits and the offset in the low 32 (the offset passed in when nothing longer is found).
+    // Positions are native-width so the address arithmetic needs no sign extensions; every index below is a position inside
+    // the window or a hash/mask bounded by the table sizes.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.NoInlining)]
+    private static long FindChain(Lz4In src, Lz4Table head, Lz4Table16 chain, uint org, nint from, nint ip, nint matchLimit, int best, int attempts, int nice, int offset)
+    {
+        // Index the positions before ip, in order, so that the chains the search follows include every one of them.
+        for (nint p = from; p < ip; p++)
+        {
+            nint h = Hash(src.Read32(p));
+            uint old = head.Get(h);
+            uint here = org + (uint)p;
+            // A link further back than 64 KiB (or to before the window, or an empty slot) ends the chain. The test is
+            // arithmetic rather than a branch: whether a link is that old is as unpredictable as the data.
+            uint delta = here - old;
+            uint valid = (delta - 1) < (uint)Lz4Format.MaxOffset ? 1u : 0u;
+            chain.Put((nint)(here & ChainMask), (ushort)(delta & (0u - valid)));
+            head.Put(h, org + (uint)p);
+        }
+
+        if (ip + best >= matchLimit)
+        {
+            return ((long)best << 32) | (uint)offset;
+        }
+
+        uint first = src.Read32(ip);
+        // The next two positions are searched soon, and their head slots are scattered over a table that does not fit the
+        // first-level cache; asking for them now hides the wait.
+        head.Prefetch(Hash(src.Read32(ip + 1)));
+        head.Prefetch(Hash(src.Read32(ip + 2)));
         uint candidate = head.Get(Hash(first));
-        byte tail = Lz4EncRaw.Get(src, ip + best);
+        byte tail = src.Get(ip + best);
         while (attempts-- > 0)
         {
             // The candidate must lie 1 to 65535 bytes back; older entries, entries from before the window and empty slots all fail.
@@ -358,19 +392,19 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
             }
 
             nint idx = ip - distance;
-            if (Lz4EncRaw.Get(src, idx + best) == tail && Lz4EncRaw.Read32(src, idx) == first)
+            if (src.Get(idx + best) == tail && src.Read32(idx) == first)
             {
-                int length = Lz4Format.MinMatch + Lz4EncRaw.CommonLength(src, (int)idx + Lz4Format.MinMatch, position + Lz4Format.MinMatch, matchLimit);
+                int length = Lz4Format.MinMatch + (int)src.CommonLength(idx + Lz4Format.MinMatch, ip + Lz4Format.MinMatch, matchLimit);
                 if (length > best)
                 {
                     best = length;
                     offset = (int)distance;
-                    if (best >= nice || position + best >= matchLimit)
+                    if (best >= nice || ip + best >= matchLimit)
                     {
                         break;
                     }
 
-                    tail = Lz4EncRaw.Get(src, ip + best);
+                    tail = src.Get(ip + best);
                 }
             }
 
@@ -383,7 +417,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
             candidate -= delta;
         }
 
-        return best;
+        return ((long)best << 32) | (uint)offset;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -404,7 +438,6 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
 
         while (ip <= mfLimit)
         {
-            InsertUpTo(src, ip);
             int offset = 0;
             int length = Find(src, ip, matchLimit, Lz4Format.MinMatch - 1, _attempts, _nice, ref offset);
             if (length < Lz4Format.MinMatch)
@@ -427,7 +460,6 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
                     break;
                 }
 
-                InsertUpTo(src, ip + 1);
                 int offset2 = 0;
                 int length2 = Find(src, ip + 1, matchLimit, length, _attempts, _nice, ref offset2);
                 if (length2 <= length)
@@ -435,7 +467,6 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
                     // Two bytes on, a match that ends further than two literals' cost beyond this one also wins.
                     if (_lookahead && ip + 2 <= mfLimit)
                     {
-                        InsertUpTo(src, ip + 2);
                         int offset3 = 0;
                         int length3 = Find(src, ip + 2, matchLimit, length + 1, _attempts, _nice, ref offset3);
                         if (length3 > length + 1)
@@ -525,7 +556,6 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
                 bool dominated = opt[cur + 1].Price <= here.Price && cur + MinSequence <= last && opt[cur + MinSequence].Price <= here.Price + MatchPrice(Lz4Format.MinMatch);
                 if (!dominated && ip + cur <= mfLimit)
                 {
-                    InsertUpTo(src, ip + cur);
                     length = Find(src, ip + cur, matchLimit, Lz4Format.MinMatch - 1, _attempts, _nice, ref offset);
                 }
             }

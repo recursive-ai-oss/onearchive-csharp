@@ -217,6 +217,10 @@ internal readonly ref struct Lz4Table
     /// <summary>Writes entry <paramref name="index"/>; the caller guarantees <c>0 &lt;= index &lt; table length</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Put(nint index, uint value) => _array[index] = value;
+
+    /// <summary>A hint that entry <paramref name="index"/> will be read soon; it changes no result. The caller guarantees <c>0 &lt;= index &lt; table length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Prefetch(nint index) => _ = _array[index];
 #else
     private readonly ref uint _first;
 
@@ -229,6 +233,16 @@ internal readonly ref struct Lz4Table
     /// <summary>Writes entry <paramref name="index"/>; the caller guarantees <c>0 &lt;= index &lt; table length</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Put(nint index, uint value) => Unsafe.Add(ref _first, index) = value;
+
+    /// <summary>A hint that entry <paramref name="index"/> will be read soon; it changes no result. The caller guarantees <c>0 &lt;= index &lt; table length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void Prefetch(nint index)
+    {
+        if (System.Runtime.Intrinsics.X86.Sse.IsSupported)
+        {
+            System.Runtime.Intrinsics.X86.Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref _first, index)));
+        }
+    }
 #endif
 }
 
@@ -243,6 +257,10 @@ internal readonly ref struct Lz4Table16
     /// <summary>Reads entry <paramref name="index"/>; the caller guarantees <c>0 &lt;= index &lt; table length</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ushort Get(nint index) => _array[index];
+
+    /// <summary>Writes entry <paramref name="index"/>; the caller guarantees <c>0 &lt;= index &lt; table length</c> (a position masked to the table's power-of-two size).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Put(nint index, ushort value) => _array[index] = value;
 #else
     private readonly ref ushort _first;
 
@@ -251,6 +269,10 @@ internal readonly ref struct Lz4Table16
     /// <summary>Reads entry <paramref name="index"/>; the caller guarantees <c>0 &lt;= index &lt; table length</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ushort Get(nint index) => Unsafe.Add(ref _first, index);
+
+    /// <summary>Writes entry <paramref name="index"/>; the caller guarantees <c>0 &lt;= index &lt; table length</c> (a position masked to the table's power-of-two size).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Put(nint index, ushort value) => Unsafe.Add(ref _first, index) = value;
 #endif
 }
 
