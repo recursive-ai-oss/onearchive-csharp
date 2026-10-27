@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.Intrinsics.X86;
 
 namespace RecursiveAI.OneCompress.Zstd;
 
@@ -127,16 +128,17 @@ public readonly struct ZstdLongDistanceParameters
 /// candidates are verified against the bytes, extended forward and backward, and the longest one at least
 /// <see cref="ZstdLongDistanceParameters.MinMatch"/> long is reported; then the checkpoint is remembered.</para>
 /// <para>Everything is integer arithmetic on the data and the parameters, so the matches are the same on every platform. The matcher
-/// reads the data once, in order, block after block: call <see cref="FindMatches"/> for consecutive blocks and
-/// <see cref="Slide"/> when the window buffer moves. Dictionary content is not indexed. An instance is not thread-safe.</para>
+/// reads the data once, in order, block after block: call <see cref="FindMatches(ReadOnlySpan{byte}, int, int, List{ZstdLongMatch})"/> for consecutive blocks and
+/// <see cref="Slide"/> when the window buffer moves. Finding the checkpoints (<see cref="Scan"/>) only reads the data, so it can run for
+/// several ranges on several threads while one thread at a time does the matching. Dictionary content is not indexed.</para>
 /// </remarks>
 public sealed class ZstdLongDistanceMatcher
 {
     // The gear hash covers this many bytes: each step shifts the hash left one bit, so a byte's constant leaves after 64 steps.
     private const int HashSpan = 64;
 
-    // The stretches a block is cut into for the scan.
-    private const int Chains = 4;
+    // How many checkpoints ahead a table bucket is fetched.
+    private const int PrefetchDistance = 8;
 
     private static readonly ulong[] s_gear = BuildGear();
 
@@ -148,10 +150,7 @@ public sealed class ZstdLongDistanceMatcher
     private int _minMatch;
     private long _maxDistance;
 
-    // The checkpoints found by the stretches of a block, in position order within each: positions of the hashed byte, and hashes.
-    private readonly int[][] _checkpointPosition = [new int[1024], new int[1024], new int[1024], new int[1024]];
-    private readonly ulong[][] _checkpointHash = [new ulong[1024], new ulong[1024], new ulong[1024], new ulong[1024]];
-    private readonly int[] _checkpointCount = new int[Chains];
+    private ZstdLongCheckpoints? _scratch;
 
     // The constants come from the SplitMix64 sequence from a fixed seed, so they are the same everywhere.
     private static ulong[] BuildGear()
@@ -215,9 +214,54 @@ public sealed class ZstdLongDistanceMatcher
     }
 
     /// <summary>
-    /// Scans one block, remembers its checkpoints and appends the long matches that start in it. Blocks must come in order with
+    /// Finds the checkpoints of <c>window[start..end]</c> (the first step of <see cref="FindMatches(ReadOnlySpan{byte}, int, int, ZstdLongCheckpoints, ref int, List{ZstdLongMatch})"/>).
+    /// It reads the data and the parameters only, never the table, so scans of different ranges can run on different threads while
+    /// another thread is matching.
+    /// </summary>
+    /// <param name="window">The data; the <see cref="HashSpan"/> bytes before <paramref name="start"/> (as many as there are) are read too.</param>
+    /// <param name="start">Index of the first byte to scan.</param>
+    /// <param name="end">Index just past the last byte to scan.</param>
+    /// <param name="checkpoints">Receives the checkpoints, replacing what it held.</param>
+    public void Scan(ReadOnlySpan<byte> window, int start, int end, ZstdLongCheckpoints checkpoints)
+    {
+        ArgumentNullException.ThrowIfNull(checkpoints);
+        if ((uint)end > (uint)window.Length || start < 0 || start > end)
+        {
+            throw new ArgumentOutOfRangeException(nameof(end));
+        }
+
+        if (_tableSize == 0)
+        {
+            throw new InvalidOperationException("BeginFrame has not been called.");
+        }
+
+        checkpoints.Clear();
+        ulong mask = ~0UL << _rateShift;
+        ulong hash = HashBefore(window, start);
+        int j = start;
+        while (true)
+        {
+            j = ScanToCheckpoint(window, j, end, ref hash, mask);
+            if (j >= end)
+            {
+                break;
+            }
+
+            // A checkpoint before the 64th byte of the data has no full window of bytes under it and is not a position at all.
+            if (j >= HashSpan - 1)
+            {
+                ulong mixed = (hash ^ (hash >> 29)) * 0xBF58476D1CE4E5B9UL;
+                checkpoints.Add(j, (int)(mixed >> _bucketShift) << _bucketLog, (uint)mixed);
+            }
+
+            j++;
+        }
+    }
+
+    /// <summary>
+    /// Scans one block and appends the long matches that start in it, remembering its checkpoints. Blocks must come in order with
     /// no gap: each call's <paramref name="blockStart"/> is the previous call's <paramref name="blockEnd"/> (or the start of the data),
-    /// and the <see cref="HashSpan"/> bytes before a block are still in the window.
+    /// and the bytes before a block are still in the window.
     /// </summary>
     /// <param name="window">The history followed by the block. Bytes up to <paramref name="blockEnd"/> are valid.</param>
     /// <param name="blockStart">Index of the block's first byte; no match starts before it.</param>
@@ -231,24 +275,65 @@ public sealed class ZstdLongDistanceMatcher
             throw new ArgumentOutOfRangeException(nameof(blockEnd));
         }
 
-        if (_tableSize == 0)
+        _scratch ??= new ZstdLongCheckpoints();
+        Scan(window, blockStart, blockEnd, _scratch);
+        int next = 0;
+        FindMatches(window, blockStart, blockEnd, _scratch, ref next, matches);
+    }
+
+    /// <summary>
+    /// Appends the long matches that start in a block, given the checkpoints of a larger range found by <see cref="Scan"/>, and
+    /// remembers the block's checkpoints. Blocks must come in order with no gap, as for
+    /// <see cref="FindMatches(ReadOnlySpan{byte}, int, int, List{ZstdLongMatch})"/>; this is the step that must not run on two threads at once.
+    /// </summary>
+    /// <param name="window">The history followed by the block.</param>
+    /// <param name="blockStart">Index of the block's first byte; no match starts before it.</param>
+    /// <param name="blockEnd">Index just past the block's last byte; no match reaches past it.</param>
+    /// <param name="checkpoints">The checkpoints of a range that includes the block.</param>
+    /// <param name="next">The index of the first checkpoint not yet used; start at 0 for the first block of the range. Updated.</param>
+    /// <param name="matches">Receives the matches; it is not cleared.</param>
+    public void FindMatches(
+        ReadOnlySpan<byte> window,
+        int blockStart,
+        int blockEnd,
+        ZstdLongCheckpoints checkpoints,
+        ref int next,
+        List<ZstdLongMatch> matches)
+    {
+        ArgumentNullException.ThrowIfNull(checkpoints);
+        ArgumentNullException.ThrowIfNull(matches);
+        if ((uint)blockEnd > (uint)window.Length || blockStart < 0 || blockStart > blockEnd)
         {
-            throw new InvalidOperationException("BeginFrame has not been called.");
+            throw new ArgumentOutOfRangeException(nameof(blockEnd));
         }
 
-        // Step 1: find the checkpoints. The hash after byte j is a function of the 64 bytes ending at j alone, so the block is cut
-        // into four stretches that run side by side (four independent dependency chains keep the processor busy) and give the
-        // checkpoints a sequential scan would. Step 2 visits them in position order.
-        CollectCheckpoints(window, blockStart, blockEnd);
         int searchFrom = blockStart;
         int anchor = blockStart;
-        for (int c = 0; c < Chains; c++)
+        int count = checkpoints.Count;
+        int n = next;
+        while (n < count && checkpoints.PositionAt(n) < blockEnd)
         {
-            int[] positions = _checkpointPosition[c];
-            ulong[] hashes = _checkpointHash[c];
-            for (int n = 0; n < _checkpointCount[c]; n++)
+            // The bucket of a checkpoint a few steps ahead is fetched while this one is searched: the table is far larger than the cache.
+            if (n + PrefetchDistance < count)
             {
-                Checkpoint(window, positions[n] - (HashSpan - 1), hashes[n], blockStart, blockEnd, ref searchFrom, ref anchor, matches);
+                Prefetch(checkpoints.BucketAt(n + PrefetchDistance));
+            }
+
+            Checkpoint(window, checkpoints.PositionAt(n) - (HashSpan - 1), checkpoints.BucketAt(n), checkpoints.CheckAt(n), blockEnd, ref searchFrom, ref anchor, matches);
+            n++;
+        }
+
+        next = n;
+    }
+
+    // A hint to the processor only: it changes no result, so it needs no scalar twin.
+    private unsafe void Prefetch(int bucket)
+    {
+        if (Sse.IsSupported)
+        {
+            fixed (ulong* entry = &_table[bucket])
+            {
+                Sse.Prefetch0(entry);
             }
         }
     }
@@ -267,115 +352,104 @@ public sealed class ZstdLongDistanceMatcher
         return h;
     }
 
-    private void CollectCheckpoints(ReadOnlySpan<byte> window, int blockStart, int blockEnd)
+    // Runs the gear hash over window[j..end] and returns the index of the first byte after which the hash is a checkpoint (its top
+    // bits, those of mask, are zero), with the hash after that byte in hash; or end when there is none, with the hash after the last byte.
+    // A method of its own with no calls in it, so that the loop keeps everything in registers.
+    private static int ScanToCheckpoint(ReadOnlySpan<byte> window, int j, int end, ref ulong hash, ulong mask)
     {
         ulong[] gear = s_gear;
-        int rateShift = _rateShift;
-        for (int c = 0; c < Chains; c++)
-        {
-            _checkpointCount[c] = 0;
-        }
+        ulong h = hash;
 
-        int length = blockEnd - blockStart;
-        int stretch = length / Chains;
-        int lockstep = stretch >= 64 ? stretch : 0;
-        if (lockstep > 0)
+        // Bounds: j + 8 <= end <= window.Length for the eight-byte read; gear indexes are single bytes into a table of 256.
+        while (j + 8 <= end)
         {
-            int s0 = blockStart;
-            int s1 = s0 + stretch;
-            int s2 = s1 + stretch;
-            int s3 = s2 + stretch;
-            ulong h0 = HashBefore(window, s0);
-            ulong h1 = HashBefore(window, s1);
-            ulong h2 = HashBefore(window, s2);
-            ulong h3 = HashBefore(window, s3);
-            for (int t = 0; t < stretch; t++)
+            ulong v = Raw.ReadUInt64(window, j);
+            ulong h0 = (h << 1) + Raw.Get(gear, (int)(v & 0xFF));
+            if ((h0 & mask) == 0)
             {
-                // Bounds: s3 + t < blockEnd <= window.Length (the last stretch is at least as long as the others), and the
-                // gear index is a byte into a table of 256.
-                h0 = (h0 << 1) + Raw.Get(gear, Raw.ByteAt(window, s0 + t));
-                h1 = (h1 << 1) + Raw.Get(gear, Raw.ByteAt(window, s1 + t));
-                h2 = (h2 << 1) + Raw.Get(gear, Raw.ByteAt(window, s2 + t));
-                h3 = (h3 << 1) + Raw.Get(gear, Raw.ByteAt(window, s3 + t));
-                if ((h0 >> rateShift) == 0)
-                {
-                    AddCheckpoint(0, s0 + t, h0);
-                }
-
-                if ((h1 >> rateShift) == 0)
-                {
-                    AddCheckpoint(1, s1 + t, h1);
-                }
-
-                if ((h2 >> rateShift) == 0)
-                {
-                    AddCheckpoint(2, s2 + t, h2);
-                }
-
-                if ((h3 >> rateShift) == 0)
-                {
-                    AddCheckpoint(3, s3 + t, h3);
-                }
+                hash = h0;
+                return j;
             }
 
-            // The last stretch runs on to the end of the block.
-            for (int j = s3 + stretch; j < blockEnd; j++)
+            ulong h1 = (h0 << 1) + Raw.Get(gear, (int)((v >> 8) & 0xFF));
+            if ((h1 & mask) == 0)
             {
-                h3 = (h3 << 1) + Raw.Get(gear, Raw.ByteAt(window, j));
-                if ((h3 >> rateShift) == 0)
-                {
-                    AddCheckpoint(3, j, h3);
-                }
+                hash = h1;
+                return j + 1;
             }
 
-            return;
+            ulong h2 = (h1 << 1) + Raw.Get(gear, (int)((v >> 16) & 0xFF));
+            if ((h2 & mask) == 0)
+            {
+                hash = h2;
+                return j + 2;
+            }
+
+            ulong h3 = (h2 << 1) + Raw.Get(gear, (int)((v >> 24) & 0xFF));
+            if ((h3 & mask) == 0)
+            {
+                hash = h3;
+                return j + 3;
+            }
+
+            ulong h4 = (h3 << 1) + Raw.Get(gear, (int)((v >> 32) & 0xFF));
+            if ((h4 & mask) == 0)
+            {
+                hash = h4;
+                return j + 4;
+            }
+
+            ulong h5 = (h4 << 1) + Raw.Get(gear, (int)((v >> 40) & 0xFF));
+            if ((h5 & mask) == 0)
+            {
+                hash = h5;
+                return j + 5;
+            }
+
+            ulong h6 = (h5 << 1) + Raw.Get(gear, (int)((v >> 48) & 0xFF));
+            if ((h6 & mask) == 0)
+            {
+                hash = h6;
+                return j + 6;
+            }
+
+            h = (h6 << 1) + Raw.Get(gear, (int)(v >> 56));
+            if ((h & mask) == 0)
+            {
+                hash = h;
+                return j + 7;
+            }
+
+            j += 8;
         }
 
-        ulong h = HashBefore(window, blockStart);
-        for (int j = blockStart; j < blockEnd; j++)
+        while (j < end)
         {
             h = (h << 1) + Raw.Get(gear, Raw.ByteAt(window, j));
-            if ((h >> rateShift) == 0)
+            if ((h & mask) == 0)
             {
-                AddCheckpoint(0, j, h);
+                hash = h;
+                return j;
             }
+
+            j++;
         }
+
+        hash = h;
+        return end;
     }
 
-    private void AddCheckpoint(int chain, int position, ulong hash)
-    {
-        // Checkpoints before the 64th byte of the data have no full window of bytes under them and are not positions at all.
-        if (position < HashSpan - 1)
-        {
-            return;
-        }
-
-        int n = _checkpointCount[chain];
-        if (n == _checkpointPosition[chain].Length)
-        {
-            Array.Resize(ref _checkpointPosition[chain], n * 2);
-            Array.Resize(ref _checkpointHash[chain], n * 2);
-        }
-
-        _checkpointPosition[chain][n] = position;
-        _checkpointHash[chain][n] = hash;
-        _checkpointCount[chain] = n + 1;
-    }
-
-    // Looks for a match at checkpoint position i, then remembers the checkpoint.
+    // Looks for a match at the checkpoint of position i (the byte after which the hash was taken, minus the window), then remembers it.
     private void Checkpoint(
         ReadOnlySpan<byte> window,
         int i,
-        ulong hash,
-        int blockStart,
+        int bucket,
+        uint check,
         int blockEnd,
         ref int searchFrom,
         ref int anchor,
         List<ZstdLongMatch> matches)
     {
-        ulong mixed = (hash ^ (hash >> 29)) * 0xBF58476D1CE4E5B9UL;
-        int bucket = (int)(mixed >> _bucketShift) << _bucketLog;
-        uint check = (uint)mixed;
         if (i >= searchFrom)
         {
             int bestStart = 0;
@@ -452,6 +526,43 @@ public sealed class ZstdLongDistanceMatcher
         }
 
         return n;
+    }
+}
+
+/// <summary>
+/// The checkpoints of a range of data, found by <see cref="ZstdLongDistanceMatcher.Scan"/> and used by the matcher's matching step. A
+/// buffer that is reused from range to range.
+/// </summary>
+public sealed class ZstdLongCheckpoints
+{
+    private int[] _position = new int[256];
+    private int[] _bucket = new int[256];
+    private uint[] _check = new uint[256];
+
+    /// <summary>Gets the number of checkpoints.</summary>
+    public int Count { get; private set; }
+
+    internal int PositionAt(int index) => _position[index];
+
+    internal int BucketAt(int index) => _bucket[index];
+
+    internal uint CheckAt(int index) => _check[index];
+
+    internal void Clear() => Count = 0;
+
+    internal void Add(int position, int bucket, uint check)
+    {
+        if (Count == _position.Length)
+        {
+            Array.Resize(ref _position, Count * 2);
+            Array.Resize(ref _bucket, Count * 2);
+            Array.Resize(ref _check, Count * 2);
+        }
+
+        _position[Count] = position;
+        _bucket[Count] = bucket;
+        _check[Count] = check;
+        Count++;
     }
 }
 

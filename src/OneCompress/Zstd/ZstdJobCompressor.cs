@@ -36,27 +36,40 @@ internal sealed class ZstdJobCompressor
     private readonly ZstdBlockWriter _writer = new();
     private readonly ZstdSequenceStore _store = new();
     private readonly List<ZstdLongMatch> _long = [];
+    private readonly ZstdLongCheckpoints _checkpoints = new();
     private byte[] _output = [];
     private int _outputLength;
 
-    /// <summary>Gets the compressed blocks of the last job.</summary>
-    public ReadOnlySpan<byte> Output => _output.AsSpan(0, _outputLength);
+    /// <summary>Takes the compressed blocks of the last job, and with them the buffer: the next job starts with a new or lent one.</summary>
+    public byte[] DetachOutput(out int length)
+    {
+        byte[] output = _output;
+        length = _outputLength;
+        _output = [];
+        _outputLength = 0;
+        return output;
+    }
 
     /// <summary>
-    /// Finds the long matches of the job's blocks, in the blocks' order. The matcher is shared by all jobs and must see the data in
-    /// order, so the caller serializes these calls by job.
+    /// Finds the long matches of the job's blocks, in the blocks' order, from the checkpoints <see cref="ScanLongMatches"/> found. The
+    /// matcher is shared by all jobs and must see the data in order, so the caller serializes these calls by job.
     /// </summary>
     public void FindLongMatches(ZstdLongDistanceMatcher matcher, ReadOnlySpan<byte> data, int jobStart, int jobEnd)
     {
         _long.Clear();
+        int next = 0;
         for (int blockStart = jobStart; blockStart < jobEnd; blockStart += BlockSize)
         {
-            matcher.FindMatches(data, blockStart, Math.Min(blockStart + BlockSize, jobEnd), _long);
+            matcher.FindMatches(data, blockStart, Math.Min(blockStart + BlockSize, jobEnd), _checkpoints, ref next, _long);
         }
     }
 
+    /// <summary>Finds the checkpoints of the job's bytes. Any number of jobs may do this at once; <see cref="FindLongMatches"/> follows, in job order.</summary>
+    public void ScanLongMatches(ZstdLongDistanceMatcher matcher, ReadOnlySpan<byte> data, int jobStart, int jobEnd) =>
+        matcher.Scan(data, jobStart, jobEnd, _checkpoints);
+
     /// <summary>
-    /// Compresses <c>data[jobStart..jobEnd]</c> into blocks (<see cref="Output"/>).
+    /// Compresses <c>data[jobStart..jobEnd]</c> into blocks, which <see cref="DetachOutput"/> then hands over.
     /// </summary>
     /// <param name="data">The input; <c>data[historyStart..jobStart]</c> is history the job may match into.</param>
     /// <param name="jobStart">Index of the job's first byte.</param>
@@ -68,6 +81,7 @@ internal sealed class ZstdJobCompressor
     /// <param name="startsFrame">Whether the job starts the frame (it then uses the dictionary and the initial repeat offsets).</param>
     /// <param name="endsFrame">Whether the job's last block ends the frame.</param>
     /// <param name="useLongMatches">Whether <see cref="FindLongMatches"/> ran for this job.</param>
+    /// <param name="lent">A buffer to write the blocks to, if it is large enough; otherwise one is made.</param>
     public void Compress(
         ReadOnlySpan<byte> data,
         int jobStart,
@@ -78,14 +92,19 @@ internal sealed class ZstdJobCompressor
         ZstdCompressionDictionary? dictionary,
         bool startsFrame,
         bool endsFrame,
-        bool useLongMatches)
+        bool useLongMatches,
+        byte[]? lent = null)
     {
         ReadOnlySpan<byte> window = data[historyStart..jobEnd];
         int start = jobStart - historyStart;
         int length = jobEnd - jobStart;
         int blocks = (length + BlockSize - 1) / BlockSize;
         int capacity = length + (3 * blocks) + ZstdBlockWriter.DestinationSlack + 64;
-        if (_output.Length < capacity)
+        if (lent is not null && lent.Length >= capacity)
+        {
+            _output = lent;
+        }
+        else if (_output.Length < capacity)
         {
             _output = new byte[capacity];
         }

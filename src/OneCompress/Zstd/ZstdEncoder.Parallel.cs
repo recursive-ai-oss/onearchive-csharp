@@ -123,34 +123,29 @@ public sealed partial class ZstdEncoder
     // One-shot: the jobs of source (more than one) are compressed and their blocks appended to destination at p.
     private unsafe bool TryCompressJobs(ReadOnlySpan<byte> source, in ZstdCompressionParameters parameters, int jobSize, Span<byte> destination, ref int p)
     {
-        byte[][] results;
-
-        // The pin lasts until every worker is done, which RunJobs guarantees before it returns.
-        fixed (byte* pointer = &MemoryMarshal.GetReference(source))
+        // The pins last until every worker is done, which RunJobs guarantees before it returns.
+        fixed (byte* input = &MemoryMarshal.GetReference(source))
+        fixed (byte* output = &MemoryMarshal.GetReference(destination))
         {
-            results = RunJobs(new SharedSource(pointer, source.Length), 0, source.Length, startsFrame: true, endsFrame: true, jobSize, parameters);
-        }
-
-        foreach (byte[] result in results)
-        {
-            if (destination.Length - p < result.Length)
+            var sink = new OutputSink(output + p, destination.Length - p);
+            RunJobs(new SharedSource(input, source.Length), 0, source.Length, startsFrame: true, endsFrame: true, jobSize, parameters, sink);
+            if (sink.Overflowed)
             {
                 return false;
             }
 
-            result.CopyTo(destination[p..]);
-            p += result.Length;
+            p += sink.Position;
+            return true;
         }
-
-        return true;
     }
 
     // Compresses data[start..end] as jobs of jobSize (the last may be shorter) and returns each job's blocks in order. data[0..start]
-    // is history. The long-distance matcher, when on, must be positioned at start.
-    private byte[][] RunJobs(SharedSource data, int start, int end, bool startsFrame, bool endsFrame, int jobSize, in ZstdCompressionParameters parameters)
+    // is history. The long-distance matcher, when on, must be positioned at start. The jobs' blocks go to the sink in job order, as
+    // soon as each job and all before it are done.
+    private void RunJobs(SharedSource data, int start, int end, bool startsFrame, bool endsFrame, int jobSize, in ZstdCompressionParameters parameters, OutputSink sink)
     {
         int count = (int)(((long)(end - start) + jobSize - 1) / jobSize);
-        var run = new JobRun(data, start, end, jobSize, count, startsFrame, endsFrame, ResolveOverlap(parameters), ResolveHistory(parameters), parameters, _options.Dictionary, _ldm);
+        var run = new JobRun(data, start, end, jobSize, count, startsFrame, endsFrame, ResolveOverlap(parameters), ResolveHistory(parameters), parameters, _options.Dictionary, _ldm, sink);
         int threads = Math.Min(ResolveWorkers(), count);
         while (_jobWorkers.Count < threads)
         {
@@ -178,8 +173,36 @@ public sealed partial class ZstdEncoder
         {
             ExceptionDispatchInfo.Capture(error).Throw();
         }
+    }
 
-        return run.Results;
+    // Receives the compressed jobs, in order, into memory the caller has pinned.
+    private sealed unsafe class OutputSink
+    {
+        private readonly byte* _pointer;
+        private readonly int _capacity;
+
+        public OutputSink(byte* pointer, int capacity)
+        {
+            _pointer = pointer;
+            _capacity = capacity;
+        }
+
+        public int Position { get; private set; }
+
+        public bool Overflowed { get; private set; }
+
+        public void Write(ReadOnlySpan<byte> data)
+        {
+            // The destination holds _capacity bytes while the owner's fixed block lasts.
+            if (Overflowed || data.Length > _capacity - Position)
+            {
+                Overflowed = true;
+                return;
+            }
+
+            data.CopyTo(new Span<byte>(_pointer + Position, data.Length));
+            Position += data.Length;
+        }
     }
 
     private sealed class JobRun
@@ -196,7 +219,12 @@ public sealed partial class ZstdEncoder
         private readonly ZstdCompressionParameters _parameters;
         private readonly ZstdCompressionDictionary? _dictionary;
         private readonly ZstdLongDistanceMatcher? _ldm;
+        private readonly OutputSink _sink;
         private readonly object _gate = new();
+        private readonly Stack<byte[]> _pool = new();
+        private readonly byte[]?[] _done;
+        private readonly int[] _doneLength;
+        private int _emit;
         private int _next;
         private int _turn;
         private bool _failed;
@@ -213,7 +241,8 @@ public sealed partial class ZstdEncoder
             int history,
             ZstdCompressionParameters parameters,
             ZstdCompressionDictionary? dictionary,
-            ZstdLongDistanceMatcher? ldm)
+            ZstdLongDistanceMatcher? ldm,
+            OutputSink sink)
         {
             _data = data;
             _start = start;
@@ -227,10 +256,10 @@ public sealed partial class ZstdEncoder
             _parameters = parameters;
             _dictionary = dictionary;
             _ldm = ldm;
-            Results = new byte[count][];
+            _sink = sink;
+            _done = new byte[]?[count];
+            _doneLength = new int[count];
         }
-
-        public byte[][] Results { get; }
 
         public Exception? Error { get; private set; }
 
@@ -255,6 +284,7 @@ public sealed partial class ZstdEncoder
                     ReadOnlySpan<byte> data = _data.Span;
                     if (_ldm is not null)
                     {
+                        worker.ScanLongMatches(_ldm, data, jobStart, jobEnd);
                         lock (_gate)
                         {
                             while (_turn != k && !_failed)
@@ -276,8 +306,29 @@ public sealed partial class ZstdEncoder
                         }
                     }
 
-                    worker.Compress(data, jobStart, jobEnd, historyStart, primeStart, _parameters, _dictionary, _startsFrame && k == 0, _endsFrame && k == _count - 1, _ldm is not null);
-                    Results[k] = worker.Output.ToArray();
+                    byte[]? lent = null;
+                    lock (_gate)
+                    {
+                        if (_pool.Count > 0)
+                        {
+                            lent = _pool.Pop();
+                        }
+                    }
+
+                    worker.Compress(data, jobStart, jobEnd, historyStart, primeStart, _parameters, _dictionary, _startsFrame && k == 0, _endsFrame && k == _count - 1, _ldm is not null, lent);
+                    byte[] blocks = worker.DetachOutput(out int length);
+                    lock (_gate)
+                    {
+                        _done[k] = blocks;
+                        _doneLength[k] = length;
+                        while (_emit < _count && _done[_emit] is { } ready)
+                        {
+                            _sink.Write(ready.AsSpan(0, _doneLength[_emit]));
+                            _pool.Push(ready);
+                            _done[_emit] = null;
+                            _emit++;
+                        }
+                    }
                 }
                 catch (Exception e)
                 {
@@ -418,30 +469,26 @@ public sealed partial class ZstdEncoder
     // Compresses the next length bytes of the buffer as jobs and queues their blocks for output.
     private unsafe void RunBatch(int length, bool last)
     {
-        byte[][] results;
-        fixed (byte* pointer = _mtBuffer)
+        // The queue was drained before the batch ran, so it is empty; it must hold every block of the batch (at most 3 bytes of block
+        // header each, and a job's tail may add a block).
+        long bound = length + (3L * (((length + ZstdFormat.BlockSizeMax - 1) / ZstdFormat.BlockSizeMax) + (length / _mtJobSize) + 2)) + 256;
+        if (_pending.Length < bound)
         {
-            results = RunJobs(new SharedSource(pointer, _mtFill), _mtDone, _mtDone + length, _mtDonePosition == 0, last, _mtJobSize, _mtParameters);
-        }
-
-        long total = 0;
-        foreach (byte[] result in results)
-        {
-            total += result.Length;
-        }
-
-        // The queue was drained before the batch ran, so it is empty.
-        if (_pending.Length < total + 64)
-        {
-            _pending = new byte[total + 64];
+            _pending = new byte[bound];
         }
 
         _pendingStart = 0;
-        _pendingEnd = 0;
-        foreach (byte[] result in results)
+        fixed (byte* input = _mtBuffer)
+        fixed (byte* output = _pending)
         {
-            result.CopyTo(_pending, _pendingEnd);
-            _pendingEnd += result.Length;
+            var sink = new OutputSink(output, _pending.Length);
+            RunJobs(new SharedSource(input, _mtFill), _mtDone, _mtDone + length, _mtDonePosition == 0, last, _mtJobSize, _mtParameters, sink);
+            if (sink.Overflowed)
+            {
+                throw new InvalidOperationException("The compressed jobs exceeded their bound.");
+            }
+
+            _pendingEnd = sink.Position;
         }
 
         _mtDone += length;
