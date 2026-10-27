@@ -5,7 +5,7 @@ using RecursiveAI.OneCompress.Zstd;
 // Trains a Zstandard dictionary with this library and prints how long it took.
 //
 //   ZstdTrainBench <out.dict> --size N (--dir DIR [--files N] | --chunks BYTES FILE...) [--algo fast|cover] [--k N --d N]
-//                  [--split PERCENT] [--threads N] [--level N] [--accel N] [--f BITS] [--score freq|sqrt] [--rebuild TOOL.dict]
+//                  [--split PERCENT] [--threads N] [--level N] [--accel N] [--f BITS] [--score freq|sqrt] [--max-bytes N] [--rebuild TOOL.dict]
 //
 // With --dir the samples are the files of the directory in name order (the first N). With --chunks every FILE is cut into pieces of
 // that many bytes. Without --k and --d the parameters are searched. Prints one line of key=value pairs.
@@ -29,6 +29,7 @@ internal static class Program
         int k = 0, d = 0, split = 75, threads = 0, level = 3, accel = 1, hashBits = 20;
         var score = ZstdSegmentScore.SquareRoot;
         string? rebuild = null;
+        long maxBytes = 64L << 20;
         bool scoreGiven = false;
         for (int i = 1; i < args.Length; i++)
         {
@@ -53,6 +54,7 @@ internal static class Program
                 case "--level": level = Int(args[++i]); break;
                 case "--accel": accel = Int(args[++i]); break;
                 case "--f": hashBits = Int(args[++i]); break;
+                case "--max-bytes": maxBytes = long.Parse(args[++i], CultureInfo.InvariantCulture); break;
                 case "--rebuild": rebuild = args[++i]; break;
                 case "--score": score = args[++i] == "freq" ? ZstdSegmentScore.Frequency : ZstdSegmentScore.SquareRoot; scoreGiven = true; break;
                 default: Console.Error.WriteLine("unknown option " + args[i]); return 2;
@@ -102,6 +104,7 @@ internal static class Program
             MaxDegreeOfParallelism = threads,
             Acceleration = accel,
             HashBits = hashBits,
+            MaxTrainingBytes = maxBytes,
             Score = score,
             ScoreCandidates = scoreGiven ? [score] : [ZstdSegmentScore.SquareRoot, ZstdSegmentScore.Frequency],
         };
@@ -116,6 +119,7 @@ internal static class Program
             DmerSize = chosen.DmerSize,
             Acceleration = accel,
             HashBits = hashBits,
+            MaxTrainingBytes = maxBytes,
             Score = chosen.Score,
         });
         watch.Stop();

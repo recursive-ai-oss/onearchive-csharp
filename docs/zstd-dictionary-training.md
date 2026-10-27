@@ -89,3 +89,12 @@ tables; if the final tables are bigger, the oldest (first) content bytes are dro
 `DictionarySize` 256 to 2^30; `d` 2 to 16 and `k >= d` (at most 16 MiB); `HashBits` 8 to 24; `Acceleration` 1 to 10;
 `TrainingPercent` 1 to 100; `ScoringLevel` 1 to 22 (a level above the encoder's highest is scored at its highest). Bad options throw `ArgumentException`; samples that cannot give a dictionary throw
 `CompressionDictionaryException`; cancellation throws `OperationCanceledException`.
+
+## Measured against `zstd --train`
+
+`tools/zstd-train-bench/quality.sh` compresses held-back payloads with zstd's own compressor and a dictionary from each trainer, so
+only the dictionary differs; `timing.sh` measures training time and peak memory. On game snapshot data (trained on one run, judged
+on another) the total over all kinds and dictionary sizes is within 0.3% of `zstd --train` (smaller), with most rows within 1%.
+Known gaps, left for later tuning: sample sets of a few hundred small payloads against a dictionary larger than the data (the
+reference writes a dictionary smaller than the data; ours keeps nearly all of it), and heterogeneous bulk data cut into 4 KiB
+chunks with dictionaries of 64 KiB and up (about 2% larger totals; the entropy tables are not the cause, the chosen content is).
