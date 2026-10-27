@@ -256,6 +256,14 @@ internal sealed class ZstdBlockDecoder
         long streamOffset,
         out int literalPosition)
     {
+        if (sequenceCount < SmallBlockSequences)
+        {
+            // Expanding the tables costs more than a handful of sequences take to decode the plain way.
+            return ExecuteFewSequences(
+                ref sequences, sequenceCount, literals, buffer, position, end, ref reps, windowSize, frameOutput, dictionary,
+                streamOffset, out literalPosition);
+        }
+
         SequenceEntry[] rows = CombinedRows(literalLengthTable, offsetTable, matchLengthTable);
         var st = new SequenceState { Current = position, Reps = reps };
         sequences.Export(out st.Container, out st.Consumed, out st.Pointer, out st.LiteralLengthState, out st.OffsetState, out st.MatchLengthState);
@@ -281,6 +289,59 @@ internal sealed class ZstdBlockDecoder
         reps = st.Reps;
         literalPosition = st.LiteralPosition;
         return st.Current;
+    }
+
+    private const int SmallBlockSequences = 32;
+
+    // The straightforward sequence loop on the tier-3 sequence decoder, for blocks with few sequences.
+    private static int ExecuteFewSequences(
+        ref ZstdSequenceDecoder sequences,
+        int sequenceCount,
+        ReadOnlySpan<byte> literals,
+        Span<byte> buffer,
+        int position,
+        int end,
+        ref ZstdRepeatOffsets reps,
+        long windowSize,
+        long frameOutput,
+        ReadOnlySpan<byte> dictionary,
+        long streamOffset,
+        out int literalPosition)
+    {
+        ZstdRepeatOffsets r = reps;
+        int current = position;
+        int litPos = 0;
+        for (int i = 0; i < sequenceCount; i++)
+        {
+            sequences.Next(out int literalLength, out int matchLength, out uint offsetValue, i != sequenceCount - 1);
+            if (literalLength > literals.Length - litPos || literalLength > end - current)
+            {
+                ThrowSequenceLimit(literalLength > literals.Length - litPos, streamOffset);
+            }
+
+            literals.Slice(litPos, literalLength).CopyTo(buffer[current..]);
+            litPos += literalLength;
+            current += literalLength;
+
+            uint offset = r.Resolve(offsetValue, literalLength);
+            long produced = frameOutput + (current - position);
+            if ((ulong)(offset - 1) >= (ulong)(produced < windowSize ? produced : windowSize))
+            {
+                CheckOffsetIntoDictionary(offset, produced, windowSize, dictionary.Length, streamOffset);
+            }
+
+            if (matchLength > end - current)
+            {
+                ThrowSequenceLimit(false, streamOffset);
+            }
+
+            CopyMatch(buffer, current, (int)offset, matchLength, dictionary);
+            current += matchLength;
+        }
+
+        reps = r;
+        literalPosition = litPos;
+        return current;
     }
 
     // Runs sequences while each needs only one refill, the stream is not near its start and every copy is the plain
