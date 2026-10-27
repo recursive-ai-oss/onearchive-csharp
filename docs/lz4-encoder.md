@@ -123,8 +123,19 @@ size, plus 64 KiB when linked).
 
 ## Measuring
 
-`tools/lz4-bench` times block compression the way `lz4 -b` does (independent 4 MiB blocks, one reused compressor, best of
-several runs, memory to memory) and prints the frame size; `Lz4Bench small` compresses many small payloads, each as its own
-frame, with a dictionary. Reference rows come from `lz4 -b<level> -i<seconds>` and from `lz4 -<level> -B7 --no-frame-crc`
-frames for sizes. Timing runs hold the shared timing lock, run one process at a time and record the load before, during and
-after.
+`tools/lz4-bench` holds the encoder's measurements. All timing is memory to memory and warm, and runs one process at a time
+under the shared timing lock, recording the machine's load before, during and after.
+
+- `bar.sh` times block compression the way `lz4 -b<level>` does (independent 4 MiB blocks, one reused compressor, the best
+  of several passes inside each process, `lz4 -b<level> -B7 -i<seconds>` for the reference), repeating each side `--reps`
+  times in fresh processes. A row gives both compressed sizes, the min/median/max compression and decompression speeds of
+  the repeats, the speed ratios from the medians, and both sides' peak resident memory (`/usr/bin/time`).
+  The sizes are those of the blocks (the frame adds a few bytes).
+- `game-prep.sh` samples the game snapshot data into per-game payload directories and builds raw 8 KiB and 64 KiB
+  dictionaries from the training set. `game-bar.sh` compresses every payload as its own frame with a reused encoder and a
+  dictionary prepared once, against the lz4 library's frame compressor with a prepared dictionary (`refsmall.c`, built
+  against the installed shared library and called as a black box), and prints sizes and payloads per second.
+- `Lz4Bench size` prints frame sizes only, for tuning.
+
+A row passes when our size is at most 1.01 times the reference's and our compression and decompression times are each at most
+1.15 times the reference's (speed ratio at least 0.87).
