@@ -97,13 +97,28 @@ if (args[0] == "big")
     byte[] compressed = File.ReadAllBytes(args[1]);
     var options = new Lz4DecompressionOptions { MaxOutputSize = long.MaxValue };
     var decoder = new Lz4Decoder(options);
+    byte[] chunk = new byte[128 * 1024];
     if (!Lz4Decoder.TryGetDecompressedSize(compressed, out long size))
     {
-        size = Lz4.Decompress(compressed, options).Length;
+        // No content size in the frame: measure by streaming through a small buffer. Decoding the whole frame into a
+        // fresh array here would add a second output-sized allocation to the process's peak memory.
+        size = 0;
+        int at = 0;
+        while (true)
+        {
+            OperationStatus s = decoder.Decompress(compressed.AsSpan(at), chunk, out int c, out int w);
+            at += c;
+            size += w;
+            if (s == OperationStatus.Done && at == compressed.Length)
+            {
+                break;
+            }
+        }
+
+        decoder.Reset();
     }
 
     byte[] whole = new byte[size];
-    byte[] chunk = new byte[128 * 1024];
     (Lz4FrameHeader header, var blocks) = ParseBlocks(compressed);
     if (!header.BlocksIndependent)
     {
