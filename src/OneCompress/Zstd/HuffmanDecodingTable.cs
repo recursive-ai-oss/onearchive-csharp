@@ -320,10 +320,10 @@ public sealed class HuffmanDecodingTable
         // code below finishes them.
         ulong c1 = bits1.Container, c2 = bits2.Container, c3 = bits3.Container, c4 = bits4.Container;
         int k1 = bits1.Consumed, k2 = bits2.Consumed, k3 = bits3.Consumed, k4 = bits4.Consumed;
-        int q1 = bits1.Pointer, q2 = bits2.Pointer, q3 = bits3.Pointer, q4 = bits4.Pointer;
+        int pos1 = bits1.Pointer, pos2 = bits2.Pointer, pos3 = bits3.Pointer, pos4 = bits4.Pointer;
         int shift = 64 - tableBits;
         int joint = lastPart & ~3;
-        while (i < joint && q1 >= 8 && q2 >= 8 && q3 >= 8 && q4 >= 8)
+        while (i < joint && pos1 >= 8 && pos2 >= 8 && pos3 >= 8 && pos4 >= 8)
         {
             {
                 ushort e1 = Raw.Get(table, (int)((c1 << k1) >> shift)); // the index has tableBits bits; the table is longer
@@ -387,25 +387,25 @@ public sealed class HuffmanDecodingTable
 
             // Refill: the register starts at the lowest byte not yet consumed; q + 8 <= stream length holds because q
             // only moves down from length - 8.
-            q1 -= k1 >> 3;
+            pos1 -= k1 >> 3;
             k1 &= 7;
-            c1 = Raw.ReadUInt64(stream1, q1);
-            q2 -= k2 >> 3;
+            c1 = Raw.ReadUInt64(stream1, pos1);
+            pos2 -= k2 >> 3;
             k2 &= 7;
-            c2 = Raw.ReadUInt64(stream2, q2);
-            q3 -= k3 >> 3;
+            c2 = Raw.ReadUInt64(stream2, pos2);
+            pos3 -= k3 >> 3;
             k3 &= 7;
-            c3 = Raw.ReadUInt64(stream3, q3);
-            q4 -= k4 >> 3;
+            c3 = Raw.ReadUInt64(stream3, pos3);
+            pos4 -= k4 >> 3;
             k4 &= 7;
-            c4 = Raw.ReadUInt64(stream4, q4);
+            c4 = Raw.ReadUInt64(stream4, pos4);
             i += 4;
         }
 
-        bits1.Restore(c1, k1, q1);
-        bits2.Restore(c2, k2, q2);
-        bits3.Restore(c3, k3, q3);
-        bits4.Restore(c4, k4, q4);
+        bits1.Restore(c1, k1, pos1);
+        bits2.Restore(c2, k2, pos2);
+        bits3.Restore(c3, k3, pos3);
+        bits4.Restore(c4, k4, pos4);
 
         DecodeSymbols(ref bits1, out1[i..]);
         DecodeSymbols(ref bits2, out2[i..]);
