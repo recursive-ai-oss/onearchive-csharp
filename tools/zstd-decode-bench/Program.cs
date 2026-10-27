@@ -8,6 +8,8 @@ using RecursiveAI.OneCompress.Zstd;
 //       Decodes the whole frame repeatedly into a buffer that is reused, and prints the best time as MB/s of output.
 //       Two rows: "oneshot" (the output buffer holds the whole frame) and "stream" (a 128 KiB output buffer, so
 //       the sliding window is used, as in a ZstdStream).
+//   ZstdDecodeBench compress <in> <out.zst> <level>
+//       Writes a frame with this library's encoder (no checksum, like the tool's benchmark frames).
 //   ZstdDecodeBench small <dictionary> <dir of .zst frames> [--seconds 4]
 //       Decodes every frame in the directory with one decoder that has the dictionary loaded, and prints the
 //       best pass as frames per second and MB/s of output.
@@ -17,6 +19,13 @@ if (args.Length < 2)
 {
     Console.Error.WriteLine("usage: ZstdDecodeBench big <file.zst> | small <dictionary> <dir>");
     return 2;
+}
+
+if (args[0] == "compress" && args.Length == 4)
+{
+    // compress <in> <out.zst> <level>: makes a frame with this library's encoder, so the decoder can be timed on it.
+    File.WriteAllBytes(args[2], Zstd.Compress(File.ReadAllBytes(args[1]), new ZstdCompressionOptions { Level = int.Parse(args[3], CultureInfo.InvariantCulture), Checksum = false }));
+    return 0;
 }
 
 double seconds = 4;
