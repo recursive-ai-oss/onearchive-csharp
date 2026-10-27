@@ -130,6 +130,10 @@ public class ZstdLongDistanceTests
     [InlineData(9, false)]
     [InlineData(12, true)]
     [InlineData(15, true)]
+    [InlineData(16, true)]
+    [InlineData(16, false)]
+    [InlineData(19, true)]
+    [InlineData(19, false)]
     public void JobsAndLongMatchesAtTheMidLevels(int level, bool longDistance)
     {
         byte[] data = [.. FarRepeats(2_500_000, 60 + level), .. ZstdEncoderTests.Text(600_000, 9)];

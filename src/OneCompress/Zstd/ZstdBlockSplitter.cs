@@ -258,4 +258,49 @@ internal sealed class ZstdBlockSplitter
 
         return sum;
     }
+
+    private ZstdSequenceStore? _subStore;
+
+    /// <summary>
+    /// Writes the parsed block (in <paramref name="store"/>) as one block or, when the sequences' statistics change enough to pay for another
+    /// set of headers and tables, as several consecutive blocks.
+    /// </summary>
+    public int Write(ZstdBlockWriter writer, ZstdSequenceStore store, ReadOnlySpan<byte> block, bool last, Span<byte> target)
+    {
+        ZstdBlockSplitter splitter = this;
+        int segments = splitter.Plan(store, writer.RepeatOffsets);
+        if (segments < 2)
+        {
+            return writer.WriteBlock(block, store, last, target);
+        }
+
+        _subStore ??= new ZstdSequenceStore();
+        ReadOnlySpan<ZstdSequence> sequences = store.Sequences;
+        ReadOnlySpan<byte> literals = store.Literals;
+        int written = 0;
+        for (int s = 0; s < segments; s++)
+        {
+            _subStore.Clear();
+            _subStore.BeginTracking(splitter.Reps[s]);
+            int literalPosition = splitter.LiteralStart[s];
+            for (int i = splitter.SequenceStart[s]; i < splitter.SequenceStart[s + 1]; i++)
+            {
+                ZstdSequence q = sequences[i];
+                _subStore.AppendCopied(literals.Slice(literalPosition, (int)q.LiteralLength), q.LiteralLength, q.MatchLength, q.Offset, splitter.OffsetValue(i));
+                literalPosition += (int)q.LiteralLength;
+            }
+
+            if (s == segments - 1)
+            {
+                _subStore.AppendLiterals(literals[literalPosition..]);
+            }
+
+            ZstdRepeatOffsets end = splitter.Reps[s + 1];
+            _subStore.SetTrackedEnd(end.Offset1, end.Offset2, end.Offset3);
+            int byteEnd = s == segments - 1 ? block.Length : splitter.ByteStart[s + 1];
+            written += writer.WriteBlock(block[splitter.ByteStart[s]..byteEnd], _subStore, last && s == segments - 1, target[written..]);
+        }
+
+        return written;
+    }
 }

@@ -57,6 +57,7 @@ public abstract class ZstdMatchFinder
     internal static ZstdMatchFinder Create(ZstdStrategy strategy) => strategy switch
     {
         ZstdStrategy.Fast or ZstdStrategy.DoubleFast => new ZstdFastMatchFinder(),
+        >= ZstdStrategy.BinaryTreeOptimal => new ZstdOptimalMatchFinder(),
         >= ZstdStrategy.Greedy => new ZstdLazyMatchFinder(),
         _ => throw new NotSupportedException($"Strategy {strategy} is not implemented."),
     };

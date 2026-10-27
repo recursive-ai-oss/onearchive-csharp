@@ -110,6 +110,8 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
     private readonly int[] _mlMix = new int[53];
     private readonly int[] _ofMix = new int[32];
     private bool _statsReady;
+    private int _sinceHalved;
+    private const int HalveBytes = 1 << 17;
 
     // Prices in 1/256 bit.
     private readonly int[] _litPrice = new int[256];
@@ -145,6 +147,7 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
         _next = 1;
         _blockSeen = false;
         _statsReady = false;
+        _sinceHalved = 0;
 
         _dictionary = dictionary;
         _dictionaryIndex = null;
@@ -248,19 +251,37 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
         Parse(window, blockStart, blockEnd, windowStartPosition, repeatOffsets, store);
         _blockSeen = true;
 
-        // Older blocks count half as much as the newest.
-        Blend(_litStat, _litCount);
-        Blend(_llStat, _llCount);
-        Blend(_mlStat, _mlCount);
-        Blend(_ofStat, _ofCount);
+        // Older blocks count half as much as the newest. A call may cover only the gap between two long matches, so the halving
+        // happens once per block's worth of parsed bytes however the calls cut it; shorter calls just add their counts.
+        _sinceHalved += blockEnd - blockStart;
+        bool halve = _sinceHalved >= HalveBytes;
+        if (halve)
+        {
+            _sinceHalved = 0;
+        }
+
+        Blend(_litStat, _litCount, halve);
+        Blend(_llStat, _llCount, halve);
+        Blend(_mlStat, _mlCount, halve);
+        Blend(_ofStat, _ofCount, halve);
         _statsReady = true;
     }
 
-    private static void Blend(int[] stat, int[] count)
+    /// <inheritdoc />
+    /// <remarks>
+    /// The tree enters positions lazily: a search first enters every position since the last one entered. Priming moves that mark up
+    /// to <paramref name="firstPosition"/>, so the positions before it are never entered and the next search enters the ones from there on.
+    /// </remarks>
+    public override void Prime(ReadOnlySpan<byte> window, int firstPosition, int endPosition)
+    {
+        _next = Math.Max(_next, Math.Max(firstPosition, 1));
+    }
+
+    private static void Blend(int[] stat, int[] count, bool halve)
     {
         for (int i = 0; i < stat.Length; i++)
         {
-            stat[i] = (stat[i] >> 1) + count[i];
+            stat[i] = (halve ? stat[i] >> 1 : stat[i]) + count[i];
         }
     }
 

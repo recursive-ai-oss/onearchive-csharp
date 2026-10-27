@@ -35,6 +35,7 @@ internal sealed class ZstdJobCompressor
     private readonly ZstdMatchFinder?[] _finders = new ZstdMatchFinder?[10];
     private readonly ZstdBlockWriter _writer = new();
     private readonly ZstdSequenceStore _store = new();
+    private ZstdBlockSplitter? _splitter;
     private readonly List<ZstdLongMatch> _long = [];
     private readonly ZstdLongCheckpoints _checkpoints = new();
     private byte[] _output = [];
@@ -99,7 +100,8 @@ internal sealed class ZstdJobCompressor
         int start = jobStart - historyStart;
         int length = jobEnd - jobStart;
         int blocks = (length + BlockSize - 1) / BlockSize;
-        int capacity = length + (3 * blocks) + ZstdBlockWriter.DestinationSlack + 64;
+        int segments = parameters.Strategy >= ZstdStrategy.BinaryTreeOptimal ? ZstdBlockSplitter.MaxSegments : 1;
+        int capacity = length + (3 * blocks * segments) + ZstdBlockWriter.DestinationSlack + 64;
         if (lent is not null && lent.Length >= capacity)
         {
             _output = lent;
@@ -154,7 +156,9 @@ internal sealed class ZstdJobCompressor
             {
                 _store.Clear();
                 ZstdLongSequencer.Fill(finder, window, blockStart, blockEnd, windowStartPosition, _writer.RepeatOffsets, matches[first..next], _store);
-                size = _writer.WriteBlock(block, _store, last, target);
+                size = parameters.Strategy >= ZstdStrategy.BinaryTreeOptimal
+                    ? (_splitter ??= new ZstdBlockSplitter()).Write(_writer, _store, block, last, target)
+                    : _writer.WriteBlock(block, _store, last, target);
             }
 
             p += size;

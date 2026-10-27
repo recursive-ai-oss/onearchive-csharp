@@ -24,6 +24,14 @@ internal static class ZstdEncoderLdmEntries
             Matrix.Add("zstd-encode", $"ldm-on-level{l}-stream", (input, _) => Stream(Doubled(input), new ZstdCompressionOptions { Level = l, WindowLog = 20, LongDistanceMatching = true, ContentSize = Doubled(input).Length }), "text-3m", "binary-1m");
         }
 
+        // The optimal-parsing levels parse only the gaps between long matches and are told which positions to skip.
+        foreach (int level in new[] { 16, 19 })
+        {
+            int l = level;
+            Matrix.Add("zstd-encode", $"ldm-on-level{l}-doubled", (input, _) => Zstd.Compress(Doubled(input), new ZstdCompressionOptions { Level = l, WindowLog = 22, LongDistanceMatching = true }), "text-64k", "binary-1m");
+            Matrix.Add("zstd-encode", $"ldm-on-level{l}-stream", (input, _) => Stream(Doubled(input), new ZstdCompressionOptions { Level = l, WindowLog = 20, LongDistanceMatching = true, ContentSize = Doubled(input).Length }), "text-64k", "binary-1m");
+        }
+
         Matrix.Add("zstd-encode", "ldm-on-level3-stream-unknown-size", (input, _) => Stream(Doubled(input), new ZstdCompressionOptions { Level = 3, WindowLog = 20, LongDistanceMatching = true }), "text-3m", "binary-1m");
     }
 
