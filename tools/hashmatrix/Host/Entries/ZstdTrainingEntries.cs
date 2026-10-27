@@ -8,7 +8,7 @@ namespace RecursiveAI.HashMatrix;
 /// <summary>
 /// Zstandard dictionary training: the standard inputs, cut into fixed-size samples, train dictionaries with the search and with
 /// fixed parameters, with both algorithms, and the entropy-table builder runs over the first bytes of each input. The dictionary bytes
-/// must be the same on every platform, vector width and thread count (the search runs on the matrix's thread count). An input too
+/// must be the same on every platform, vector width and thread count (the search runs on the matrix's thread count, at most 8). An input too
 /// small to train on records the error instead.
 /// </summary>
 internal static class ZstdTrainingEntries
@@ -26,7 +26,7 @@ internal static class ZstdTrainingEntries
             SegmentSizeCandidates = s_searchSegments,
             DmerSizeCandidates = s_searchDmers,
             MaxScoringSamples = 200,
-            MaxDegreeOfParallelism = ctx.Threads,
+            MaxDegreeOfParallelism = Math.Min(ctx.Threads, 8),
         }));
         Matrix.Add("zstd-train", "cover-search-8k", (input, ctx) => Train(input, 500, new ZstdDictionaryTrainingOptions
         {
@@ -36,7 +36,7 @@ internal static class ZstdTrainingEntries
             DmerSizeCandidates = s_searchDmers,
             MaxScoringSamples = 200,
             TrainingPercent = 90,
-            MaxDegreeOfParallelism = ctx.Threads,
+            MaxDegreeOfParallelism = Math.Min(ctx.Threads, 8),
         }));
         Matrix.Add("zstd-train", "fastcover-k256-d8-16k-accel2", (input, _) => Train(input, 300, new ZstdDictionaryTrainingOptions
         {

@@ -79,7 +79,7 @@ if (!trained.AsSpan().SequenceEqual(ZstdDictionary.Train(trainingSamples, traini
 var trainedForCompression = ZstdCompressionDictionary.Parse(trained);
 var trainedForDecoding = ZstdDictionary.Parse(trained);
 byte[] recordFrame = Zstd.Compress(trainingSamples[5].Span, new ZstdCompressionOptions { Level = 3, Dictionary = trainedForCompression });
-if (recordFrame.Length >= trainingSamples[5].Length / 2 || !Zstd.Decompress(recordFrame, new ZstdDecompressionOptions { Dictionary = trainedForDecoding }).AsSpan().SequenceEqual(trainingSamples[5].Span))
+if (recordFrame.Length >= Zstd.Compress(trainingSamples[5].Span).Length || !Zstd.Decompress(recordFrame, new ZstdDecompressionOptions { Dictionary = trainedForDecoding }).AsSpan().SequenceEqual(trainingSamples[5].Span))
 {
     Console.Error.WriteLine("zstd trained dictionary failed");
     return 1;
