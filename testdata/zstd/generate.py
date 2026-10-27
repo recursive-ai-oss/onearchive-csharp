@@ -109,7 +109,7 @@ def add(name, data, args, cmd=None, maxwindow=0, dictionary="", pipe=False):
             f.write(data)
         comp = run(args + ["-c", "-q", tmp])
         os.remove(tmp)
-        shown = "zstd " + " ".join(args) + " -c input"
+        shown = "zstd " + " ".join(args).replace(HERE + os.sep, "testdata/zstd/") + " -c input"
     if cmd:
         shown = cmd
     with open(os.path.join(OUT, name + ".zst"), "wb") as f:
