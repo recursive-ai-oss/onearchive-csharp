@@ -30,8 +30,8 @@ public abstract class Lz4BlockCompressor
 
         if (level == 2)
         {
-            // Level 2: the fast finder with a 2^17-entry table that also indexes every second position inside matches.
-            return new Lz4FastBlockCompressor(1, 17, 2);
+            // Level 2: the fast finder with a 2^18-entry table that also indexes every position inside matches.
+            return new Lz4FastBlockCompressor(1, 18, 1);
         }
 
         return level > 2 ? new Lz4HighBlockCompressor(level) : new Lz4FastBlockCompressor(level <= 0 ? 1 - level : 1);

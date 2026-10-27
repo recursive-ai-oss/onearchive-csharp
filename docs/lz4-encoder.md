@@ -34,7 +34,7 @@ The range is -65536 to 12 (a level outside it is an `ArgumentOutOfRangeException
 |---|---|---|---|
 | 1, 0 | hash table | greedy | acceleration 1 |
 | -N | hash table | greedy | acceleration N + 1 (so `--fast=1` skips like acceleration 2) |
-| 2 | hash table (2^17 entries, interior positions indexed every 2nd byte) | greedy | acceleration 1 |
+| 2 | hash table (2^18 entries, every interior position indexed) | greedy | acceleration 1 |
 | 3 to 6 | hash chain | lazy, two-byte lookahead | chain candidates 7, 14, 28, 56; stop at match length 256 |
 | 7 to 9 | hash chain | optimal | chain candidates 32, 36, 40; stop at match length 128 |
 | 10 to 12 | hash chain | optimal | chain candidates 56, 100, 128; stop at match length 256 |
@@ -88,7 +88,9 @@ A dictionary (`Lz4Dictionary`, at most the last 64 KiB) is history in front of a
   tried. A match may start in the dictionary and run on into the block, because the history is the dictionary followed by the
   block. No dictionary bytes are copied per block.
 - High levels: the dictionary and the block are placed in one buffer, and the chains are copied from a snapshot built once
-  per dictionary (positions with four bytes after them).
+  per dictionary (positions with four bytes after them). A block of at most 64 KiB without history leaves the dictionary's
+  index in place between calls instead: it records the head and chain values each insertion replaces and puts them back
+  afterwards, so many small blocks with one dictionary cost the block's own work. The bytes produced are the same either way.
 - Frames: independent blocks all start from the dictionary; with linked blocks only the first block does. The frame header
   names the dictionary by `Lz4Dictionary.Id` when it is not zero.
 
@@ -113,9 +115,11 @@ A dictionary (`Lz4Dictionary`, at most the last 64 KiB) is history in front of a
 
 ## Memory
 
-A fast compressor holds 16 KiB; a high-level compressor holds 256 KiB, plus 64 KiB of plan state for levels 7 to 12 and
-a copy buffer when a dictionary is used. A frame encoder adds its staging buffer (one block) and, for independent blocks
-that arrive in pieces or linked blocks, a window (block size, plus 64 KiB when linked).
+A fast compressor holds 16 KiB (level 2: 1 MiB); a high-level compressor holds 384 KiB (a 256 KiB head table and 128 KiB of
+chain links), plus 64 KiB of plan state for levels 7 to 12. With a dictionary, a high-level compressor also keeps a copy
+buffer (the dictionary and the block) and, for blocks up to 64 KiB, undo records of 6 bytes per input byte. A frame encoder
+adds its staging buffer (one block) and, for independent blocks that arrive in pieces or linked blocks, a window (block
+size, plus 64 KiB when linked).
 
 ## Measuring
 
