@@ -251,7 +251,8 @@ allows 32 parts per 128 KiB.
 - **Sequences section:** for each of literal lengths, offsets and match lengths the cheapest of RLE (one symbol), repeat (the
   previous table from the frame or the dictionary), predefined and a new FSE table is chosen. Cost is in 1/256 bit, integer:
   blocks with at most 1,500 sequences price each choice by running the encoder's state machine over the symbols (the table
-  description's bytes included); larger blocks use the histogram estimate `count * (accuracyLog - log2(probability))`. `log2` is
+  description's bytes included); larger blocks, and every block at the fast and double-fast strategies (levels up to 4 and the
+  negative levels), use the histogram estimate `count * (accuracyLog - log2(probability))`. `log2` is
   a table built with integer arithmetic. After an RLE or predefined block the repeat mode is not offered (the next block offers
   a new table or the predefined one at the same cost).
 - **Normalization:** symbols that occur get at least one state; symbols with at most `total >> accuracyLog` occurrences get the
