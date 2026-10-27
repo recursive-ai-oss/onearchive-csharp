@@ -6,7 +6,7 @@ namespace RecursiveAI.OneCompress.Tests;
 /// <summary>Round trips of the Zstandard encoder through this library's decoder; the zstd tool is exercised in the interop tests.</summary>
 public class ZstdEncoderTests
 {
-    public static TheoryData<int> Levels() => new() { -131072, -50, -7, -5, -3, -1, 0, 1, 2, 3, 4 };
+    public static TheoryData<int> Levels() => new() { -131072, -50, -7, -5, -3, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
 
     internal static byte[] Text(int length, int seed)
     {
@@ -108,7 +108,7 @@ public class ZstdEncoderTests
     [Fact]
     public void LevelsAboveTheImplementedRangeAreRejectedClearly()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = 5 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = 16 }));
         Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = -131073 }));
     }
 
@@ -182,7 +182,7 @@ public class ZstdEncoderTests
             unit.CopyTo(data, i * unit.Length);
         }
 
-        foreach (int level in new[] { -3, 1, 3 })
+        foreach (int level in new[] { -3, 1, 3, 5, 6, 8, 12, 15 })
         {
             byte[] frame = StreamCompress(data, new ZstdCompressionOptions { Level = level }, 100000, 100000);
             Assert.True(Zstd.Zstd.Decompress(frame).AsSpan().SequenceEqual(data), $"level {level}");
@@ -248,7 +248,7 @@ public class ZstdEncoderTests
         var compressionDictionary = ZstdCompressionDictionary.Parse(dictionaryBytes);
         Assert.True(compressionDictionary.HasEntropyTables);
         var decompression = new ZstdDecompressionOptions { Dictionary = ZstdDictionary.Parse(dictionaryBytes) };
-        foreach (int level in new[] { -5, -1, 1, 2, 3, 4 })
+        foreach (int level in new[] { -5, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })
         {
             var encoder = new ZstdEncoder(new ZstdCompressionOptions { Level = level, Dictionary = compressionDictionary, Checksum = true });
             foreach ((string name, byte[] data) in Inputs())

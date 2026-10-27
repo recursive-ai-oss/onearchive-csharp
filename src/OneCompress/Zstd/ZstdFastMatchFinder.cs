@@ -135,7 +135,7 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
 
     // Length of the common prefix of window[a..] and window[b..], where a < b, looking no further than window[limit].
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int Count(ReadOnlySpan<byte> window, int a, int b, int limit)
+    internal static int Count(ReadOnlySpan<byte> window, int a, int b, int limit)
     {
         // Bounds: b + n <= limit <= window.Length for every access, and a < b.
         int max = limit - b;
@@ -159,7 +159,7 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         return n;
     }
 
-    private static int CountDictionary(ReadOnlySpan<byte> dictionary, int d, ReadOnlySpan<byte> window, int b, int limit)
+    internal static int CountDictionary(ReadOnlySpan<byte> dictionary, int d, ReadOnlySpan<byte> window, int b, int limit)
     {
         int max = Math.Min(limit - b, dictionary.Length - d);
         int n = 0;

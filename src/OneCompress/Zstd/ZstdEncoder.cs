@@ -19,7 +19,9 @@ public sealed class ZstdEncoder
     private const int OutputSlack = ZstdBlockWriter.DestinationSlack;
 
     private readonly ZstdCompressionOptions _options;
-    private readonly ZstdMatchFinder _finder = new ZstdFastMatchFinder();
+    private readonly ZstdFastMatchFinder _fastFinder = new();
+    private ZstdLazyMatchFinder? _lazyFinder;
+    private ZstdMatchFinder _finder;
     private readonly ZstdBlockWriter _writer = new();
     private readonly ZstdSequenceStore _store = new();
 
@@ -48,6 +50,7 @@ public sealed class ZstdEncoder
     public ZstdEncoder(ZstdCompressionOptions? options = null)
     {
         _options = options ?? ZstdCompressionOptions.Default;
+        _finder = _fastFinder;
         _ = ZstdCompressionParameters.Resolve(_options.Level, -1, 0);
         if (_options.WindowLog != 0 && (_options.WindowLog < ZstdCompressionParameters.MinWindowLog || _options.WindowLog > 30))
         {
@@ -116,6 +119,7 @@ public sealed class ZstdEncoder
         written = 0;
         ZstdCompressionParameters parameters = ResolveParameters(declaredSize);
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
+        _finder = parameters.Strategy >= ZstdStrategy.Greedy ? _lazyFinder ??= new ZstdLazyMatchFinder() : _fastFinder;
         _finder.BeginFrame(parameters, dictionary);
         _writer.BeginFrame(dictionary, parameters.CompressLiterals);
         int p;
@@ -382,6 +386,7 @@ public sealed class ZstdEncoder
         long pledged = _options.ContentSize ?? -1;
         ZstdCompressionParameters parameters = ResolveParameters(pledged);
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
+        _finder = parameters.Strategy >= ZstdStrategy.Greedy ? _lazyFinder ??= new ZstdLazyMatchFinder() : _fastFinder;
         _finder.BeginFrame(parameters, dictionary);
         _writer.BeginFrame(dictionary, parameters.CompressLiterals);
         _hash = new XxHash64(0);

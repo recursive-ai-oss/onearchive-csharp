@@ -41,7 +41,7 @@ public class ZstdEncoderInteropTests
         return dir;
     }
 
-    private static readonly int[] AllLevels = [-7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4];
+    private static readonly int[] AllLevels = [-7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
     private static string Sh(string command)
     {
@@ -204,7 +204,7 @@ public class ZstdEncoderInteropTests
 
         foreach (string f in new[] { "alice29.txt", "kennedy.xls", "ptt5", "E.coli" })
         {
-            foreach (int l in new[] { -5, -1, 1, 3, 4 })
+            foreach (int l in new[] { -5, -1, 1, 3, 4, 6, 9, 13 })
             {
                 foreach (Variant v in Variants().Skip(1))
                 {
@@ -222,7 +222,7 @@ public class ZstdEncoderInteropTests
         var cases = new List<(string, int, Variant)>();
         foreach (string f in SilesiaFiles)
         {
-            foreach (int l in Full ? AllLevels : [-5, -1, 1, 2, 3, 4])
+            foreach (int l in Full ? AllLevels : [-5, -1, 1, 2, 3, 4, 5, 6, 9, 12, 15])
             {
                 cases.Add((f, l, new Variant("plain", lv => new ZstdCompressionOptions { Level = lv })));
             }
@@ -272,7 +272,7 @@ public class ZstdEncoderInteropTests
         var cases = new List<(string, int, Variant)>();
         foreach (string f in new[] { "alice29.txt", "xargs.1", "fields.c", "kennedy.xls", "dickens" })
         {
-            foreach (int l in new[] { -5, -1, 1, 2, 3, 4 })
+            foreach (int l in Full ? AllLevels : [-5, -1, 1, 2, 3, 4, 5, 7, 9, 12, 15])
             {
                 cases.Add((f, l, new Variant("zdict", lv => new ZstdCompressionOptions { Level = lv, Dictionary = ZstdCompressionDictionary.Parse(File.ReadAllBytes(formatted)) }, Dictionary: formatted)));
                 cases.Add((f, l, new Variant("zdict-checksum", lv => new ZstdCompressionOptions { Level = lv, Checksum = true, Dictionary = ZstdCompressionDictionary.Parse(File.ReadAllBytes(formatted)) }, Dictionary: formatted)));
