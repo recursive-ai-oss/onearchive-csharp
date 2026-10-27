@@ -111,8 +111,14 @@ SHA-256 in `tools/corpora.sha256`:
   the files sorted by name, with owner, group and time zeroed, so that every host builds identical bytes.
 - **Canterbury**: the `cantrbry`, `large` and `artificl` sets.
 - **enwik8**: the first 10^8 bytes of an English Wikipedia dump (MD5 `a1fa5ffddb56f4953e226637dabbb36a`).
-- **game/**: reserved. Game payload rows (ratio against dictionary size per payload kind) are added when the
-  game corpus exists.
+- **Game snapshot data** (`game/seed1`, `game/seed2`): generated, not downloaded, by the `OneGame.Corpus`
+  tool of the public onegame repository (MIT OR Apache-2.0) at the commit pinned in `tools/game-corpus.tsv`,
+  with `tools/fetch-game-corpus.sh`. Each seed is about 66 MB in about 800,000 mostly tiny files:
+  `<game>/<kind>/NNNNNN.bin` plus `manifest.tsv` (game, kind, file, size, sha256, schema, tick); games are
+  lanterns, bricks and solitaire, kinds are frames, snapshots, saves, recordings and transfer. The generator is
+  deterministic, and the manifest SHA-256 it prints is pinned per seed, so every host builds identical data.
+  Dictionaries are trained on seed 1 and benchmarked on seed 2, per (game, kind). Rows for these payload sets
+  (ratio against dictionary size, speed on small frames) are defined when the dictionary codecs land.
 
 ## Running
 
