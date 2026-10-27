@@ -1,0 +1,57 @@
+<Project>
+
+  <!-- Package identity. Rename the packages by editing these four properties. -->
+  <PropertyGroup>
+    <PackagePrefix>RecursiveAI</PackagePrefix>
+    <CompressName>OneCompress</CompressName>
+    <ArchiveName>OneArchive</ArchiveName>
+    <Version>0.0.1-preview</Version>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <Configurations>Debug;Release;Checked</Configurations>
+  </PropertyGroup>
+
+  <!--
+    Build output lives outside the source tree so that checkouts and git
+    worktrees never share or pollute each other. Set ONEARCHIVE_ARTIFACTS to
+    choose the directory; the default is artifacts/ at the repository root
+    (ignored by git). Each worktree has its own root, so its default differs.
+    bin/obj/package output goes to <artifacts>/bin, /obj and /package.
+  -->
+  <PropertyGroup>
+    <ArtifactsPath Condition="'$(ONEARCHIVE_ARTIFACTS)' != ''">$([MSBuild]::EnsureTrailingSlash('$(ONEARCHIVE_ARTIFACTS)'))</ArtifactsPath>
+    <ArtifactsPath Condition="'$(ONEARCHIVE_ARTIFACTS)' == ''">$(MSBuildThisFileDirectory)artifacts/</ArtifactsPath>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+  </PropertyGroup>
+
+  <!--
+    The Checked configuration is an optimized build in which the small set of
+    internal unchecked accessors become bounds-checked (symbol CHECKED). Tests
+    and fuzzing run in it.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Checked'">
+    <Optimize>true</Optimize>
+    <DebugType>portable</DebugType>
+    <DefineConstants>$(DefineConstants);CHECKED</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Recursive AI, LLC</Authors>
+    <Company>Recursive AI, LLC</Company>
+    <Copyright>Copyright (c) Recursive AI, LLC</Copyright>
+    <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Published with NativeAOT and trimming; must produce no warnings. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>AotTrimSmoke</AssemblyName>
+    <RootNamespace>RecursiveAI.Smoke</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <PublishAot>true</PublishAot>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
+    <ProjectReference Include="../../src/OneArchive/OneArchive.csproj" />
+  </ItemGroup>
+
+</Project>

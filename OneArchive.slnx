@@ -1,0 +1,26 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <BuildType Name="Checked" />
+    <Platform Name="Any CPU" />
+  </Configurations>
+  <Folder Name="/bench/">
+    <Project Path="bench/Bench.csproj" />
+  </Folder>
+  <Folder Name="/fuzz/">
+    <Project Path="fuzz/Fuzz.csproj" />
+  </Folder>
+  <Folder Name="/smoke/" />
+  <Folder Name="/smoke/aot-trim/">
+    <Project Path="smoke/aot-trim/AotTrim.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/OneArchive/OneArchive.csproj" />
+    <Project Path="src/OneCompress/OneCompress.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OneArchive.Tests/OneArchive.Tests.csproj" />
+    <Project Path="tests/OneCompress.Tests/OneCompress.Tests.csproj" />
+  </Folder>
+</Solution>

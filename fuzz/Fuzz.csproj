@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>OneArchive.Fuzz</AssemblyName>
+    <RootNamespace>RecursiveAI.Fuzz</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../src/OneCompress/OneCompress.csproj" />
+    <ProjectReference Include="../src/OneArchive/OneArchive.csproj" />
+  </ItemGroup>
+
+</Project>

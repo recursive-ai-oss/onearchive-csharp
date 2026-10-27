@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>$(PackagePrefix).$(ArchiveName)</AssemblyName>
+    <RootNamespace>$(PackagePrefix).$(ArchiveName)</RootNamespace>
+    <PackageId>$(PackagePrefix).$(ArchiveName)</PackageId>
+    <Description>Archive and container formats (zip, tar, 7z and more) with safe extraction by default.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OneCompress/OneCompress.csproj" />
+  </ItemGroup>
+
+</Project>

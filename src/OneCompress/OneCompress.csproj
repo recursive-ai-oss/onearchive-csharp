@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>$(PackagePrefix).$(CompressName)</AssemblyName>
+    <RootNamespace>$(PackagePrefix).$(CompressName)</RootNamespace>
+    <PackageId>$(PackagePrefix).$(CompressName)</PackageId>
+    <Description>Compression codecs written in managed code: no native dependencies, identical output on every platform.</Description>
+  </PropertyGroup>
+
+</Project>

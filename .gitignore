@@ -1,0 +1,16 @@
+# Build output, test results, editor and OS litter. Fuzz corpora and benchmark
+# output are never committed either.
+artifacts/
+bin/
+obj/
+BenchmarkDotNet.Artifacts/
+TestResults/
+feed/
+*.user
+.vs/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+/corpus/
+/findings/
