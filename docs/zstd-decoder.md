@@ -45,3 +45,17 @@ span when it already holds the whole block and from a reused internal buffer oth
 ## Hot-path safety
 
 The decoder is written on spans. Nothing in `src/` uses `Unsafe` or `MemoryMarshal` unless this page lists it.
+
+`src/OneCompress/Zstd/Raw.cs` is the only file that skips bounds checks: `Get`, `Ref`, `ReadUInt64`, `Copy16`, `Copy8` and
+`Set`. Each states the bound its caller guarantees (a table index below the table's size, a copy inside a buffer that was
+checked or kept 32 bytes short of its end). With the `Checked` configuration every one of them is an ordinary checked access,
+and the tests and the fuzzer run that way.
+
+## Sequence loop
+
+A block with 32 or more sequences runs a fast loop. The three FSE tables' rows are expanded once per table build into
+`{baseline value, next-state baseline, state bits, extra bits}` and stored in one array, so a state indexes it directly.
+Each sequence takes one register refill, and the six bit fields are cut from that register at positions known from the three
+rows. The loop makes no calls; it hands the last sequence, anything near the start of the bitstream, offsets below 16,
+copies that would reach past the safe end of the buffer, and matches into a dictionary to a careful path. Blocks with
+fewer sequences use the plain loop over the tier-3 sequence decoder, because expanding the tables costs more than they save.
