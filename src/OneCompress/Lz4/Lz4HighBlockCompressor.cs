@@ -5,7 +5,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// <summary>
 /// The high-compression LZ4 match finder (levels 2 to 12): a hash chain over every position, searched to a depth that grows
 /// with the level. Levels 2 to 6 parse lazily: at each position the longest match is found, and a longer one starting one
-/// byte later replaces it. Levels 7 to 12 choose the sequence of matches that makes the block smallest, by a shortest-path search
+/// byte later replaces it (levels 3 to 6 also look two bytes ahead). Levels 7 to 12 choose the sequence of matches that makes the block smallest, by a shortest-path search
 /// over the encoded size of each choice (a literal run grows by a byte, and by one more at 15 and every 255 after;
 /// a match costs a token, two offset bytes and its length bytes) for as far ahead as the level allows. The parameters of
 /// each level are in the encoder's documentation page.
@@ -19,7 +19,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// </remarks>
 public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
 {
-    internal const int HashLog = 15;
+    internal const int HashLog = 16;
     private const int ChainMask = 0xFFFF;
     private const long InitialOrigin = 1 << 16;
     private const int OptWindow = 4096;
@@ -33,6 +33,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     private readonly int _attempts;
     private readonly int _nice;
     private readonly bool _optimal;
+    private readonly bool _lookahead;
     private OptState[]? _opt;
     private int[]? _plan;
     private byte[] _work = [];
@@ -41,6 +42,14 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     private int _next;
     private bool _scrubPending;
     private Lz4PreparedDictionary? _dictionary;
+
+    // Small blocks with a dictionary keep the dictionary's index in place between calls (see CompressParked): the dictionary
+    // whose index the tables hold, and the values each insertion overwrote, so the block's own entries can be taken back out.
+    private Lz4PreparedDictionary? _parked;
+    private uint[] _undoHead = [];
+    private ushort[] _undoChain = [];
+    private bool _recording;
+    private int _undoBase;
 
     /// <summary>Creates a high-compression compressor.</summary>
     /// <param name="level">The level, from 2 to 12.</param>
@@ -51,6 +60,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         ArgumentOutOfRangeException.ThrowIfGreaterThan(level, 12);
         _level = level;
         (_attempts, _nice, _optimal) = Parameters(level);
+        _lookahead = level is >= 3 and <= 6;
     }
 
     /// <summary>Gets the level.</summary>
@@ -61,16 +71,16 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     private static (int Attempts, int Nice, bool Optimal) Parameters(int level) => level switch
     {
         2 => (3, 16, false),
-        3 => (14, 256, false),
-        4 => (40, 256, false),
-        5 => (96, 256, false),
-        6 => (320, 256, false),
-        7 => (64, 128, true),
-        8 => (80, 128, true),
-        9 => (80, 256, true),
-        10 => (96, 256, true),
-        11 => (400, 256, true),
-        _ => (1024, 512, true),
+        3 => (7, 256, false),
+        4 => (14, 256, false),
+        5 => (28, 256, false),
+        6 => (56, 256, false),
+        7 => (32, 128, true),
+        8 => (36, 128, true),
+        9 => (40, 128, true),
+        10 => (56, 256, true),
+        11 => (100, 256, true),
+        _ => (128, 256, true),
     };
 
     /// <inheritdoc />
@@ -80,11 +90,22 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     /// <inheritdoc />
     public override void Reset()
     {
+        // When the tables hold only a dictionary's index there is no history to forget, and keeping the index spares the next
+        // block (a new frame with the same dictionary, typically) rebuilding it.
+        if (_parked is null)
+        {
+            Forget();
+        }
+    }
+
+    private void Forget()
+    {
         // The origin stays a multiple of 64 KiB so that a dictionary snapshot's chain can be copied as it is.
         _origin = (_origin + _used + ChainMask + 1 + ChainMask) & ~(long)ChainMask;
         _used = 0;
         _next = 0;
         _scrubPending = false;
+        _parked = null;
     }
 
     /// <inheritdoc />
@@ -92,6 +113,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     {
         ArgumentOutOfRangeException.ThrowIfNegative(removed);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(removed, _used);
+        _parked = null;
         _origin += removed;
         _used -= removed;
         _next = Math.Max(0, _next - removed);
@@ -130,9 +152,15 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     public override int Compress(ReadOnlySpan<byte> window, int historyLength, Span<byte> destination)
     {
         CheckArguments(window, historyLength, destination);
-        if (historyLength == 0)
+        if (historyLength == 0 && _dictionary is { } parkable && window.Length <= MaxParkedInput)
         {
-            Reset();
+            return CompressParked(window, parkable, destination);
+        }
+
+        if (historyLength == 0 || _parked is not null)
+        {
+            // A block without history starts afresh; so does one that continues a block whose index was taken apart.
+            Forget();
         }
 
         if (_origin + window.Length + (3 * (ChainMask + 1)) + (_dictionary?.Content.Length ?? 0) >= int.MaxValue)
@@ -176,6 +204,68 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         return written;
     }
 
+    // Blocks up to this size use the in-place dictionary index.
+    private const int MaxParkedInput = ChainMask + 1;
+
+    // A block with a dictionary, without history, small enough that undoing its insertions is cheaper than rebuilding the
+    // dictionary's index: the tables keep the dictionary's entries between calls. The block is appended to the dictionary in
+    // one buffer, compressed as usual while every insertion records the head and chain values it replaced, and afterwards the
+    // insertions are undone in reverse order, which leaves the tables exactly as the dictionary alone left them. A fresh
+    // compressor and a reused one therefore see the same index at every step, and the output cannot depend on earlier blocks.
+    private int CompressParked(ReadOnlySpan<byte> window, Lz4PreparedDictionary dictionary, Span<byte> destination)
+    {
+        int dictLen = dictionary.Content.Length;
+        int total = dictLen + window.Length;
+        if (_work.Length < total)
+        {
+            _work = new byte[Math.Max(total, _work.Length * 2)];
+            _parked = null;
+        }
+
+        if (!ReferenceEquals(_parked, dictionary))
+        {
+            Forget();
+            if (_origin + (3 * (ChainMask + 1)) + dictLen >= int.MaxValue)
+            {
+                Array.Clear(_head);
+                _origin = InitialOrigin;
+            }
+
+            dictionary.Content.CopyTo(_work, 0);
+            RestoreDictionary(dictionary);
+            _parked = dictionary;
+        }
+
+        if (_undoHead.Length < window.Length)
+        {
+            _undoHead = new uint[Math.Max(window.Length, 256)];
+            _undoChain = new ushort[_undoHead.Length];
+        }
+
+        window.CopyTo(_work.AsSpan(dictLen));
+        _used = total;
+        _next = dictLen;
+        _undoBase = dictLen;
+        _recording = true;
+        int written = Parse(_work.AsSpan(0, total), dictLen, destination);
+        _recording = false;
+
+        // Undo, newest first: a position's old head value is what the next position with the same hash saw as its predecessor.
+        uint org = (uint)_origin;
+        uint[] head = _head;
+        ushort[] chain = _chain;
+        for (int p = _next - 1; p >= dictLen; p--)
+        {
+            int h = Hash(Lz4EncRaw.Read32(_work, p));
+            head[h] = _undoHead[p - dictLen];
+            chain[(int)((org + (uint)p) & ChainMask)] = _undoChain[p - dictLen];
+        }
+
+        _next = dictLen;
+        _used = dictLen;
+        return written;
+    }
+
     private void RestoreDictionary(Lz4PreparedDictionary dictionary)
     {
         Lz4PreparedDictionary.HighIndex snapshot = dictionary.HighSnapshot;
@@ -207,12 +297,21 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         uint org = (uint)_origin;
         uint[] head = _head;
         ushort[] chain = _chain;
+        bool record = _recording;
         for (int p = _next; p < target; p++)
         {
             int h = Hash(Lz4EncRaw.Read32(src, p));
-            int prev = (int)(Lz4EncRaw.Get(head, h) - org);
+            uint old = Lz4EncRaw.Get(head, h);
+            int prev = (int)(old - org);
             int delta = p - prev;
-            Lz4EncRaw.Put(chain, (int)((org + (uint)p) & ChainMask), (prev >= 0 && delta <= Lz4Format.MaxOffset) ? (ushort)delta : (ushort)0);
+            int slot = (int)((org + (uint)p) & ChainMask);
+            if (record)
+            {
+                _undoHead[p - _undoBase] = old;
+                _undoChain[p - _undoBase] = Lz4EncRaw.Get(chain, slot);
+            }
+
+            Lz4EncRaw.Put(chain, slot, (prev >= 0 && delta <= Lz4Format.MaxOffset) ? (ushort)delta : (ushort)0);
             Lz4EncRaw.Put(head, h, org + (uint)p);
         }
 
@@ -225,46 +324,49 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     // The longest match for src[ip..] that is longer than `best`, searching at most `attempts` candidates on the chain.
     // Returns the length (or `best` unchanged when nothing longer was found) and the offset of the match found.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private int Find(ReadOnlySpan<byte> src, int ip, int matchLimit, int best, int attempts, int nice, ref int offset)
+    private int Find(ReadOnlySpan<byte> src, int position, int matchLimit, int best, int attempts, int nice, ref int offset)
     {
-        if (ip + best >= matchLimit)
+        if (position + best >= matchLimit)
         {
             return best;
         }
 
+        // Native-width positions keep the address arithmetic free of sign extensions; every index below is a position inside
+        // the window or a hash/mask bounded by the table sizes.
         uint org = (uint)_origin;
-        ushort[] chain = _chain;
+        var head = new Lz4Table(_head);
+        var chain = new Lz4Table16(_chain);
+        nint ip = position;
         uint first = Lz4EncRaw.Read32(src, ip);
-        uint candidate = Lz4EncRaw.Get(_head, Hash(first));
+        uint candidate = head.Get(Hash(first));
         byte tail = Lz4EncRaw.Get(src, ip + best);
         while (attempts-- > 0)
         {
             // The candidate must lie 1 to 65535 bytes back; older entries, entries from before the window and empty slots all fail.
-            int distance = ip - (int)(candidate - org);
-            if ((uint)(distance - 1) >= Lz4Format.MaxOffset)
+            nint distance = ip - (int)(candidate - org);
+            if ((nuint)(distance - 1) >= Lz4Format.MaxOffset)
             {
                 break;
             }
 
-            int idx = ip - distance;
+            nint idx = ip - distance;
             if (Lz4EncRaw.Get(src, idx + best) == tail && Lz4EncRaw.Read32(src, idx) == first)
             {
-                int length = Lz4Format.MinMatch + Lz4EncRaw.CommonLength(src, idx + Lz4Format.MinMatch, ip + Lz4Format.MinMatch, matchLimit);
+                int length = Lz4Format.MinMatch + Lz4EncRaw.CommonLength(src, (int)idx + Lz4Format.MinMatch, position + Lz4Format.MinMatch, matchLimit);
                 if (length > best)
                 {
                     best = length;
-                    offset = distance;
-                    if (best >= nice || ip + best >= matchLimit)
+                    offset = (int)distance;
+                    if (best >= nice || position + best >= matchLimit)
                     {
                         break;
                     }
 
                     tail = Lz4EncRaw.Get(src, ip + best);
-
                 }
             }
 
-            ushort delta = Lz4EncRaw.Get(chain, (int)(candidate & ChainMask));
+            ushort delta = chain.Get((nint)(candidate & ChainMask));
             if (delta == 0)
             {
                 break;
@@ -276,6 +378,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         return best;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private int Parse(ReadOnlySpan<byte> src, int start, Span<byte> dst)
     {
         // The window is exactly [history][input]; when a dictionary stands in as history `dst` indexes still start at zero.
@@ -321,6 +424,21 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
                 int length2 = Find(src, ip + 1, matchLimit, length, _attempts, _nice, ref offset2);
                 if (length2 <= length)
                 {
+                    // Two bytes on, a match that ends further than two literals' cost beyond this one also wins.
+                    if (_lookahead && ip + 2 <= mfLimit)
+                    {
+                        InsertUpTo(src, ip + 2);
+                        int offset3 = 0;
+                        int length3 = Find(src, ip + 2, matchLimit, length + 1, _attempts, _nice, ref offset3);
+                        if (length3 > length + 1)
+                        {
+                            ip += 2;
+                            length = length3;
+                            offset = offset3;
+                            continue;
+                        }
+                    }
+
                     break;
                 }
 
@@ -365,6 +483,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
 
     // Plans the cheapest sequence of literals and matches over the stretch that starts at ip, given the longest match there,
     // and writes it. Returns the new position, anchor and output position.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private (int Ip, int Anchor, int Op) Optimal(ReadOnlySpan<byte> src, Span<byte> dst, int ip, int anchor, int op, int firstLength, int firstOffset, int mfLimit, int matchLimit)
     {
         OptState[] opt = _opt!;

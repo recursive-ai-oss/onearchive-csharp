@@ -35,9 +35,12 @@ The range is -65536 to 12 (a level outside it is an `ArgumentOutOfRangeException
 | 1, 0 | hash table | greedy | acceleration 1 |
 | -N | hash table | greedy | acceleration N + 1 (so `--fast=1` skips like acceleration 2) |
 | 2 | hash table (2^17 entries, interior positions indexed every 2nd byte) | greedy | acceleration 1 |
-| 3 to 6 | hash chain | lazy | chain candidates 14, 40, 96, 320 |
-| 7 to 9 | hash chain | optimal | chain candidates 64, 80, 80; stop at match length 128, 128, 256 |
-| 10 to 12 | hash chain | optimal | chain candidates 96, 400, 1024; stop at match length 256, 256, 512 |
+| 3 to 6 | hash chain | lazy, two-byte lookahead | chain candidates 7, 14, 28, 56; stop at match length 256 |
+| 7 to 9 | hash chain | optimal | chain candidates 32, 36, 40; stop at match length 128 |
+| 10 to 12 | hash chain | optimal | chain candidates 56, 100, 128; stop at match length 256 |
+
+The candidate counts were chosen so that, on Silesia's tar and enwik8, the output stays within about 0.9% of the `lz4`
+tool's size at the same level, at the least search work that achieves it.
 
 ### Fast levels (hash table, greedy)
 
@@ -55,7 +58,7 @@ The range is -65536 to 12 (a level outside it is an `ArgumentOutOfRangeException
 
 ### High levels
 
-- Hash chain: `head[hash]` holds the last position with that hash of four bytes (`(bytes * 2654435761) >> 17`, 32768
+- Hash chain: `head[hash]` holds the last position with that hash of four bytes (`(bytes * 2654435761) >> 16`, 65536
   slots); `chain[position & 0xFFFF]` holds the distance to the previous position with the same hash (0 ends the chain, and
   a distance of 65536 or more is stored as 0). Every position is inserted, in order, before it is searched, including the
   positions inside matches.
@@ -63,9 +66,10 @@ The range is -65536 to 12 (a level outside it is an `ArgumentOutOfRangeException
   lies 1 to 65535 bytes back, agrees on the byte at the current best length, agrees on the first four bytes, and extends
   past the best length so far (ties keep the nearest). The search stops early when the best length reaches the level's stop
   length or the end of the block. Matches end at least 5 bytes before the end of the block and start at least 12 bytes before it.
-- **Lazy parse (levels 2 to 6).** At a position with a match, the next position is searched for a match longer than
-  the current one; one found replaces it (the bytes before it become literals) and the check repeats from there.
-  The chosen match is then extended backwards over pending literals.
+- **Lazy parse (levels 3 to 6).** At a position with a match, the next position is searched for a match longer than
+  the current one; one found replaces it (the bytes before it become literals) and the check repeats from there. When the
+  next position has none, the position after it is searched for a match more than one byte longer than the current one,
+  and one found replaces the current match the same way. The chosen match is then extended backwards over pending literals.
 - **Optimal parse (levels 7 to 12).** Starting at a position with a match, the encoder plans the cheapest sequence of
   literals and matches for the stretch ahead, by dynamic programming over byte positions. Prices are bytes of output:
   a literal costs 1, plus 1 more when the run it extends reaches 15 literals and every 255 after; a match costs 3 (token

@@ -75,7 +75,7 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
 
     /// <summary>Hashes the low five bytes of eight (a little-endian read) to a table index of <c>64 - shift</c> bits.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static int Hash(ulong eightBytes, int shift) => (int)(((eightBytes << 24) * 889523592379UL) >> shift);
+    internal static int Hash(ulong eightBytes, int shift) => (int)(Hash64(eightBytes) >> shift);
 
     /// <inheritdoc />
     public override void SetDictionary(Lz4Dictionary? dictionary) =>
@@ -133,19 +133,86 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
             : Core<WithDictionary>(window, historyLength, destination, dictionary);
     }
 
-    private int Core<TMode>(ReadOnlySpan<byte> src, int start, Span<byte> dst, Lz4PreparedDictionary? prepared)
+    // The probe loop, kept in a method of its own so that its few live values stay in registers. Returns the position of the
+    // first probe whose candidate agrees on four bytes (and the candidate's position in cand; negative when it lies in the
+    // dictionary), or -1 when the probes reach the end of the block.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.NoInlining)]
+    private static nint Search<TMode>(Lz4In src, Lz4Table table, uint[] dictTable, ReadOnlySpan<byte> dict, nint start, nint last, uint org, int shift, int searchBase, out nint cand)
         where TMode : struct, IDictionaryMode
     {
-        int n = src.Length;
-        int op = 0;
-        int anchor = start;
-        int ip = start;
-        int mfLimit = n - Lz4Format.MatchFindLimit;
-        int matchLimit = n - Lz4Format.LastLiterals;
+        // Positions are native-width so the address arithmetic needs no sign extension; every table index is a hash shifted
+        // down to the table's size, and every source index is at most `last` (plus the eight bytes the hash reads, which the
+        // block format's margin leaves inside the window).
+        nint forward = start;
+        int step = 1;
+        int searchNb = searchBase;
+        nint h = Slot(src.Read64(forward), shift);
+        while (true)
+        {
+            nint ip = forward;
+            forward += step;
+            step = searchNb++ >> SkipTrigger;
+            uint entry = table.Get(h);
+            table.Put(h, org + (uint)ip);
+            nint c = (int)(entry - org);
+            nint hNext = forward <= last ? Slot(src.Read64(forward), shift) : 0;
+            if ((nuint)(ip - c - 1) < Lz4Format.MaxOffset && src.Read32(c) == src.Read32(ip))
+            {
+                cand = c;
+                return ip;
+            }
+
+            if (TMode.Enabled)
+            {
+                uint de = Lz4EncRaw.Get(dictTable, (int)h);
+                if (de != 0)
+                {
+                    int dpos = (int)de - 1;
+                    int dictLen = dict.Length;
+                    if ((int)ip + dictLen - dpos <= Lz4Format.MaxOffset && Lz4EncRaw.Read32(dict, dpos) == src.Read32(ip))
+                    {
+                        // A negative position is a dictionary byte: the dictionary sits just before the window.
+                        cand = dpos - dictLen;
+                        return ip;
+                    }
+                }
+            }
+
+            if (forward > last)
+            {
+                cand = 0;
+                return -1;
+            }
+
+            h = hNext;
+        }
+    }
+
+    // The table slot for a hash of the low five bytes of eight.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nint Slot(ulong eightBytes, int shift) => (nint)(Hash64(eightBytes) >> shift);
+
+    // The 64-bit product the table index is taken from (the high bits); see Hash.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Hash64(ulong eightBytes) => (eightBytes << 24) * 889523592379UL;
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private int Core<TMode>(ReadOnlySpan<byte> srcSpan, int start, Span<byte> dstSpan, Lz4PreparedDictionary? prepared)
+        where TMode : struct, IDictionaryMode
+    {
+        var src = new Lz4In(srcSpan);
+        var dst = new Lz4Out(dstSpan);
+        int srcLength = srcSpan.Length;
+        int dstLength = dstSpan.Length;
+        nint op = 0;
+        nint anchor = start;
+        nint ip = start;
+        nint mfLimit = srcLength - Lz4Format.MatchFindLimit;
+        nint matchLimit = srcLength - Lz4Format.LastLiterals;
         uint org = (uint)_origin;
-        uint[] table = _table;
+        var table = new Lz4Table(_table);
         int shift = 64 - _hashLog;
-        uint[] dictTable = TMode.Enabled ? prepared!.FastTable(_hashLog) : table;
+        uint[] dictTable = TMode.Enabled ? prepared!.FastTable(_hashLog) : _table;
         ReadOnlySpan<byte> dict = TMode.Enabled ? prepared!.Content : default;
         int dictLen = dict.Length;
         int searchBase = _acceleration << SkipTrigger;
@@ -153,65 +220,24 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
         if (ip <= mfLimit && start == 0)
         {
             // No match can start at the first byte; index it for the bytes that follow.
-            Lz4EncRaw.Put(table, Hash(Lz4EncRaw.Read64(src, 0), shift), org);
+            table.Put(Slot(src.Read64(0), shift), org);
             ip = 1;
         }
 
         bool immediate = false;
-        int cand = 0;
+        nint cand = 0;
         while (ip <= mfLimit)
         {
             if (!immediate)
             {
                 // Search forward, one probe per step, with a step that grows while nothing is found.
-                int forward = ip;
-                int step = 1;
-                int searchNb = searchBase;
-                int h = Hash(Lz4EncRaw.Read64(src, ip), shift);
-                bool found = false;
-                while (true)
-                {
-                    ip = forward;
-                    forward += step;
-                    step = searchNb++ >> SkipTrigger;
-                    uint entry = Lz4EncRaw.Get(table, h);
-                    Lz4EncRaw.Put(table, h, org + (uint)ip);
-                    cand = (int)(entry - org);
-                    int hNext = forward <= mfLimit ? Hash(Lz4EncRaw.Read64(src, forward), shift) : 0;
-                    if ((uint)(ip - cand - 1) < Lz4Format.MaxOffset && Lz4EncRaw.Read32(src, cand) == Lz4EncRaw.Read32(src, ip))
-                    {
-                        found = true;
-                        break;
-                    }
-
-                    if (TMode.Enabled)
-                    {
-                        uint de = Lz4EncRaw.Get(dictTable, h);
-                        if (de != 0)
-                        {
-                            int dpos = (int)de - 1;
-                            if (ip + dictLen - dpos <= Lz4Format.MaxOffset && Lz4EncRaw.Read32(dict, dpos) == Lz4EncRaw.Read32(src, ip))
-                            {
-                                // A negative position is a dictionary byte: the dictionary sits just before the window.
-                                cand = dpos - dictLen;
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (forward > mfLimit)
-                    {
-                        break;
-                    }
-
-                    h = hNext;
-                }
-
-                if (!found)
+                nint found = Search<TMode>(src, table, dictTable, dict, ip, mfLimit, org, shift, searchBase, out cand);
+                if (found < 0)
                 {
                     break;
                 }
+
+                ip = found;
             }
 
             immediate = false;
@@ -219,7 +245,7 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
             // Extend backwards over literals that are still pending.
             if (cand >= 0)
             {
-                while (ip > anchor && cand > 0 && Lz4EncRaw.Get(src, ip - 1) == Lz4EncRaw.Get(src, cand - 1))
+                while (ip > anchor && cand > 0 && src.Get(ip - 1) == src.Get(cand - 1))
                 {
                     ip--;
                     cand--;
@@ -227,7 +253,7 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
             }
             else if (TMode.Enabled)
             {
-                while (ip > anchor && cand > -dictLen && Lz4EncRaw.Get(src, ip - 1) == Lz4EncRaw.Get(dict, dictLen + cand - 1))
+                while (ip > anchor && cand > -dictLen && src.Get(ip - 1) == Lz4EncRaw.Get(dict, dictLen + (int)cand - 1))
                 {
                     ip--;
                     cand--;
@@ -235,24 +261,24 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
             }
 
             // Extend forwards; the first four bytes are known equal. The last five bytes of the block stay literals.
-            int length;
+            nint length;
             if (cand >= 0)
             {
-                length = Lz4Format.MinMatch + Lz4EncRaw.CommonLength(src, cand + Lz4Format.MinMatch, ip + Lz4Format.MinMatch, matchLimit);
+                length = Lz4Format.MinMatch + src.CommonLength(cand + Lz4Format.MinMatch, ip + Lz4Format.MinMatch, matchLimit);
             }
             else
             {
-                length = Lz4Format.MinMatch + DictionaryMatchLength(src, dict, cand, ip, matchLimit);
+                length = Lz4Format.MinMatch + DictionaryMatchLength(srcSpan, dict, (int)cand, (int)ip, (int)matchLimit);
             }
 
-            op = Lz4BlockWriter.Sequence(dst, op, src, anchor, ip - anchor, ip - cand, length);
+            op = Lz4BlockWriter.Sequence(dst, op, src, srcLength, dstLength, anchor, ip - anchor, ip - cand, length);
             if (_stride > 0)
             {
                 // The positions the greedy walk skipped over also become candidates for later matches.
-                int stop = Math.Min(ip + length, mfLimit + 1) - 1;
-                for (int q = ip + 1; q < stop; q += _stride)
+                nint stop = Math.Min(ip + length, mfLimit + 1) - 1;
+                for (nint q = ip + 1; q < stop; q += _stride)
                 {
-                    Lz4EncRaw.Put(table, Hash(Lz4EncRaw.Read64(src, q), shift), org + (uint)q);
+                    table.Put(Slot(src.Read64(q), shift), org + (uint)q);
                 }
             }
 
@@ -264,12 +290,12 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
             }
 
             // Index a position inside the match, then see whether another match starts right here.
-            Lz4EncRaw.Put(table, Hash(Lz4EncRaw.Read64(src, ip - 2), shift), org + (uint)(ip - 2));
-            int h2 = Hash(Lz4EncRaw.Read64(src, ip), shift);
-            uint e2 = Lz4EncRaw.Get(table, h2);
-            Lz4EncRaw.Put(table, h2, org + (uint)ip);
+            table.Put(Slot(src.Read64(ip - 2), shift), org + (uint)(ip - 2));
+            nint h2 = Slot(src.Read64(ip), shift);
+            uint e2 = table.Get(h2);
+            table.Put(h2, org + (uint)ip);
             cand = (int)(e2 - org);
-            if ((uint)(ip - cand - 1) < Lz4Format.MaxOffset && Lz4EncRaw.Read32(src, cand) == Lz4EncRaw.Read32(src, ip))
+            if ((nuint)(ip - cand - 1) < Lz4Format.MaxOffset && src.Read32(cand) == src.Read32(ip))
             {
                 immediate = true;
                 continue;
@@ -277,11 +303,11 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
 
             if (TMode.Enabled)
             {
-                uint de = Lz4EncRaw.Get(dictTable, h2);
+                uint de = Lz4EncRaw.Get(dictTable, (int)h2);
                 if (de != 0)
                 {
                     int dpos = (int)de - 1;
-                    if (ip + dictLen - dpos <= Lz4Format.MaxOffset && Lz4EncRaw.Read32(dict, dpos) == Lz4EncRaw.Read32(src, ip))
+                    if ((int)ip + dictLen - dpos <= Lz4Format.MaxOffset && Lz4EncRaw.Read32(dict, dpos) == src.Read32(ip))
                     {
                         cand = dpos - dictLen;
                         immediate = true;
@@ -293,7 +319,7 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
             ip++;
         }
 
-        return Lz4BlockWriter.LastLiterals(dst, op, src, anchor, n - anchor);
+        return Lz4BlockWriter.LastLiterals(dstSpan, (int)op, srcSpan, (int)anchor, srcLength - (int)anchor);
     }
 
     // The match starts in the dictionary at cand (negative: -cand bytes before the window) and the first four bytes agree.

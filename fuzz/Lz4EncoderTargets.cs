@@ -142,7 +142,8 @@ internal static class Lz4EncoderTargets
         Lz4BlockCompressor reused = Lz4BlockCompressor.Create(level);
         reused.SetDictionary(options.Dictionary);
         byte[] scratch = new byte[Lz4BlockWriter.GetMaxCompressedLength(data.Length)];
-        reused.Compress(Expand(input[1..], 5000), 0, new byte[Lz4BlockWriter.GetMaxCompressedLength(5000)]);
+        byte[] other = Expand(input[1..], 5000); // may run a little over its limit
+        reused.Compress(other, 0, new byte[Lz4BlockWriter.GetMaxCompressedLength(other.Length)]);
         int n = reused.Compress(data, 0, scratch);
         if (!scratch.AsSpan(0, n).SequenceEqual(block))
         {

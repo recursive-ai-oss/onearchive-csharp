@@ -201,6 +201,75 @@ public static class Lz4BlockWriter
         return op;
     }
 
+    /// <summary>
+    /// <see cref="Sequence(Span{byte}, int, ReadOnlySpan{byte}, int, int, int, int)"/> over by-reference buffers, for the fast
+    /// compressor's loop. <paramref name="sourceLength"/> and <paramref name="destinationLength"/> are the buffers' sizes, used
+    /// only to decide whether the 16-byte copies stay inside them.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static nint Sequence(Lz4Out destination, nint op, Lz4In source, int sourceLength, int destinationLength, nint anchor, nint literalCount, nint offset, nint matchLength)
+    {
+        nint tokenAt = op++;
+        bool wide = anchor + literalCount + 15 <= sourceLength && op + literalCount + (literalCount / 255) + 18 <= destinationLength;
+        nint token;
+        if (literalCount >= 15)
+        {
+            token = 15 << 4;
+            nint r = literalCount - 15;
+            while (r >= 255)
+            {
+                destination.Put(op++, 255);
+                r -= 255;
+            }
+
+            destination.Put(op++, (byte)r);
+        }
+        else
+        {
+            token = literalCount << 4;
+        }
+
+        if (wide)
+        {
+            // Copies in 16-byte steps; the bytes written past the literals are overwritten by what follows.
+            for (nint i = 0; i < literalCount; i += 16)
+            {
+                source.Copy16To(destination, op + i, anchor + i);
+            }
+        }
+        else
+        {
+            for (nint i = 0; i < literalCount; i++)
+            {
+                destination.Put(op + i, source.Get(anchor + i));
+            }
+        }
+
+        op += literalCount;
+        destination.Put16(op, (ushort)offset);
+        op += 2;
+        nint ml = matchLength - MinMatch;
+        if (ml >= 15)
+        {
+            token |= 15;
+            ml -= 15;
+            while (ml >= 255)
+            {
+                destination.Put(op++, 255);
+                ml -= 255;
+            }
+
+            destination.Put(op++, (byte)ml);
+        }
+        else
+        {
+            token |= ml;
+        }
+
+        destination.Put(tokenAt, (byte)token);
+        return op;
+    }
+
     /// <summary>Writes the final literals without the public checks; the caller guarantees room.</summary>
     internal static int LastLiterals(Span<byte> destination, int op, ReadOnlySpan<byte> source, int anchor, int literalCount)
     {

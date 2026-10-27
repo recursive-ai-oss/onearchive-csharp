@@ -173,6 +173,57 @@ public class Lz4EncoderTests
         Assert.Throws<ArgumentException>(() => Lz4Block.Compress(data, new byte[block.Length - 1]));
     }
 
+    [Theory]
+    [InlineData(3, false)]
+    [InlineData(6, true)]
+    [InlineData(9, false)]
+    [InlineData(12, true)]
+    public void ReusedCompressorWithADictionaryMatchesAFreshOne(int level, bool largeDictionary)
+    {
+        // Small blocks keep the dictionary's index in place between calls; a block must not see traces of earlier ones.
+        Lz4Dictionary dictionary = largeDictionary ? new Lz4Dictionary(Text(80_000, 9)) : MakeDictionary();
+        var options = new Lz4CompressionOptions { Level = level, Dictionary = dictionary };
+        Lz4BlockCompressor reused = Lz4BlockCompressor.Create(level);
+        reused.SetDictionary(dictionary);
+        byte[] scratch = new byte[Lz4BlockWriter.GetMaxCompressedLength(200_000)];
+        var payloads = new List<byte[]>();
+        foreach (int size in new[] { 1, 13, 40, 300, 5000, 20_000, 65_535, 65_536, 65_537, 150_000, 700, 65_536 })
+        {
+            payloads.Add(Text(size, (ulong)size));
+            payloads.Add(size >= 1000 ? Mixed(size, (ulong)size + 1) : Random(size, (ulong)size + 1));
+        }
+
+        foreach (byte[] data in payloads.Concat(payloads))
+        {
+            int n = reused.Compress(data, 0, scratch);
+            byte[] fresh = Lz4Block.Compress(data, options);
+            Assert.True(scratch.AsSpan(0, n).SequenceEqual(fresh), $"{data.Length} bytes, level {level}");
+            Assert.True(Lz4Block.Decompress(fresh, new Lz4BlockOptions { Dictionary = dictionary }).AsSpan().SequenceEqual(data));
+        }
+
+        // A block that continues another one (history) after parked blocks, and a switch to no dictionary and back.
+        byte[] first = Text(3000, 31);
+        byte[] second = Text(3000, 32);
+        byte[] joined = [.. first, .. second];
+        int a = reused.Compress(first, 0, scratch);
+        byte[] freshFirst = Lz4Block.Compress(first, options);
+        Assert.True(scratch.AsSpan(0, a).SequenceEqual(freshFirst));
+        Lz4BlockCompressor linkedFresh = Lz4BlockCompressor.Create(level);
+        linkedFresh.SetDictionary(dictionary);
+        linkedFresh.Compress(first, 0, scratch);
+        byte[] linkedExpected = new byte[scratch.Length];
+        int expectedLength = linkedFresh.Compress(joined, first.Length, linkedExpected);
+        int b = reused.Compress(joined, first.Length, scratch);
+        Assert.True(scratch.AsSpan(0, b).SequenceEqual(linkedExpected.AsSpan(0, expectedLength)), "linked block after a dictionary block");
+
+        reused.SetDictionary(null);
+        int c = reused.Compress(first, 0, scratch);
+        Assert.True(scratch.AsSpan(0, c).SequenceEqual(Lz4Block.Compress(first, new Lz4CompressionOptions { Level = level })));
+        reused.SetDictionary(dictionary);
+        int d = reused.Compress(first, 0, scratch);
+        Assert.True(scratch.AsSpan(0, d).SequenceEqual(freshFirst));
+    }
+
     [Fact]
     public void ReusedCompressorMatchesAFreshOne()
     {
