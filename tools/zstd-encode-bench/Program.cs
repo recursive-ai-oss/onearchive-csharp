@@ -138,6 +138,7 @@ if (args[0] == "big")
     {
         Dictionary = dictPath is null ? null : ZstdDictionary.Parse(File.ReadAllBytes(dictPath)),
         MaxOutputSize = long.MaxValue,
+        MaxWindowSize = 1L << 31,
     });
     byte[] restored = new byte[data.Length];
     bool ok = true;
