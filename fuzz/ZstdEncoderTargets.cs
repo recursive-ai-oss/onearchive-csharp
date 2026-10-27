@@ -38,7 +38,7 @@ internal static class ZstdEncoderTargets
             return;
         }
 
-        int level = (input[0] % 14) - 9; // -9 to 4, so level 0 and the negative levels all occur
+        int level = (input[0] % 25) - 9; // -9 to 15, so level 0, the negative levels and every strategy occur
         int flags = input[1];
         int piece = 1 << (input[2] % 19);
         ReadOnlySpan<byte> data = input[3..];

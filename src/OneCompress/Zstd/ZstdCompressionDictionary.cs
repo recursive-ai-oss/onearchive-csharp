@@ -18,6 +18,7 @@ public sealed class ZstdCompressionDictionary
     private readonly byte[] _content;
     private readonly object _indexLock = new();
     private ZstdDictionaryIndex[] _indexes = [];
+    private ZstdChainDictionaryIndex[] _chainIndexes = [];
 
     private ZstdCompressionDictionary(
         uint id,
@@ -147,6 +148,78 @@ public sealed class ZstdCompressionDictionary
             Volatile.Write(ref _indexes, list);
             return built;
         }
+    }
+
+    /// <summary>Gets (building it on first use) the hash-chain search tables over the content for the chain and tree strategies.</summary>
+    internal ZstdChainDictionaryIndex GetChainIndex(int minMatch, int hashLog, int chainLog)
+    {
+        foreach (ZstdChainDictionaryIndex index in Volatile.Read(ref _chainIndexes))
+        {
+            if (index.Matches(minMatch, hashLog, chainLog))
+            {
+                return index;
+            }
+        }
+
+        lock (_indexLock)
+        {
+            foreach (ZstdChainDictionaryIndex index in _chainIndexes)
+            {
+                if (index.Matches(minMatch, hashLog, chainLog))
+                {
+                    return index;
+                }
+            }
+
+            var built = ZstdChainDictionaryIndex.Build(_content, minMatch, hashLog, chainLog);
+            var list = new ZstdChainDictionaryIndex[_chainIndexes.Length + 1];
+            _chainIndexes.CopyTo(list, 0);
+            list[^1] = built;
+            Volatile.Write(ref _chainIndexes, list);
+            return built;
+        }
+    }
+}
+
+/// <summary>Hash chains over a dictionary's content, made for one parameter set and then only read.</summary>
+internal sealed class ZstdChainDictionaryIndex
+{
+    private readonly int _minMatch;
+    private readonly int _hashLog;
+    private readonly int _chainLog;
+
+    private ZstdChainDictionaryIndex(int minMatch, int hashLog, int chainLog, uint[] head, uint[] chain)
+    {
+        _minMatch = minMatch;
+        _hashLog = hashLog;
+        _chainLog = chainLog;
+        Head = head;
+        Chain = chain;
+    }
+
+    /// <summary>Gets the most recent content position (0 for none) of each hash value.</summary>
+    public uint[] Head { get; }
+
+    /// <summary>Gets, for the position <c>p</c>, at index <c>p &amp; mask</c>, the previous position with the same hash.</summary>
+    public uint[] Chain { get; }
+
+    public bool Matches(int minMatch, int hashLog, int chainLog) => _minMatch == minMatch && _hashLog == hashLog && _chainLog == chainLog;
+
+    public static ZstdChainDictionaryIndex Build(byte[] content, int minMatch, int hashLog, int chainLog)
+    {
+        // Every position with eight bytes after it is indexed once, so a frame only reads the chains.
+        ReadOnlySpan<byte> data = content;
+        var head = new uint[1 << hashLog];
+        var chain = new uint[1 << chainLog];
+        int mask = (1 << chainLog) - 1;
+        for (int i = 1; i + 8 <= data.Length; i++)
+        {
+            int h = ZstdFastMatchFinder.Hash(data, i, minMatch, hashLog);
+            chain[i & mask] = head[h];
+            head[h] = (uint)i;
+        }
+
+        return new ZstdChainDictionaryIndex(minMatch, hashLog, chainLog, head, chain);
     }
 }
 

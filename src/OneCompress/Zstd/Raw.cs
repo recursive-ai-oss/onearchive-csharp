@@ -75,6 +75,33 @@ internal static class Raw
 #endif
     }
 
+    /// <summary>
+    /// Compares 16 bytes of <paramref name="array"/> from <paramref name="index"/> with <paramref name="value"/> and returns a mask
+    /// with bit <c>i</c> set when byte <c>i</c> is equal. The vector and scalar paths give the same mask. The caller guarantees
+    /// <c>index + 16 &lt;= array.Length</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint EqualMask16(byte[] array, int index, byte value)
+    {
+#if !CHECKED
+        if (Vector128.IsHardwareAccelerated)
+        {
+            Vector128<byte> v = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), index));
+            return Vector128.Equals(v, Vector128.Create(value)).ExtractMostSignificantBits();
+        }
+#endif
+        uint mask = 0;
+        for (int i = 0; i < 16; i++)
+        {
+            if (array[index + i] == value)
+            {
+                mask |= 1u << i;
+            }
+        }
+
+        return mask;
+    }
+
     /// <summary>As <see cref="Copy16"/> for eight bytes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Copy8(Span<byte> destination, int destinationIndex, ReadOnlySpan<byte> source, int sourceIndex)

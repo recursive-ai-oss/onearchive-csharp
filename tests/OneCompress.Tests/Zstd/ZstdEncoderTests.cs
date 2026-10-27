@@ -6,7 +6,7 @@ namespace RecursiveAI.OneCompress.Tests;
 /// <summary>Round trips of the Zstandard encoder through this library's decoder; the zstd tool is exercised in the interop tests.</summary>
 public class ZstdEncoderTests
 {
-    public static TheoryData<int> Levels() => new() { -131072, -50, -7, -5, -3, -1, 0, 1, 2, 3, 4 };
+    public static TheoryData<int> Levels() => new() { -131072, -50, -7, -5, -3, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
 
     internal static byte[] Text(int length, int seed)
     {
@@ -106,9 +106,100 @@ public class ZstdEncoderTests
     }
 
     [Fact]
+    public void MidLevelsFindMoreThanTheFastLevels()
+    {
+        // Repeated stretches at distances of a few bytes up to several hundred kilobytes: every strategy has something to find.
+        byte[] data = Text(700_000, 21);
+        int fast = Zstd.Zstd.Compress(data, new ZstdCompressionOptions { Level = 1 }).Length;
+        for (int level = 5; level <= 15; level++)
+        {
+            byte[] frame = Zstd.Zstd.Compress(data, new ZstdCompressionOptions { Level = level });
+            Assert.True(frame.Length < fast, $"level {level}: {frame.Length} bytes against {fast} at level 1");
+            Assert.True(Zstd.Zstd.Decompress(frame).AsSpan().SequenceEqual(data), $"level {level}");
+        }
+    }
+
+    [Theory]
+    [InlineData(5)]
+    [InlineData(9)]
+    [InlineData(13)]
+    [InlineData(15)]
+    public void EveryMatchTheMidFindersReportIsReal(int level)
+    {
+        // Parses many short blocks of repetitive data with repeats far longer than the comparison cap, so that the ends of blocks,
+        // takeovers of old tree nodes and stale table entries all occur, and checks every reported match against the bytes.
+        for (int seed = 1; seed <= 60; seed++)
+        {
+            var random = new Random(seed);
+            byte[] data = new byte[500_000];
+            byte[] unit = new byte[1 + random.Next(random.Next(3) == 0 ? 400 : 6000)];
+            for (int i = 0; i < data.Length; i += unit.Length)
+            {
+                if (i == 0 || random.Next(4) == 0)
+                {
+                    for (int k = 0; k < unit.Length; k++)
+                    {
+                        unit[k] = (byte)('a' + random.Next(3));
+                    }
+                }
+
+                Array.Copy(unit, 0, data, i, Math.Min(unit.Length, data.Length - i));
+                for (int m = random.Next(500); m < unit.Length && i + m < data.Length; m += 50 + random.Next(600))
+                {
+                    data[i + m] = (byte)('a' + random.Next(3));
+                }
+            }
+
+            ZstdCompressionParameters parameters = ZstdCompressionParameters.Resolve(level, -1, 0);
+            var finder = new ZstdLazyMatchFinder();
+            finder.BeginFrame(parameters, null);
+            var store = new ZstdSequenceStore();
+            var reps = new ZstdRepeatOffsets { Offset1 = 1, Offset2 = 4, Offset3 = 8 };
+            int start = 0;
+            while (start < data.Length)
+            {
+                int end = Math.Min(data.Length, start + 100 + random.Next(random.Next(4) == 0 ? 120_000 : 3000));
+                store.Clear();
+                finder.FindSequences(data, start, end, 0, reps, store);
+                int position = start;
+                foreach (ZstdSequence sequence in store.Sequences)
+                {
+                    position += (int)sequence.LiteralLength;
+                    Assert.True(sequence.Offset >= 1 && sequence.Offset <= position, $"level {level} seed {seed}: offset {sequence.Offset} at {position}");
+                    ReadOnlySpan<byte> match = data.AsSpan(position, (int)sequence.MatchLength);
+                    Assert.True(match.SequenceEqual(data.AsSpan(position - (int)sequence.Offset, (int)sequence.MatchLength)), $"level {level} seed {seed}: match of {sequence.MatchLength} at {position}, offset {sequence.Offset}, is not in the data");
+                    position += (int)sequence.MatchLength;
+                    Assert.True(position <= end);
+                    reps.Apply(sequence.Offset, sequence.LiteralLength);
+                }
+
+                start = end;
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(5, 20_000_000, 21, 18, 19, 3, 5, 2, ZstdStrategy.Greedy)]
+    [InlineData(9, 20_000_000, 22, 20, 21, 4, 5, 16, ZstdStrategy.Lazy2)]
+    [InlineData(12, 20_000_000, 22, 22, 23, 6, 5, 32, ZstdStrategy.Lazy2)]
+    [InlineData(15, 20_000_000, 22, 23, 23, 6, 5, 32, ZstdStrategy.BinaryTreeLazy2)]
+    [InlineData(4, 262_144, 18, 16, 17, 3, 5, 2, ZstdStrategy.Greedy)]
+    [InlineData(4, 131_072, 17, 17, 17, 2, 4, 0, ZstdStrategy.DoubleFast)]
+    [InlineData(4, 4097, 13, 13, 14, 4, 4, 2, ZstdStrategy.Greedy)]
+    [InlineData(9, 16_384, 14, 15, 14, 5, 4, 8, ZstdStrategy.BinaryTreeLazy2)]
+    [InlineData(7, 131_072, 17, 16, 17, 3, 4, 8, ZstdStrategy.Lazy2)]
+    [InlineData(12, 262_144, 18, 19, 19, 7, 4, 12, ZstdStrategy.BinaryTreeLazy2)]
+    public void LevelTablesFollowTheReferenceForEachSizeClass(int level, long size, int windowLog, int chainLog, int hashLog, int searchLog, int minMatch, int targetLength, ZstdStrategy strategy)
+    {
+        // Values read off `zstd --show-default-cparams` for sources of these sizes (the window shrinks to the source for small ones).
+        ZstdCompressionParameters p = ZstdCompressionParameters.Resolve(level, size, 0);
+        Assert.Equal((windowLog, chainLog, hashLog, searchLog, minMatch, targetLength, strategy), (p.WindowLog, p.ChainLog, p.HashLog, p.SearchLog, p.MinMatch, p.TargetLength, p.Strategy));
+    }
+
+    [Fact]
     public void LevelsAboveTheImplementedRangeAreRejectedClearly()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = 5 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = 16 }));
         Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = -131073 }));
     }
 
@@ -182,7 +273,7 @@ public class ZstdEncoderTests
             unit.CopyTo(data, i * unit.Length);
         }
 
-        foreach (int level in new[] { -3, 1, 3 })
+        foreach (int level in new[] { -3, 1, 3, 5, 6, 8, 12, 15 })
         {
             byte[] frame = StreamCompress(data, new ZstdCompressionOptions { Level = level }, 100000, 100000);
             Assert.True(Zstd.Zstd.Decompress(frame).AsSpan().SequenceEqual(data), $"level {level}");
@@ -248,7 +339,7 @@ public class ZstdEncoderTests
         var compressionDictionary = ZstdCompressionDictionary.Parse(dictionaryBytes);
         Assert.True(compressionDictionary.HasEntropyTables);
         var decompression = new ZstdDecompressionOptions { Dictionary = ZstdDictionary.Parse(dictionaryBytes) };
-        foreach (int level in new[] { -5, -1, 1, 2, 3, 4 })
+        foreach (int level in new[] { -5, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })
         {
             var encoder = new ZstdEncoder(new ZstdCompressionOptions { Level = level, Dictionary = compressionDictionary, Checksum = true });
             foreach ((string name, byte[] data) in Inputs())

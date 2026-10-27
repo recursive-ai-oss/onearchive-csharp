@@ -86,24 +86,97 @@ public readonly struct ZstdCompressionParameters
     public const int MinLevel = -131072;
 
     /// <summary>The highest level this version implements.</summary>
-    public const int MaxLevel = 4;
+    public const int MaxLevel = 15;
 
-    // Level tables, one row per level, for source sizes above 256 KiB, up to 256 KiB, up to 128 KiB and up to 16 KiB.
-    // Columns: window log, chain log, hash log, search log, minimum match, strategy. Row 0 is the base of the negative levels.
+    // Level tables, one row per level (row 0 is the base of the negative levels), for source sizes above 256 KiB, up to 256 KiB, up to
+    // 128 KiB and up to 16 KiB. Columns: window log, chain log, hash log, search log, minimum match, target length, strategy.
     // The values were read off the reference tool's reported parameters for each size class (docs/zstd-encoder.md).
+    private const int Columns = 7;
+
     private static readonly short[][] s_table =
     [
-        [19, 12, 13, 1, 6, 1, /**/ 19, 13, 14, 1, 7, 1, /**/ 20, 15, 16, 1, 6, 1, /**/ 21, 16, 17, 1, 5, 2, /**/ 21, 18, 18, 1, 5, 2],
-        [18, 12, 13, 1, 5, 1, /**/ 18, 13, 14, 1, 6, 1, /**/ 18, 14, 14, 1, 5, 2, /**/ 18, 16, 16, 1, 4, 2, /**/ 18, 16, 17, 3, 5, 2],
-        [17, 12, 12, 1, 5, 1, /**/ 17, 12, 13, 1, 6, 1, /**/ 17, 13, 15, 1, 5, 1, /**/ 17, 15, 16, 2, 5, 2, /**/ 17, 17, 17, 2, 4, 2],
-        [14, 12, 13, 1, 5, 1, /**/ 14, 14, 15, 1, 5, 1, /**/ 14, 14, 15, 1, 4, 1, /**/ 14, 14, 15, 2, 4, 2, /**/ 14, 14, 14, 4, 4, 2],
+        [
+            19, 12, 13, 1, 6, 0, 1,
+            19, 13, 14, 1, 7, 0, 1,
+            20, 15, 16, 1, 6, 0, 1,
+            21, 16, 17, 1, 5, 0, 2,
+            21, 18, 18, 1, 5, 0, 2,
+            21, 18, 19, 3, 5, 2, 3,
+            21, 18, 19, 3, 5, 4, 4,
+            21, 19, 20, 4, 5, 8, 4,
+            21, 19, 20, 4, 5, 16, 5,
+            22, 20, 21, 4, 5, 16, 5,
+            22, 21, 22, 5, 5, 16, 5,
+            22, 21, 22, 6, 5, 16, 5,
+            22, 22, 23, 6, 5, 32, 5,
+            22, 22, 22, 4, 5, 32, 6,
+            22, 22, 23, 5, 5, 32, 6,
+            22, 23, 23, 6, 5, 32, 6,
+        ],
+        [
+            18, 12, 13, 1, 5, 0, 1,
+            18, 13, 14, 1, 6, 0, 1,
+            18, 14, 14, 1, 5, 0, 2,
+            18, 16, 16, 1, 4, 0, 2,
+            18, 16, 17, 3, 5, 2, 3,
+            18, 17, 18, 5, 5, 2, 3,
+            18, 18, 19, 3, 5, 4, 4,
+            18, 18, 19, 4, 4, 4, 4,
+            18, 18, 19, 4, 4, 8, 5,
+            18, 18, 19, 5, 4, 8, 5,
+            18, 18, 19, 6, 4, 8, 5,
+            18, 18, 19, 5, 4, 12, 6,
+            18, 19, 19, 7, 4, 12, 6,
+            18, 18, 19, 4, 4, 16, 7,
+            18, 18, 19, 4, 3, 32, 7,
+            18, 18, 19, 6, 3, 128, 7,
+        ],
+        [
+            17, 12, 12, 1, 5, 0, 1,
+            17, 12, 13, 1, 6, 0, 1,
+            17, 13, 15, 1, 5, 0, 1,
+            17, 15, 16, 2, 5, 0, 2,
+            17, 17, 17, 2, 4, 0, 2,
+            17, 16, 17, 3, 4, 2, 3,
+            17, 16, 17, 3, 4, 4, 4,
+            17, 16, 17, 3, 4, 8, 5,
+            17, 16, 17, 4, 4, 8, 5,
+            17, 16, 17, 5, 4, 8, 5,
+            17, 16, 17, 6, 4, 8, 5,
+            17, 17, 17, 5, 4, 8, 6,
+            17, 18, 17, 7, 4, 12, 6,
+            17, 18, 17, 3, 4, 12, 7,
+            17, 18, 17, 4, 3, 32, 7,
+            17, 18, 17, 6, 3, 256, 7,
+        ],
+        [
+            14, 12, 13, 1, 5, 0, 1,
+            14, 14, 15, 1, 5, 0, 1,
+            14, 14, 15, 1, 4, 0, 1,
+            14, 14, 15, 2, 4, 0, 2,
+            14, 14, 14, 4, 4, 2, 3,
+            14, 14, 14, 3, 4, 4, 4,
+            14, 14, 14, 4, 4, 8, 5,
+            14, 14, 14, 6, 4, 8, 5,
+            14, 14, 14, 8, 4, 8, 5,
+            14, 15, 14, 5, 4, 8, 6,
+            14, 15, 14, 9, 4, 8, 6,
+            14, 15, 14, 3, 4, 12, 7,
+            14, 15, 14, 4, 3, 24, 7,
+            14, 15, 14, 5, 3, 32, 8,
+            14, 15, 15, 6, 3, 64, 8,
+            14, 15, 15, 7, 3, 256, 8,
+        ],
     ];
+
+    // The binary-tree strategies keep two links per position, so their table covers half as many positions as it has slots.
+    private static int MaxChainLog(ZstdStrategy strategy, int windowLog) => strategy >= ZstdStrategy.BinaryTreeLazy2 ? windowLog + 1 : windowLog;
 
     /// <summary>
     /// Derives the parameters of a level for a source of a known (or unknown) size and an optional dictionary: the size class
     /// picks the table, and the window and tables shrink to what a source of that size can use.
     /// </summary>
-    /// <param name="level">The level: 1 to 4, 0 for the default (3), or negative for the faster-than-1 levels; the level is the acceleration.</param>
+    /// <param name="level">The level: 1 to 15, 0 for the default (3), or negative for the faster-than-1 levels; the level is the acceleration.</param>
     /// <param name="contentSize">The number of bytes to compress, or -1 when unknown.</param>
     /// <param name="dictionarySize">The size of the dictionary content, 0 for none.</param>
     /// <returns>The parameters.</returns>
@@ -129,13 +202,14 @@ public readonly struct ZstdCompressionParameters
         }
 
         short[] row = s_table[tableId];
-        int column = level < 0 ? 0 : level * 6;
+        int column = level < 0 ? 0 : level * Columns;
         int windowLog = row[column];
         int chainLog = row[column + 1];
         int hashLog = row[column + 2];
         int searchLog = row[column + 3];
         int minMatch = row[column + 4];
-        var strategy = (ZstdStrategy)row[column + 5];
+        int targetLength = level < 0 ? -level : row[column + 5];
+        var strategy = (ZstdStrategy)row[column + 6];
         if (rSize >= 0)
         {
             int sourceLog = rSize <= 1 ? 0 : BitOperations.Log2((ulong)(rSize - 1)) + 1;
@@ -143,7 +217,7 @@ public readonly struct ZstdCompressionParameters
         }
 
         hashLog = Math.Min(hashLog, windowLog + 1);
-        chainLog = Math.Min(chainLog, windowLog);
+        chainLog = Math.Min(chainLog, MaxChainLog(strategy, windowLog));
         int dictionaryHashLog = 0;
         int dictionaryChainLog = 0;
         if (dictionarySize > 0 && contentSize >= 0)
@@ -151,7 +225,7 @@ public readonly struct ZstdCompressionParameters
             // The tables the source fills need only suit the source; the dictionary keeps the sizes its own length calls for.
             int sourceWindowLog = Math.Min(windowLog, Math.Max(contentSize <= 1 ? 0 : BitOperations.Log2((ulong)(contentSize - 1)) + 1, MinWindowLog));
             int smallHashLog = Math.Min(hashLog, sourceWindowLog + 1);
-            int smallChainLog = Math.Min(chainLog, sourceWindowLog);
+            int smallChainLog = Math.Min(chainLog, MaxChainLog(strategy, sourceWindowLog));
             if (smallHashLog != hashLog || smallChainLog != chainLog)
             {
                 dictionaryHashLog = hashLog;
@@ -170,7 +244,7 @@ public readonly struct ZstdCompressionParameters
             HashLog = hashLog,
             SearchLog = searchLog,
             MinMatch = minMatch,
-            TargetLength = level < 0 ? -level : 0,
+            TargetLength = targetLength,
             Strategy = strategy,
             CompressLiterals = level >= 0,
         };
