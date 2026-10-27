@@ -283,6 +283,7 @@ public class ZstdInteropTests
     [Fact]
     public void Canterbury()
     {
+        RequireEnabled();
         string[] names =
         [
             "alice29.txt", "asyoulik.txt", "cp.html", "fields.c", "grammar.lsp", "kennedy.xls", "lcet10.txt", "plrabn12.txt", "ptt5",

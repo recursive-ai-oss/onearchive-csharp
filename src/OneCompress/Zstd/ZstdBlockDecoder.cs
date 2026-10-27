@@ -164,7 +164,17 @@ internal sealed class ZstdBlockDecoder
                 ZstdFormat.ThrowCorrupt(blockOffset + p, "block output within the block size limit and the frame content size");
             }
 
-            literals.Slice(literalPosition, literalLength).CopyTo(buffer[current..]);
+            if (literalLength <= 16 && buffer.Length - current >= 16 && literals.Length - literalPosition >= 16)
+            {
+                // A fixed 16-byte copy beats a variable-length one; the bytes past the literals are overwritten
+                // by what follows, and both 16-byte ranges are inside their buffers (checked just above).
+                Raw.Copy16(buffer, current, literals, literalPosition);
+            }
+            else
+            {
+                literals.Slice(literalPosition, literalLength).CopyTo(buffer[current..]);
+            }
+
             literalPosition += literalLength;
             current += literalLength;
 
@@ -213,7 +223,27 @@ internal sealed class ZstdBlockDecoder
         if (offset <= current)
         {
             int source = current - offset;
-            if (offset >= length)
+            if (buffer.Length - current - length >= 16 && offset >= 8)
+            {
+                // Copy in 16- (or 8-) byte pieces. A piece reads only bytes written before the piece starts because the
+                // offset is at least the piece size, and the last piece writes less than 16 bytes past the match, inside
+                // the buffer (checked above); those bytes are overwritten by the output that follows.
+                if (offset >= 16)
+                {
+                    for (int i = 0; i < length; i += 16)
+                    {
+                        Raw.Copy16(buffer, current + i, buffer, source + i);
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < length; i += 8)
+                    {
+                        Raw.Copy8(buffer, current + i, buffer, source + i);
+                    }
+                }
+            }
+            else if (offset >= length)
             {
                 buffer.Slice(source, length).CopyTo(buffer[current..]);
             }

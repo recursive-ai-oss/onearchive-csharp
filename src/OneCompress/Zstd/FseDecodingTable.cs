@@ -28,9 +28,15 @@ public sealed class FseDecodingTable
     private readonly FseEntry[] _entries = new FseEntry[1 << MaxAccuracyLog];
     private readonly ushort[] _symbolNext = new ushort[256];
     private int _accuracyLog;
+    private int _maxSymbol;
 
     /// <summary>Gets the accuracy log: the table has <c>1 &lt;&lt; AccuracyLog</c> rows.</summary>
     public int AccuracyLog => _accuracyLog;
+
+    /// <summary>Gets the largest symbol any row decodes to.</summary>
+    public int MaxSymbol => _maxSymbol;
+
+    internal FseEntry[] EntryArray => _entries;
 
     /// <summary>Gets the rows of the table, indexed by state.</summary>
     public ReadOnlySpan<FseEntry> Entries => _entries.AsSpan(0, 1 << _accuracyLog);
@@ -221,6 +227,7 @@ public sealed class FseDecodingTable
         }
 
         _accuracyLog = accuracyLog;
+        _maxSymbol = normalizedCounts.Length - 1;
     }
 
     /// <summary>Makes a table of a single symbol that costs no bits (the RLE mode, RFC 8878 §3.1.1.3.2.1).</summary>
@@ -229,5 +236,6 @@ public sealed class FseDecodingTable
     {
         _entries[0] = new FseEntry { Symbol = symbol, NumBits = 0, Baseline = 0 };
         _accuracyLog = 0;
+        _maxSymbol = symbol;
     }
 }

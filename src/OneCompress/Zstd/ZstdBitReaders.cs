@@ -71,6 +71,23 @@ public ref struct ZstdReverseBitReader
     /// <summary>Gets the number of bits not yet read.</summary>
     public readonly long BitsRemaining => ((long)_ptr * 8) + _endBits - _consumed;
 
+    /// <summary>Gets the byte index of the register's lowest byte; the fast loops keep it in a local variable.</summary>
+    internal readonly int Pointer => _ptr;
+
+    /// <summary>Gets the register, for the fast loops that keep it in a local variable.</summary>
+    internal readonly ulong Container => _container;
+
+    /// <summary>Gets the number of bits already taken from the top of the register.</summary>
+    internal readonly int Consumed => _consumed;
+
+    /// <summary>Puts back the state a fast loop kept in local variables. The values must come from this reader's own refill rules.</summary>
+    internal void Restore(ulong container, int consumed, int pointer)
+    {
+        _container = container;
+        _consumed = consumed;
+        _ptr = pointer;
+    }
+
     /// <summary>Refills the internal register so that at least 56 bits can be read without another refill.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Reload()
@@ -92,7 +109,8 @@ public ref struct ZstdReverseBitReader
             _ptr = 0;
         }
 
-        _container = BinaryPrimitives.ReadUInt64LittleEndian(_data[_ptr..]);
+        // _ptr + 8 <= _data.Length: _ptr starts at Length - 8 and only decreases (the stream is at least 8 bytes when _ptr > 0).
+        _container = Raw.ReadUInt64(_data, _ptr);
     }
 
     /// <summary>Reads <paramref name="count"/> bits (0 to 32) and returns them as an integer.</summary>

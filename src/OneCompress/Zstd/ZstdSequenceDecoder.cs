@@ -11,9 +11,9 @@ namespace RecursiveAI.OneCompress.Zstd;
 public ref struct ZstdSequenceDecoder
 {
     private ZstdReverseBitReader _bits;
-    private readonly ReadOnlySpan<FseEntry> _literalLengths;
-    private readonly ReadOnlySpan<FseEntry> _offsets;
-    private readonly ReadOnlySpan<FseEntry> _matchLengths;
+    private readonly FseEntry[] _literalLengths;
+    private readonly FseEntry[] _offsets;
+    private readonly FseEntry[] _matchLengths;
     private uint _literalLengthState;
     private uint _offsetState;
     private uint _matchLengthState;
@@ -35,10 +35,15 @@ public ref struct ZstdSequenceDecoder
         ArgumentNullException.ThrowIfNull(literalLengths);
         ArgumentNullException.ThrowIfNull(offsets);
         ArgumentNullException.ThrowIfNull(matchLengths);
+
+        // Next() indexes the code tables by these symbols without bounds checks, so the alphabets are checked here.
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(literalLengths.MaxSymbol, ZstdFormat.LiteralLengthMaxSymbol, nameof(literalLengths));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(offsets.MaxSymbol, ZstdFormat.OffsetMaxSymbol, nameof(offsets));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(matchLengths.MaxSymbol, ZstdFormat.MatchLengthMaxSymbol, nameof(matchLengths));
         _bits = new ZstdReverseBitReader(bitstream, streamOffset);
-        _literalLengths = literalLengths.Entries;
-        _offsets = offsets.Entries;
-        _matchLengths = matchLengths.Entries;
+        _literalLengths = literalLengths.EntryArray;
+        _offsets = offsets.EntryArray;
+        _matchLengths = matchLengths.EntryArray;
 
         // RFC 8878 §3.1.1.3.2.1.4: the initial states come in the order literals length, offset, match length.
         _bits.Reload();
@@ -68,18 +73,24 @@ public ref struct ZstdSequenceDecoder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Next(out int literalLength, out int matchLength, out uint offsetValue, bool updateStates)
     {
-        FseEntry ll = _literalLengths[(int)_literalLengthState];
-        FseEntry of = _offsets[(int)_offsetState];
-        FseEntry ml = _matchLengths[(int)_matchLengthState];
+        // Each state is below its table's size: it starts as AccuracyLog bits and is later a baseline plus NumBits
+        // bits, and a built table keeps baseline + 2^NumBits within its size.
+        FseEntry ll = Raw.Get(_literalLengths, (int)_literalLengthState);
+        FseEntry of = Raw.Get(_offsets, (int)_offsetState);
+        FseEntry ml = Raw.Get(_matchLengths, (int)_matchLengthState);
 
         // RFC 8878 §3.1.1.3.2.1.5: the offset's bits come first, then the match length's, then the literals length's.
         // Symbols are range-checked when a table is built (offset codes up to 31, ml up to 52, ll up to 35).
         _bits.Reload();
         int offsetCode = of.Symbol;
         offsetValue = (1u << offsetCode) + _bits.ReadBitsNoReload(offsetCode);
-        _bits.Reload();
-        matchLength = (int)(ZstdFormat.MatchLengthBase[ml.Symbol] + _bits.ReadBitsNoReload(ZstdFormat.MatchLengthBits[ml.Symbol]));
-        literalLength = (int)(ZstdFormat.LiteralLengthBase[ll.Symbol] + _bits.ReadBitsNoReload(ZstdFormat.LiteralLengthBits[ll.Symbol]));
+        if (offsetCode > 20)
+        {
+            _bits.Reload(); // 7 bits left over from the last refill + 31 + 16 + 16 would not fit in 64
+        }
+
+        matchLength = (int)(Raw.Get(ZstdFormat.MatchLengthBase, ml.Symbol) + _bits.ReadBitsNoReload(Raw.Get(ZstdFormat.MatchLengthBits, ml.Symbol)));
+        literalLength = (int)(Raw.Get(ZstdFormat.LiteralLengthBase, ll.Symbol) + _bits.ReadBitsNoReload(Raw.Get(ZstdFormat.LiteralLengthBits, ll.Symbol)));
 
         if (updateStates)
         {

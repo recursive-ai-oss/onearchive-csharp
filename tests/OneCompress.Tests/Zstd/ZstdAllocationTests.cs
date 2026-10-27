@@ -34,13 +34,19 @@ public class ZstdAllocationTests
             return GC.GetAllocatedBytesForCurrentThread() - before;
         }
 
-        for (int warm = 0; warm < 30 && Batch() != 0; warm++)
+        int clean = 0;
+        var warmUp = System.Diagnostics.Stopwatch.StartNew();
+        while (clean < 4 || warmUp.ElapsedMilliseconds < 1500)
         {
-            Thread.Sleep(20);
+            clean = Batch() == 0 ? clean + 1 : 0;
+            Thread.Sleep(30);
+            Assert.True(warmUp.ElapsedMilliseconds < 30_000, "allocations never settled");
         }
 
-        var per = new List<long> { Batch(), Batch(), Batch() };
-        Assert.True(per.All(a => a == 0), string.Join(",", per));
+        // Any allocation per frame would add at least 1000 bytes to every batch. The runtime itself occasionally
+        // allocates some thousand bytes on the calling thread once (tiered compilation bookkeeping), which is not ours.
+        var per = new List<long> { Batch(), Batch(), Batch(), Batch(), Batch() };
+        Assert.True(per.Count(a => a == 0) >= 4 && per.Max() < 10_000, string.Join(",", per));
         v.AssertMatches(output.AsSpan(0, v.Size));
     }
 

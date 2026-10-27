@@ -287,13 +287,149 @@ public sealed class HuffmanDecodingTable
         }
 
         int p = 6;
-        DecodeStream(source.Slice(p, size1), destination[..part], streamOffset + p);
+        ReadOnlySpan<byte> stream1 = source.Slice(p, size1);
+        long offset1 = streamOffset + p;
         p += size1;
-        DecodeStream(source.Slice(p, size2), destination.Slice(part, part), streamOffset + p);
+        ReadOnlySpan<byte> stream2 = source.Slice(p, size2);
+        long offset2 = streamOffset + p;
         p += size2;
-        DecodeStream(source.Slice(p, size3), destination.Slice(2 * part, part), streamOffset + p);
+        ReadOnlySpan<byte> stream3 = source.Slice(p, size3);
+        long offset3 = streamOffset + p;
         p += size3;
-        DecodeStream(source.Slice(p, size4), destination[(3 * part)..], streamOffset + p);
+        ReadOnlySpan<byte> stream4 = source.Slice(p, size4);
+        long offset4 = streamOffset + p;
+
+        var bits1 = new ZstdReverseBitReader(stream1, offset1);
+        var bits2 = new ZstdReverseBitReader(stream2, offset2);
+        var bits3 = new ZstdReverseBitReader(stream3, offset3);
+        var bits4 = new ZstdReverseBitReader(stream4, offset4);
+        Span<byte> out1 = destination[..part];
+        Span<byte> out2 = destination.Slice(part, part);
+        Span<byte> out3 = destination.Slice(2 * part, part);
+        Span<byte> out4 = destination[(3 * part)..];
+
+        // The four streams are independent, so decoding them in step lets the processor overlap their table
+        // lookups. The fourth stream is the shortest, so the joint loop runs as far as it has whole groups of four.
+        ushort[] table = _table;
+        int tableBits = _tableBits;
+        int i = 0;
+
+        // The fast loop keeps each stream's register in local variables. It runs while every stream still has at least
+        // eight unread bytes, so a refill is always "step back by the whole bytes consumed" (at most 6 after four
+        // symbols of at most 11 bits, plus the 7 spare bits), and stops short of the streams' ends; the general
+        // code below finishes them.
+        ulong c1 = bits1.Container, c2 = bits2.Container, c3 = bits3.Container, c4 = bits4.Container;
+        int k1 = bits1.Consumed, k2 = bits2.Consumed, k3 = bits3.Consumed, k4 = bits4.Consumed;
+        int q1 = bits1.Pointer, q2 = bits2.Pointer, q3 = bits3.Pointer, q4 = bits4.Pointer;
+        int shift = 64 - tableBits;
+        int joint = lastPart & ~3;
+        while (i < joint && q1 >= 8 && q2 >= 8 && q3 >= 8 && q4 >= 8)
+        {
+            {
+                ushort e1 = Raw.Get(table, (int)((c1 << k1) >> shift)); // the index has tableBits bits; the table is longer
+                k1 += e1 & 0xFF;
+                Raw.Set(out1, i, (byte)(e1 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e2 = Raw.Get(table, (int)((c2 << k2) >> shift)); // the index has tableBits bits; the table is longer
+                k2 += e2 & 0xFF;
+                Raw.Set(out2, i, (byte)(e2 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e3 = Raw.Get(table, (int)((c3 << k3) >> shift)); // the index has tableBits bits; the table is longer
+                k3 += e3 & 0xFF;
+                Raw.Set(out3, i, (byte)(e3 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e4 = Raw.Get(table, (int)((c4 << k4) >> shift)); // the index has tableBits bits; the table is longer
+                k4 += e4 & 0xFF;
+                Raw.Set(out4, i, (byte)(e4 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+            }
+
+            {
+                ushort e1 = Raw.Get(table, (int)((c1 << k1) >> shift)); // the index has tableBits bits; the table is longer
+                k1 += e1 & 0xFF;
+                Raw.Set(out1, i + 1, (byte)(e1 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e2 = Raw.Get(table, (int)((c2 << k2) >> shift)); // the index has tableBits bits; the table is longer
+                k2 += e2 & 0xFF;
+                Raw.Set(out2, i + 1, (byte)(e2 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e3 = Raw.Get(table, (int)((c3 << k3) >> shift)); // the index has tableBits bits; the table is longer
+                k3 += e3 & 0xFF;
+                Raw.Set(out3, i + 1, (byte)(e3 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e4 = Raw.Get(table, (int)((c4 << k4) >> shift)); // the index has tableBits bits; the table is longer
+                k4 += e4 & 0xFF;
+                Raw.Set(out4, i + 1, (byte)(e4 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+            }
+
+            {
+                ushort e1 = Raw.Get(table, (int)((c1 << k1) >> shift)); // the index has tableBits bits; the table is longer
+                k1 += e1 & 0xFF;
+                Raw.Set(out1, i + 2, (byte)(e1 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e2 = Raw.Get(table, (int)((c2 << k2) >> shift)); // the index has tableBits bits; the table is longer
+                k2 += e2 & 0xFF;
+                Raw.Set(out2, i + 2, (byte)(e2 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e3 = Raw.Get(table, (int)((c3 << k3) >> shift)); // the index has tableBits bits; the table is longer
+                k3 += e3 & 0xFF;
+                Raw.Set(out3, i + 2, (byte)(e3 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e4 = Raw.Get(table, (int)((c4 << k4) >> shift)); // the index has tableBits bits; the table is longer
+                k4 += e4 & 0xFF;
+                Raw.Set(out4, i + 2, (byte)(e4 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+            }
+
+            {
+                ushort e1 = Raw.Get(table, (int)((c1 << k1) >> shift)); // the index has tableBits bits; the table is longer
+                k1 += e1 & 0xFF;
+                Raw.Set(out1, i + 3, (byte)(e1 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e2 = Raw.Get(table, (int)((c2 << k2) >> shift)); // the index has tableBits bits; the table is longer
+                k2 += e2 & 0xFF;
+                Raw.Set(out2, i + 3, (byte)(e2 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e3 = Raw.Get(table, (int)((c3 << k3) >> shift)); // the index has tableBits bits; the table is longer
+                k3 += e3 & 0xFF;
+                Raw.Set(out3, i + 3, (byte)(e3 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+                ushort e4 = Raw.Get(table, (int)((c4 << k4) >> shift)); // the index has tableBits bits; the table is longer
+                k4 += e4 & 0xFF;
+                Raw.Set(out4, i + 3, (byte)(e4 >> 8)); // i + 3 < joint <= lastPart <= every output's length
+            }
+
+            // Refill: the register starts at the lowest byte not yet consumed; q + 8 <= stream length holds because q
+            // only moves down from length - 8.
+            q1 -= k1 >> 3;
+            k1 &= 7;
+            c1 = Raw.ReadUInt64(stream1, q1);
+            q2 -= k2 >> 3;
+            k2 &= 7;
+            c2 = Raw.ReadUInt64(stream2, q2);
+            q3 -= k3 >> 3;
+            k3 &= 7;
+            c3 = Raw.ReadUInt64(stream3, q3);
+            q4 -= k4 >> 3;
+            k4 &= 7;
+            c4 = Raw.ReadUInt64(stream4, q4);
+            i += 4;
+        }
+
+        bits1.Restore(c1, k1, q1);
+        bits2.Restore(c2, k2, q2);
+        bits3.Restore(c3, k3, q3);
+        bits4.Restore(c4, k4, q4);
+
+        DecodeSymbols(ref bits1, out1[i..]);
+        DecodeSymbols(ref bits2, out2[i..]);
+        DecodeSymbols(ref bits3, out3[i..]);
+        DecodeSymbols(ref bits4, out4[i..]);
+        if (!bits1.IsFinished)
+        {
+            ZstdFormat.ThrowCorrupt(offset1, "a Huffman stream that is consumed exactly by its symbols");
+        }
+
+        if (!bits2.IsFinished)
+        {
+            ZstdFormat.ThrowCorrupt(offset2, "a Huffman stream that is consumed exactly by its symbols");
+        }
+
+        if (!bits3.IsFinished)
+        {
+            ZstdFormat.ThrowCorrupt(offset3, "a Huffman stream that is consumed exactly by its symbols");
+        }
+
+        if (!bits4.IsFinished)
+        {
+            ZstdFormat.ThrowCorrupt(offset4, "a Huffman stream that is consumed exactly by its symbols");
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -307,25 +443,25 @@ public sealed class HuffmanDecodingTable
         while (destination.Length - i >= 4)
         {
             bits.Reload();
-            ushort e0 = table[bits.PeekBitsNoReload(tableBits)];
+            ushort e0 = Raw.Get(table, (int)bits.PeekBitsNoReload(tableBits));
             bits.Skip(e0 & 0xFF);
-            ushort e1 = table[bits.PeekBitsNoReload(tableBits)];
+            ushort e1 = Raw.Get(table, (int)bits.PeekBitsNoReload(tableBits));
             bits.Skip(e1 & 0xFF);
-            ushort e2 = table[bits.PeekBitsNoReload(tableBits)];
+            ushort e2 = Raw.Get(table, (int)bits.PeekBitsNoReload(tableBits));
             bits.Skip(e2 & 0xFF);
-            ushort e3 = table[bits.PeekBitsNoReload(tableBits)];
+            ushort e3 = Raw.Get(table, (int)bits.PeekBitsNoReload(tableBits));
             bits.Skip(e3 & 0xFF);
-            destination[i] = (byte)(e0 >> 8);
-            destination[i + 1] = (byte)(e1 >> 8);
-            destination[i + 2] = (byte)(e2 >> 8);
-            destination[i + 3] = (byte)(e3 >> 8);
+            Raw.Set(destination, i, (byte)(e0 >> 8)); // i + 3 < destination.Length
+            Raw.Set(destination, i + 1, (byte)(e1 >> 8));
+            Raw.Set(destination, i + 2, (byte)(e2 >> 8));
+            Raw.Set(destination, i + 3, (byte)(e3 >> 8));
             i += 4;
         }
 
         for (; i < destination.Length; i++)
         {
             bits.Reload();
-            ushort e = table[bits.PeekBitsNoReload(tableBits)];
+            ushort e = Raw.Get(table, (int)bits.PeekBitsNoReload(tableBits));
             bits.Skip(e & 0xFF);
             destination[i] = (byte)(e >> 8);
         }
