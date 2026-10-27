@@ -1,0 +1,32 @@
+# Reference-tool pins. Columns (tab separated):
+#   id  version  file  url  sha256  platforms
+# id        the tool's install name; install-tools.sh has one recipe per id.
+# file      name the artifact is stored under in the download cache.
+# platforms all | linux-x64 | osx-arm64 (artifact is only for that platform).
+# Artifacts are official release binaries where a project publishes them (7zz,
+# cmake) and release source tarballs otherwise; source is built unattended by
+# install-tools.sh and never read.
+# RARLAB shareware binaries (rar, unrar) are used as black-box oracles only; the
+# release archive holds binaries and text, and the unrar source archive is never
+# fetched. zip, unzip, cpio and ar come from the
+# operating system and are recorded, not pinned (see install-tools.sh).
+cmake	4.4.4	cmake-4.4.4-linux-x86_64.tar.gz	https://github.com/Kitware/CMake/releases/download/v4.4.4/cmake-4.4.4-linux-x86_64.tar.gz	e5bb807f7728cb60cd8b27ebc97a2edb469b68655f21e844a600c3575b76f5bb	linux-x64
+cmake	4.4.4	cmake-4.4.4-macos-universal.tar.gz	https://github.com/Kitware/CMake/releases/download/v4.4.4/cmake-4.4.4-macos-universal.tar.gz	4b7b73704b1db9b374e5c9ab8e17ac6148b817b6396ee75cd94a852cbac9d305	osx-arm64
+zlib	1.3.2	zlib-1.3.2.tar.gz	https://zlib.net/zlib-1.3.2.tar.gz	bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16	all
+zstd	1.5.7	zstd-1.5.7.tar.gz	https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz	eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3	all
+lz4	1.10.0	lz4-1.10.0.tar.gz	https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz	537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b	all
+zlib-ng	2.3.3	zlib-ng-2.3.3.tar.gz	https://github.com/zlib-ng/zlib-ng/archive/refs/tags/2.3.3.tar.gz	f9c65aa9c852eb8255b636fd9f07ce1c406f061ec19a2e7d508b318ca0c907d1	all
+libdeflate	1.26	libdeflate-1.26.tar.gz	https://github.com/ebiggers/libdeflate/releases/download/v1.26/libdeflate-1.26.tar.gz	125856d4656e0feab660f94842f835923410c9281fedbcee64598c918da42b5a	all
+brotli	1.2.1	brotli-1.2.1.tar.gz	https://github.com/google/brotli/archive/refs/tags/v1.2.1.tar.gz	98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f	all
+xz	5.8.4	xz-5.8.4.tar.xz	https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.xz	4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b	all
+lzip	1.26	lzip-1.26.tar.gz	https://download.savannah.gnu.org/releases/lzip/lzip-1.26.tar.gz	641cf30961525cbe3b340cc883436c8854e9f5032f459f444de4782b621e6572	all
+bzip2	1.0.8	bzip2-1.0.8.tar.gz	https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz	ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269	all
+7zz	26.05	7z2605-linux-x64.tar.xz	https://github.com/ip7z/7zip/releases/download/26.05/7z2605-linux-x64.tar.xz	22cf82fcc6eb7474f1d5bb4f02c0f8ebd573a718089d6833dc30f8350a3b232e	linux-x64
+7zz	26.05	7z2605-mac.tar.xz	https://github.com/ip7z/7zip/releases/download/26.05/7z2605-mac.tar.xz	12ef6830317743cfd3f0ab1724bde43fcc270d8b6d8564f8c12c2a2b7f993570	osx-arm64
+pigz	2.8	pigz-2.8.tar.gz	https://zlib.net/pigz/pigz-2.8.tar.gz	eb872b4f0e1f0ebe59c9f7bd8c506c4204893ba6a8492de31df416f0d5170fd0	all
+libarchive	3.8.10	libarchive-3.8.10.tar.xz	https://github.com/libarchive/libarchive/releases/download/v3.8.10/libarchive-3.8.10.tar.xz	56cad765459d5ee25a3b761f90c47d99379d28297fbfb72d908880d6b875fb96	all
+tar	1.35	tar-1.35.tar.xz	https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz	4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16	all
+xorriso	1.5.8.pl02	xorriso-1.5.8.pl02.tar.gz	https://ftp.gnu.org/gnu/xorriso/xorriso-1.5.8.pl02.tar.gz	b1455ecafbf0692ddafe1d71002a96f2ce2d77f4deae602678261ce033f97bc8	all
+cabextract	1.11	cabextract-1.11.tar.gz	https://www.cabextract.org.uk/cabextract-1.11.tar.gz	b5546db1155e4c718ff3d4b278573604f30dd64c3c5bfd4657cd089b823a3ac6	all
+rar	7.23	rarlinux-x64-723.tar.gz	https://www.rarlab.com/rar/rarlinux-x64-723.tar.gz	759b4b6aa0d9f77131882162951193f3a0e54bf60e1d8dc4255aa308accab588	linux-x64
+rar	7.23	rarmacos-arm-723.tar.gz	https://www.rarlab.com/rar/rarmacos-arm-723.tar.gz	68b393c000758d477fde43c955ff7542f12f76f3f5e87cdda923152fc791bd4d	osx-arm64
