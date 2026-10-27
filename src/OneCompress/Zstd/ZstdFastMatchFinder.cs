@@ -89,6 +89,27 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         }
     }
 
+    /// <inheritdoc />
+    public override void Prime(ReadOnlySpan<byte> window, int firstPosition, int endPosition)
+    {
+        // Bounds: i + 8 <= window.Length for every read; table indexes come from the hash.
+        int limit = Math.Min(endPosition, window.Length - 7);
+        int shift = 64 - (8 * _minMatch);
+        for (int i = Math.Max(firstPosition, 1); i < limit; i++)
+        {
+            ulong value = Raw.ReadUInt64(window, i);
+            if (_double)
+            {
+                Raw.Set(_primary, HashValue(value, 0, _primaryLog), (uint)i);
+                Raw.Set(_secondary, HashValue(value, shift, _secondaryLog), (uint)i);
+            }
+            else
+            {
+                Raw.Set(_primary, HashValue(value, shift, _primaryLog), (uint)i);
+            }
+        }
+    }
+
     private static void SlideTable(uint[] table, int size, int delta)
     {
         uint d = (uint)delta;

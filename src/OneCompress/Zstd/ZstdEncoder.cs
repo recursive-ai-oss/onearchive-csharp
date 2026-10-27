@@ -13,7 +13,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// the input was split across calls (unless <see cref="Flush"/> is called, which ends a block early).</para>
 /// <para>An encoder is not thread-safe; a dictionary can be shared between encoders.</para>
 /// </remarks>
-public sealed class ZstdEncoder
+public sealed partial class ZstdEncoder
 {
     private const int BlockSize = ZstdFormat.BlockSizeMax;
     private const int OutputSlack = ZstdBlockWriter.DestinationSlack;
@@ -49,10 +49,12 @@ public sealed class ZstdEncoder
     {
         _options = options ?? ZstdCompressionOptions.Default;
         _ = ZstdCompressionParameters.Resolve(_options.Level, -1, 0);
-        if (_options.WindowLog != 0 && (_options.WindowLog < ZstdCompressionParameters.MinWindowLog || _options.WindowLog > 30))
+        if (_options.WindowLog != 0 && (_options.WindowLog < ZstdCompressionParameters.MinWindowLog || _options.WindowLog > 31))
         {
-            throw new ArgumentOutOfRangeException(nameof(options), "WindowLog must be 0 or from 10 to 30.");
+            throw new ArgumentOutOfRangeException(nameof(options), "WindowLog must be 0 or from 10 to 31.");
         }
+
+        ValidateParallelOptions();
     }
 
     /// <summary>
@@ -81,6 +83,7 @@ public sealed class ZstdEncoder
         _totalIn = 0;
         _pendingStart = 0;
         _pendingEnd = 0;
+        ResetParallel();
     }
 
     // ---- One-shot ----
@@ -118,9 +121,10 @@ public sealed class ZstdEncoder
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
         _finder.BeginFrame(parameters, dictionary);
         _writer.BeginFrame(dictionary, parameters.CompressLiterals);
+        BeginLongDistance(declaredSize);
         int p;
         Span<byte> header = stackalloc byte[ZstdFrameWriter.MaxHeaderSize];
-        int headerSize = ZstdFrameWriter.WriteHeader(header, parameters.WindowLog, _options.WriteContentSize ? declaredSize : -1, DictionaryIdToWrite(), _options.Checksum);
+        int headerSize = ZstdFrameWriter.WriteHeader(header, _headerWindowLog, _options.WriteContentSize ? declaredSize : -1, DictionaryIdToWrite(), _options.Checksum);
         if (destination.Length < headerSize)
         {
             return false;
@@ -128,21 +132,32 @@ public sealed class ZstdEncoder
 
         header[..headerSize].CopyTo(destination);
         p = headerSize;
-        int position = 0;
-        do
+        int jobSize = ResolveJobSize(parameters);
+        if (jobSize > 0 && source.Length > jobSize)
         {
-            int end = Math.Min(position + BlockSize, source.Length);
-            bool last = end == source.Length;
-            int written2 = CompressBlock(source, position, end, 0, last, destination[p..], out bool fits);
-            if (!fits)
+            if (!TryCompressJobs(source, parameters, jobSize, destination, ref p))
             {
                 return false;
             }
-
-            p += written2;
-            position = end;
         }
-        while (position < source.Length);
+        else
+        {
+            int position = 0;
+            do
+            {
+                int end = Math.Min(position + BlockSize, source.Length);
+                bool last = end == source.Length;
+                int written2 = CompressBlock(source, position, end, 0, last, destination[p..], out bool fits);
+                if (!fits)
+                {
+                    return false;
+                }
+
+                p += written2;
+                position = end;
+            }
+            while (position < source.Length);
+        }
 
         if (_options.Checksum)
         {
@@ -163,14 +178,38 @@ public sealed class ZstdEncoder
     private ZstdCompressionParameters ResolveParameters(long contentSize)
     {
         ZstdCompressionParameters p = ZstdCompressionParameters.Resolve(_options.Level, contentSize, _options.Dictionary?.Content.Length ?? 0);
-        if (_options.WindowLog != 0)
+        int windowLog = _options.WindowLog;
+        if (windowLog == 0 && _options.LongDistanceMatching)
         {
-            int windowLog = _options.WindowLog;
+            windowLog = DefaultLongWindowLog(contentSize, _options.Dictionary?.Content.Length ?? 0);
+        }
+
+        if (windowLog != 0)
+        {
             p = new ZstdCompressionParameters
             {
                 WindowLog = windowLog,
                 ChainLog = Math.Min(p.ChainLog, windowLog),
                 HashLog = Math.Min(p.HashLog, windowLog + 1),
+                DictionaryHashLog = p.DictionaryHashLog,
+                DictionaryChainLog = p.DictionaryChainLog,
+                SearchLog = p.SearchLog,
+                MinMatch = p.MinMatch,
+                TargetLength = p.TargetLength,
+                Strategy = p.Strategy,
+                CompressLiterals = p.CompressLiterals,
+            };
+        }
+
+        // The header states the window asked for; matching never reaches past 2^30 bytes, the most a window buffer can hold.
+        _headerWindowLog = p.WindowLog;
+        if (p.WindowLog > MaxMatchWindowLog)
+        {
+            p = new ZstdCompressionParameters
+            {
+                WindowLog = MaxMatchWindowLog,
+                ChainLog = p.ChainLog,
+                HashLog = p.HashLog,
                 DictionaryHashLog = p.DictionaryHashLog,
                 DictionaryChainLog = p.DictionaryChainLog,
                 SearchLog = p.SearchLog,
@@ -204,6 +243,15 @@ public sealed class ZstdEncoder
             target = _blockScratch;
         }
 
+        // The long-distance matcher reads every block, whatever kind of block it becomes, so it never misses data.
+        ReadOnlySpan<ZstdLongMatch> longMatches = default;
+        if (_ldm is not null)
+        {
+            _ldmMatches.Clear();
+            _ldm.FindMatches(window, start, end, _ldmMatches);
+            longMatches = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_ldmMatches);
+        }
+
         int size;
         if (n > 1 && block.IndexOfAnyExcept(block[0]) < 0)
         {
@@ -212,7 +260,7 @@ public sealed class ZstdEncoder
         else
         {
             _store.Clear();
-            _finder.FindSequences(window, start, end, windowStartPosition, _writer.RepeatOffsets, _store);
+            ZstdLongSequencer.Fill(_finder, window, start, end, windowStartPosition, _writer.RepeatOffsets, longMatches, _store);
             size = _writer.WriteBlock(block, _store, last, target);
         }
 
@@ -259,6 +307,11 @@ public sealed class ZstdEncoder
             }
 
             Reset();
+        }
+
+        if (_options.JobSize != 0 && (_started || !isFinalBlock || (_options.ContentSize ?? source.Length) != source.Length || destination.Length < GetMaxCompressedLength(source.Length)))
+        {
+            return CompressJobs(source, destination, out consumed, out written, isFinalBlock);
         }
 
         // A whole frame in one call goes straight from the caller's buffer to the caller's buffer.
@@ -340,6 +393,11 @@ public sealed class ZstdEncoder
             return OperationStatus.Done;
         }
 
+        if (_mtActive)
+        {
+            return FlushJobs(destination, out written);
+        }
+
         while (true)
         {
             if (!Drain(destination, ref written))
@@ -384,6 +442,7 @@ public sealed class ZstdEncoder
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
         _finder.BeginFrame(parameters, dictionary);
         _writer.BeginFrame(dictionary, parameters.CompressLiterals);
+        BeginLongDistance(pledged);
         _hash = new XxHash64(0);
         _totalIn = 0;
         _windowFill = 0;
@@ -405,7 +464,7 @@ public sealed class ZstdEncoder
         }
 
         _pendingStart = 0;
-        _pendingEnd = ZstdFrameWriter.WriteHeader(_pending, parameters.WindowLog, _options.WriteContentSize ? pledged : -1, DictionaryIdToWrite(), _options.Checksum);
+        _pendingEnd = ZstdFrameWriter.WriteHeader(_pending, _headerWindowLog, _options.WriteContentSize ? pledged : -1, DictionaryIdToWrite(), _options.Checksum);
         _started = true;
     }
 
@@ -425,6 +484,7 @@ public sealed class ZstdEncoder
             _blockStart -= delta;
             _windowStartPosition += delta;
             _finder.Slide(delta);
+            _ldm?.Slide(delta);
         }
     }
 
