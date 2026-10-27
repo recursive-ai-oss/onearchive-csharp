@@ -78,7 +78,7 @@ set -o noclobber
 while :; do
   start="$(now)"
   end="$(date -d "+${expect_min} minutes" '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null || date -v+"${expect_min}"M '+%Y-%m-%dT%H:%M:%S%z')"
-  if echo "onearchive bar $start $end" > "$lock" 2>/dev/null; then
+  if { echo "onearchive bar $start $end" > "$lock"; } 2>/dev/null; then
     have_lock=1
     # The lock is ours; the machine must also be quiet (another project's heavy job may not hold the lock).
     busy="$(busy_cores)"
