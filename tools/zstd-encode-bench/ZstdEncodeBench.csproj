@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A timing and checking loop for the Zstandard encoder: ratio, compression and decompression speed, small-payload rates. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>ZstdEncodeBench</AssemblyName>
+    <RootNamespace>RecursiveAI.Bench</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
+  </ItemGroup>
+
+</Project>

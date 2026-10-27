@@ -17,6 +17,10 @@ public sealed class HuffmanDecodingTable
     private readonly byte[] _weights = new byte[260]; // 255 weights plus room for the final writes of the two-state loop
     private FseDecodingTable? _weightTable;
     private int _tableBits;
+    private int _weightCount;
+
+    /// <summary>The explicit weights of the last description read (the last symbol's weight is implied).</summary>
+    internal ReadOnlySpan<byte> Weights => _weights.AsSpan(0, _weightCount);
 
     /// <summary>Gets the length in bits of the longest code (the table has <c>1 &lt;&lt; TableBits</c> entries).</summary>
     public int TableBits => _tableBits;
@@ -28,7 +32,10 @@ public sealed class HuffmanDecodingTable
     /// <param name="streamOffset">Offset of <paramref name="source"/> in the compressed input, for error messages.</param>
     /// <returns>The number of bytes the description occupies.</returns>
     /// <exception cref="CompressionFormatException">The description is truncated or does not describe a valid prefix code.</exception>
-    public int ReadDescription(ReadOnlySpan<byte> source, long streamOffset = 0)
+    public int ReadDescription(ReadOnlySpan<byte> source, long streamOffset = 0) => ReadDescription(source, streamOffset, buildTable: true);
+
+    // With buildTable false only the weights are read (see Weights); the encoder uses that to check a description it wrote.
+    internal int ReadDescription(ReadOnlySpan<byte> source, long streamOffset, bool buildTable)
     {
         if (source.Length == 0)
         {
@@ -77,7 +84,12 @@ public sealed class HuffmanDecodingTable
             consumed = 1 + header;
         }
 
-        BuildFromWeights(_weights.AsSpan(0, weightCount), streamOffset);
+        _weightCount = weightCount;
+        if (buildTable)
+        {
+            BuildFromWeights(_weights.AsSpan(0, weightCount), streamOffset);
+        }
+
         return consumed;
     }
 

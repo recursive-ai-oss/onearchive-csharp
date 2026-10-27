@@ -42,6 +42,37 @@ using (var stream = new ZstdStream(new MemoryStream(compressed)))
     }
 }
 
+// Compression: one-liner at a negative, a fast and a double-fast level, with a dictionary, and through the compressing stream.
+foreach (int level in new[] { -5, 1, 3 })
+{
+    byte[] again = Zstd.Compress(text, new ZstdCompressionOptions { Level = level, Checksum = true });
+    if (!Zstd.Decompress(again).AsSpan().SequenceEqual(text))
+    {
+        Console.Error.WriteLine($"zstd compress level {level} failed");
+        return 1;
+    }
+}
+
+var smokeDictionary = ZstdCompressionDictionary.FromContent(text, 7);
+byte[] withDictionary = Zstd.Compress(text, new ZstdCompressionOptions { Level = 3, Dictionary = smokeDictionary });
+if (withDictionary.Length >= 40 || !Zstd.Decompress(withDictionary, new ZstdDecompressionOptions { Dictionary = ZstdDictionary.FromContent(text, 7) }).AsSpan().SequenceEqual(text))
+{
+    Console.Error.WriteLine("zstd dictionary compress failed");
+    return 1;
+}
+
+var written = new MemoryStream();
+using (var compressing = new ZstdStream(written, new ZstdCompressionOptions { Level = 1 }, leaveOpen: true))
+{
+    compressing.Write(text, 0, text.Length);
+}
+
+if (!Zstd.Decompress(written.ToArray()).AsSpan().SequenceEqual(text))
+{
+    Console.Error.WriteLine("zstd compress stream failed");
+    return 1;
+}
+
 try
 {
     Zstd.Decompress(compressed.AsSpan(0, 100));

@@ -125,6 +125,20 @@ public sealed class FseDecodingTable
     /// <exception cref="CompressionFormatException">The description is truncated or violates the format.</exception>
     public int ReadDescription(ReadOnlySpan<byte> source, int maxSymbol, int maxAccuracyLog, long streamOffset = 0)
     {
+        Span<short> counts = stackalloc short[256];
+        int consumed = ReadCounts(source, maxSymbol, maxAccuracyLog, counts, out int accuracyLog, out int symbolCount, streamOffset);
+        Build(counts[..symbolCount], accuracyLog);
+        return consumed;
+    }
+
+    /// <summary>
+    /// Reads a table description (RFC 8878 §4.1.1) into its normalized counts (<paramref name="counts"/> must be 256 zeroed entries) without building a table. The encoder side
+    /// uses this to learn the distribution of a dictionary's tables.
+    /// </summary>
+    internal static int ReadCounts(ReadOnlySpan<byte> source, int maxSymbol, int maxAccuracyLog, Span<short> counts, out int accuracyLogOut, out int symbolCount, long streamOffset = 0)
+    {
+        accuracyLogOut = 0;
+        symbolCount = 0;
         ArgumentOutOfRangeException.ThrowIfGreaterThan(maxAccuracyLog, MaxAccuracyLog);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(maxSymbol, 255);
         if (source.Length == 0)
@@ -133,12 +147,12 @@ public sealed class FseDecodingTable
         }
 
         int accuracyLog = (source[0] & 15) + 5;
+        accuracyLogOut = accuracyLog;
         if (accuracyLog > maxAccuracyLog)
         {
             ZstdFormat.ThrowCorrupt(streamOffset, $"an FSE accuracy log of at most {maxAccuracyLog}, found {accuracyLog}");
         }
 
-        Span<short> counts = stackalloc short[256];
         var reader = new ZstdForwardBitReader(source, 4);
         int remaining = (1 << accuracyLog) + 1; // RFC 8878 §4.1.1: probabilities are sent as value + 1, so the budget is one larger
         int threshold = 1 << accuracyLog;
@@ -221,7 +235,7 @@ public sealed class FseDecodingTable
             ZstdFormat.ThrowCorrupt(streamOffset, $"FSE probabilities that sum to {1 << accuracyLog} using symbols up to {maxSymbol}");
         }
 
-        Build(counts[..symbol], accuracyLog);
+        symbolCount = symbol;
         return reader.BytesConsumed;
     }
 
