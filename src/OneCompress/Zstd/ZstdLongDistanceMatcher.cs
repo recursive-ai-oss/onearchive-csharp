@@ -135,6 +135,9 @@ public sealed class ZstdLongDistanceMatcher
     // The gear hash covers this many bytes: each step shifts the hash left one bit, so a byte's constant leaves after 64 steps.
     private const int HashSpan = 64;
 
+    // The stretches a block is cut into for the scan.
+    private const int Chains = 4;
+
     private static readonly ulong[] s_gear = BuildGear();
 
     private ulong[] _table = [];
@@ -144,8 +147,11 @@ public sealed class ZstdLongDistanceMatcher
     private int _rateShift;
     private int _minMatch;
     private long _maxDistance;
-    private ulong _hash;
-    private int _next;
+
+    // The checkpoints found by the stretches of a block, in position order within each: positions of the hashed byte, and hashes.
+    private readonly int[][] _checkpointPosition = [new int[1024], new int[1024], new int[1024], new int[1024]];
+    private readonly ulong[][] _checkpointHash = [new ulong[1024], new ulong[1024], new ulong[1024], new ulong[1024]];
+    private readonly int[] _checkpointCount = new int[Chains];
 
     // The constants come from the SplitMix64 sequence from a fixed seed, so they are the same everywhere.
     private static ulong[] BuildGear()
@@ -190,8 +196,6 @@ public sealed class ZstdLongDistanceMatcher
         _rateShift = 64 - parameters.HashRateLog;
         _minMatch = parameters.MinMatch;
         _maxDistance = 1L << Math.Min(parameters.WindowLog, 31);
-        _hash = 0;
-        _next = 0;
     }
 
     /// <summary>Tells the matcher that the window was moved down by <paramref name="delta"/> bytes: remembered positions below it are gone.</summary>
@@ -208,13 +212,12 @@ public sealed class ZstdLongDistanceMatcher
             ulong p = e & 0xFFFF_FFFFUL;
             table[i] = p > d ? e - d : 0;
         }
-
-        _next = Math.Max(0, _next - delta);
     }
 
     /// <summary>
     /// Scans one block, remembers its checkpoints and appends the long matches that start in it. Blocks must come in order with
-    /// no gap: each call's <paramref name="blockStart"/> is the previous call's <paramref name="blockEnd"/> (or the start of the data).
+    /// no gap: each call's <paramref name="blockStart"/> is the previous call's <paramref name="blockEnd"/> (or the start of the data),
+    /// and the <see cref="HashSpan"/> bytes before a block are still in the window.
     /// </summary>
     /// <param name="window">The history followed by the block. Bytes up to <paramref name="blockEnd"/> are valid.</param>
     /// <param name="blockStart">Index of the block's first byte; no match starts before it.</param>
@@ -233,84 +236,197 @@ public sealed class ZstdLongDistanceMatcher
             throw new InvalidOperationException("BeginFrame has not been called.");
         }
 
-        ulong[] gear = s_gear;
-        ulong hash = _hash;
-        int rateShift = _rateShift;
+        // Step 1: find the checkpoints. The hash after byte j is a function of the 64 bytes ending at j alone, so the block is cut
+        // into four stretches that run side by side (four independent dependency chains keep the processor busy) and give the
+        // checkpoints a sequential scan would. Step 2 visits them in position order.
+        CollectCheckpoints(window, blockStart, blockEnd);
         int searchFrom = blockStart;
         int anchor = blockStart;
-        for (int j = _next; j < blockEnd; j++)
+        for (int c = 0; c < Chains; c++)
         {
-            // Bounds: j < blockEnd <= window.Length; the gear index is a byte, the table has 256 entries.
-            hash = (hash << 1) + Raw.Get(gear, Raw.ByteAt(window, j));
-            if ((hash >> rateShift) != 0)
+            int[] positions = _checkpointPosition[c];
+            ulong[] hashes = _checkpointHash[c];
+            for (int n = 0; n < _checkpointCount[c]; n++)
             {
-                continue;
+                Checkpoint(window, positions[n] - (HashSpan - 1), hashes[n], blockStart, blockEnd, ref searchFrom, ref anchor, matches);
             }
+        }
+    }
 
-            int i = j - (HashSpan - 1);
-            if (i < 0)
-            {
-                continue;
-            }
-
-            ulong mixed = (hash ^ (hash >> 29)) * 0xBF58476D1CE4E5B9UL;
-            int bucket = (int)(mixed >> _bucketShift) << _bucketLog;
-            uint check = (uint)mixed;
-            if (i >= searchFrom)
-            {
-                int bestStart = 0;
-                int bestLength = 0;
-                uint bestOffset = 0;
-                int size = 1 << _bucketLog;
-                for (int e = 0; e < size; e++)
-                {
-                    ulong entry = _table[bucket + e];
-                    if ((uint)(entry >> 32) != check || (uint)entry == 0)
-                    {
-                        continue;
-                    }
-
-                    int source = (int)(uint)entry - 1;
-                    if (source >= i || i - source > _maxDistance)
-                    {
-                        continue;
-                    }
-
-                    int forward = CommonLength(window, source, i, blockEnd);
-                    int back = 0;
-                    while (i - back > anchor && source - back > 0 && Raw.ByteAt(window, i - back - 1) == Raw.ByteAt(window, source - back - 1))
-                    {
-                        back++;
-                    }
-
-                    if (forward + back > bestLength)
-                    {
-                        bestLength = forward + back;
-                        bestStart = i - back;
-                        bestOffset = (uint)(i - source);
-                    }
-                }
-
-                if (bestLength >= _minMatch)
-                {
-                    matches.Add(new ZstdLongMatch(bestStart, bestLength, bestOffset));
-                    searchFrom = bestStart + bestLength;
-                    anchor = searchFrom;
-                }
-            }
-
-            // Remember the checkpoint: newest first, the oldest of the bucket falls out.
-            int count = 1 << _bucketLog;
-            for (int e = count - 1; e > 0; e--)
-            {
-                _table[bucket + e] = _table[bucket + e - 1];
-            }
-
-            _table[bucket] = ((ulong)check << 32) | (uint)(i + 1);
+    // Gear hash state before byte j: the 63 bytes before it (fewer at the start of the data, which only matters for positions
+    // that are not checkpoints anyway).
+    private static ulong HashBefore(ReadOnlySpan<byte> window, int j)
+    {
+        ulong[] gear = s_gear;
+        ulong h = 0;
+        for (int q = Math.Max(0, j - (HashSpan - 1)); q < j; q++)
+        {
+            h = (h << 1) + Raw.Get(gear, Raw.ByteAt(window, q));
         }
 
-        _hash = hash;
-        _next = Math.Max(_next, blockEnd);
+        return h;
+    }
+
+    private void CollectCheckpoints(ReadOnlySpan<byte> window, int blockStart, int blockEnd)
+    {
+        ulong[] gear = s_gear;
+        int rateShift = _rateShift;
+        for (int c = 0; c < Chains; c++)
+        {
+            _checkpointCount[c] = 0;
+        }
+
+        int length = blockEnd - blockStart;
+        int stretch = length / Chains;
+        int lockstep = stretch >= 64 ? stretch : 0;
+        if (lockstep > 0)
+        {
+            int s0 = blockStart;
+            int s1 = s0 + stretch;
+            int s2 = s1 + stretch;
+            int s3 = s2 + stretch;
+            ulong h0 = HashBefore(window, s0);
+            ulong h1 = HashBefore(window, s1);
+            ulong h2 = HashBefore(window, s2);
+            ulong h3 = HashBefore(window, s3);
+            for (int t = 0; t < stretch; t++)
+            {
+                // Bounds: s3 + t < blockEnd <= window.Length (the last stretch is at least as long as the others), and the
+                // gear index is a byte into a table of 256.
+                h0 = (h0 << 1) + Raw.Get(gear, Raw.ByteAt(window, s0 + t));
+                h1 = (h1 << 1) + Raw.Get(gear, Raw.ByteAt(window, s1 + t));
+                h2 = (h2 << 1) + Raw.Get(gear, Raw.ByteAt(window, s2 + t));
+                h3 = (h3 << 1) + Raw.Get(gear, Raw.ByteAt(window, s3 + t));
+                if ((h0 >> rateShift) == 0)
+                {
+                    AddCheckpoint(0, s0 + t, h0);
+                }
+
+                if ((h1 >> rateShift) == 0)
+                {
+                    AddCheckpoint(1, s1 + t, h1);
+                }
+
+                if ((h2 >> rateShift) == 0)
+                {
+                    AddCheckpoint(2, s2 + t, h2);
+                }
+
+                if ((h3 >> rateShift) == 0)
+                {
+                    AddCheckpoint(3, s3 + t, h3);
+                }
+            }
+
+            // The last stretch runs on to the end of the block.
+            for (int j = s3 + stretch; j < blockEnd; j++)
+            {
+                h3 = (h3 << 1) + Raw.Get(gear, Raw.ByteAt(window, j));
+                if ((h3 >> rateShift) == 0)
+                {
+                    AddCheckpoint(3, j, h3);
+                }
+            }
+
+            return;
+        }
+
+        ulong h = HashBefore(window, blockStart);
+        for (int j = blockStart; j < blockEnd; j++)
+        {
+            h = (h << 1) + Raw.Get(gear, Raw.ByteAt(window, j));
+            if ((h >> rateShift) == 0)
+            {
+                AddCheckpoint(0, j, h);
+            }
+        }
+    }
+
+    private void AddCheckpoint(int chain, int position, ulong hash)
+    {
+        // Checkpoints before the 64th byte of the data have no full window of bytes under them and are not positions at all.
+        if (position < HashSpan - 1)
+        {
+            return;
+        }
+
+        int n = _checkpointCount[chain];
+        if (n == _checkpointPosition[chain].Length)
+        {
+            Array.Resize(ref _checkpointPosition[chain], n * 2);
+            Array.Resize(ref _checkpointHash[chain], n * 2);
+        }
+
+        _checkpointPosition[chain][n] = position;
+        _checkpointHash[chain][n] = hash;
+        _checkpointCount[chain] = n + 1;
+    }
+
+    // Looks for a match at checkpoint position i, then remembers the checkpoint.
+    private void Checkpoint(
+        ReadOnlySpan<byte> window,
+        int i,
+        ulong hash,
+        int blockStart,
+        int blockEnd,
+        ref int searchFrom,
+        ref int anchor,
+        List<ZstdLongMatch> matches)
+    {
+        ulong mixed = (hash ^ (hash >> 29)) * 0xBF58476D1CE4E5B9UL;
+        int bucket = (int)(mixed >> _bucketShift) << _bucketLog;
+        uint check = (uint)mixed;
+        if (i >= searchFrom)
+        {
+            int bestStart = 0;
+            int bestLength = 0;
+            uint bestOffset = 0;
+            int size = 1 << _bucketLog;
+            for (int e = 0; e < size; e++)
+            {
+                ulong entry = _table[bucket + e];
+                if ((uint)(entry >> 32) != check || (uint)entry == 0)
+                {
+                    continue;
+                }
+
+                int source = (int)(uint)entry - 1;
+                if (source >= i || i - source > _maxDistance)
+                {
+                    continue;
+                }
+
+                int forward = CommonLength(window, source, i, blockEnd);
+                int back = 0;
+                while (i - back > anchor && source - back > 0 && Raw.ByteAt(window, i - back - 1) == Raw.ByteAt(window, source - back - 1))
+                {
+                    back++;
+                }
+
+                if (forward + back > bestLength)
+                {
+                    bestLength = forward + back;
+                    bestStart = i - back;
+                    bestOffset = (uint)(i - source);
+                }
+            }
+
+            if (bestLength >= _minMatch)
+            {
+                matches.Add(new ZstdLongMatch(bestStart, bestLength, bestOffset));
+                searchFrom = bestStart + bestLength;
+                anchor = searchFrom;
+            }
+        }
+
+        // Remember the checkpoint: newest first, the oldest of the bucket falls out.
+        int count = 1 << _bucketLog;
+        for (int e = count - 1; e > 0; e--)
+        {
+            _table[bucket + e] = _table[bucket + e - 1];
+        }
+
+        _table[bucket] = ((ulong)check << 32) | (uint)(i + 1);
     }
 
     // The number of equal bytes at window[a..] and window[b..], where a < b, up to window[limit].

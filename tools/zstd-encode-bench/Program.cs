@@ -186,6 +186,44 @@ if (args[0] == "genfar")
     return 0;
 }
 
+if (args[0] == "copy")
+{
+    // copy <file> <level>: what copying the input once would cost next to compressing it (the alternative to pinning it for worker threads).
+    byte[] source = File.ReadAllBytes(args[1]);
+    byte[] target = new byte[source.Length];
+    double copy = Best(() => source.AsSpan().CopyTo(target));
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"copy {source.Length} bytes in {copy * 1000:F1} ms"));
+    return 0;
+}
+
+if (args[0] == "ldm")
+{
+    // ldm <file> <windowLog>: the long-distance matcher alone over the whole file in 128 KiB blocks: speed and matches found.
+    byte[] source = File.ReadAllBytes(args[1]);
+    int wl = int.Parse(args[2], CultureInfo.InvariantCulture);
+    var matcher = new ZstdLongDistanceMatcher();
+    var found = new List<ZstdLongMatch>();
+    long covered = 0;
+    void Scan()
+    {
+        matcher.BeginFrame(ZstdLongDistanceParameters.Resolve(wl, wl));
+        found.Clear();
+        for (int start = 0; start < source.Length; start += 1 << 17)
+        {
+            matcher.FindMatches(source, start, Math.Min(source.Length, start + (1 << 17)), found);
+        }
+    }
+
+    double scan = Best(Scan);
+    foreach (ZstdLongMatch m in found)
+    {
+        covered += m.Length;
+    }
+
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"ldm {source.Length / scan / 1e6:F0} MB/s, {found.Count} matches covering {covered} bytes"));
+    return 0;
+}
+
 if (args[0] == "stream")
 {
     // stream <file> <out.zst> <level> [options]: the streaming encoder, 1 MiB pieces from file to file; prints size and time.
