@@ -1,0 +1,6 @@
+# Corpus archives. Columns: file, url, sha256. Fetch-only: nothing here is committed or redistributed.
+silesia.zip	http://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip	0626e25f45c0ffb5dc801f13b7c82a3b75743ba07e3a71835a41e3d9f63c77af
+enwik8.zip	https://mattmahoney.net/dc/enwik8.zip	547994d9980ebed1288380d652999f38a14fe291a6247c157c3d33d4932534bc
+cantrbry.tar.gz	https://corpus.canterbury.ac.nz/resources/cantrbry.tar.gz	f140e8a5b73d3f53198555a63bfb827889394a42f20825df33c810c3d5e3f8fb
+large.tar.gz	https://corpus.canterbury.ac.nz/resources/large.tar.gz	7df00ff4cb8c9ce4187d9fa4100aa88208a72d9a227e3cd8bab23b71971eaf41
+artificl.tar.gz	https://corpus.canterbury.ac.nz/resources/artificl.tar.gz	cc1818a084d61fe693fe2a9db7312da25fdb4b54313502a6920abf692b7a47ab

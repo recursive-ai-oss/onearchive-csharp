@@ -6,7 +6,7 @@
     <Platform Name="Any CPU" />
   </Configurations>
   <Folder Name="/bench/">
-    <Project Path="bench/Bench.csproj" />
+    <Project Path="bench/Bar/Bar.csproj" />
   </Folder>
   <Folder Name="/fuzz/">
     <Project Path="fuzz/Fuzz.csproj" />
