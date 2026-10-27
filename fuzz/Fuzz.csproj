@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Fuzz-only: the coverage feedback hook for afl-fuzz. Never referenced from src/. -->
+    <PackageReference Include="SharpFuzz" Version="2.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../src/OneCompress/OneCompress.csproj" />
     <ProjectReference Include="../src/OneArchive/OneArchive.csproj" />
   </ItemGroup>

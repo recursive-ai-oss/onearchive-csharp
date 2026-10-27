@@ -114,9 +114,10 @@ internal static class Lz4EncoderTargets
             }
         }
 
-        if (!result.ToArray().AsSpan().SequenceEqual(whole))
+        byte[] streamed = result.ToArray();
+        if (!streamed.AsSpan().SequenceEqual(whole))
         {
-            throw new InvalidOperationException($"streaming output differs from one-shot (level {level}, flags {flags:X2}, split {split}, out {outSize})");
+            throw new InvalidOperationException($"streaming output differs from one-shot (level {level}, flags {flags:X2}, split {split}, out {outSize}, data {data.Length}, lengths {streamed.Length} and {whole.Length}, first difference at {streamed.AsSpan().CommonPrefixLength(whole)})");
         }
     }
 
