@@ -86,6 +86,33 @@ catch (CompressionFormatException e) when (e.IsTruncated)
 {
 }
 
+// LZ4 compression at a fast and a high level: frames through the one-liner, a stream, and a block with a dictionary.
+byte[] lz4Input = System.Text.Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat(lz4Text + " ", 50)));
+foreach (int level in new[] { 1, -3, 9, 12 })
+{
+    byte[] packed = Lz4.Compress(lz4Input, new Lz4CompressionOptions { Level = level });
+    if (packed.Length >= lz4Input.Length / 4 || !Lz4.Decompress(packed).AsSpan().SequenceEqual(lz4Input))
+    {
+        Console.Error.WriteLine($"lz4 compress failed at level {level}");
+        return 1;
+    }
+}
+
+var lz4Compressed = new MemoryStream();
+using (var writer = new Lz4Stream(lz4Compressed, new Lz4CompressionOptions { BlocksIndependent = false, BlockSize = Lz4BlockSize.Size64KiB }, leaveOpen: true))
+{
+    writer.Write(lz4Input);
+}
+
+var lz4Dictionary = new Lz4Dictionary(System.Text.Encoding.ASCII.GetBytes(lz4Text));
+byte[] lz4Block = Lz4Block.Compress(lz4Input, new Lz4CompressionOptions { Level = 5, Dictionary = lz4Dictionary });
+if (!Lz4.Decompress(lz4Compressed.ToArray()).AsSpan().SequenceEqual(lz4Input)
+    || !Lz4Block.Decompress(lz4Block, new Lz4BlockOptions { Dictionary = lz4Dictionary }).AsSpan().SequenceEqual(lz4Input))
+{
+    Console.Error.WriteLine("lz4 stream or block compress failed");
+    return 1;
+}
+
 // One checksum from each family, so the trimmer keeps (and analyses) the vector paths.
 ReadOnlySpan<byte> check = "123456789"u8;
 if (Crc32.Compute(check) != 0xCBF43926u || Crc64.Compute(check) != 0x995DC9BBDF1939FAUL || Adler32.Compute(check) != 0x091E01DEu)

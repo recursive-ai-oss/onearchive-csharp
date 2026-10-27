@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A small timing loop for the LZ4 encoder: whole-file block compression in MB/s with the ratio, and small payloads per second. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Lz4Bench</AssemblyName>
+    <RootNamespace>RecursiveAI.Bench</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
+  </ItemGroup>
+
+</Project>

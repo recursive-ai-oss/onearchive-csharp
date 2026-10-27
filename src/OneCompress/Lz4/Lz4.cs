@@ -2,9 +2,67 @@ using System.Buffers;
 
 namespace RecursiveAI.OneCompress.Lz4;
 
-/// <summary>One-call decompression of LZ4 frames (LZ4 Frame Format), including concatenated, skippable and legacy frames. For raw blocks use <see cref="Lz4Block"/>.</summary>
+/// <summary>One-call compression and decompression of LZ4 frames (LZ4 Frame Format), including concatenated, skippable and legacy frames when decoding. For raw blocks use <see cref="Lz4Block"/>.</summary>
 public static class Lz4
 {
+    /// <summary>Compresses <paramref name="source"/> into one frame in a new array.</summary>
+    /// <param name="source">The bytes to compress; may be empty.</param>
+    /// <param name="options">The level, block layout, checksums and dictionary; <see langword="null"/> for the defaults (level 1, 4 MiB independent blocks, content checksum, the size in the header).</param>
+    /// <returns>The frame.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">An option is out of range.</exception>
+    /// <exception cref="InvalidOperationException"><see cref="Lz4CompressionOptions.ContentSize"/> is set and differs from the length of <paramref name="source"/>.</exception>
+    public static byte[] Compress(ReadOnlySpan<byte> source, Lz4CompressionOptions? options = null)
+    {
+        var encoder = new Lz4Encoder(options);
+        long bound = Lz4Encoder.GetMaxCompressedLength(source.Length, options);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent((int)Math.Min(bound, Array.MaxLength));
+        try
+        {
+            if (!encoder.TryCompressFrame(source, buffer, out int written))
+            {
+                throw new InvalidOperationException("The frame did not fit its bound.");
+            }
+
+            return buffer.AsSpan(0, written).ToArray();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    /// <summary>Compresses <paramref name="source"/> into one frame in <paramref name="destination"/>.</summary>
+    /// <param name="source">The bytes to compress; may be empty.</param>
+    /// <param name="destination">Receives the frame; <see cref="Lz4Encoder.GetMaxCompressedLength"/> bytes always suffice.</param>
+    /// <param name="options">The level, block layout, checksums and dictionary; <see langword="null"/> for the defaults.</param>
+    /// <returns>The number of bytes written.</returns>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is too small.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An option is out of range.</exception>
+    public static int Compress(ReadOnlySpan<byte> source, Span<byte> destination, Lz4CompressionOptions? options = null)
+    {
+        if (!new Lz4Encoder(options).TryCompressFrame(source, destination, out int written))
+        {
+            throw new ArgumentException("The destination is too small for the frame.", nameof(destination));
+        }
+
+        return written;
+    }
+
+    /// <summary>
+    /// Compresses into a caller-supplied buffer with an encoder the caller keeps, so repeated calls allocate nothing. Any frame the
+    /// encoder had in progress is abandoned.
+    /// </summary>
+    /// <param name="encoder">The encoder, configured with the options and dictionary to use.</param>
+    /// <param name="source">The bytes to compress; may be empty.</param>
+    /// <param name="destination">Receives the frame.</param>
+    /// <param name="bytesWritten">The number of bytes written; meaningful only when the method returns true.</param>
+    /// <returns>True on success; false when <paramref name="destination"/> is too small.</returns>
+    public static bool TryCompress(Lz4Encoder encoder, ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten)
+    {
+        ArgumentNullException.ThrowIfNull(encoder);
+        return encoder.TryCompressFrame(source, destination, out bytesWritten);
+    }
+
     /// <summary>Decompresses one or more LZ4 frames into a new array.</summary>
     /// <param name="source">The compressed data: one or more frames, ending at a frame boundary.</param>
     /// <param name="options">Limits and dictionaries; <see langword="null"/> for the defaults.</param>

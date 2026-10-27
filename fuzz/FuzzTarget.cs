@@ -26,5 +26,7 @@ internal static class FuzzTargets
         Lz4Targets.Frame,
         Lz4Targets.FrameWithDictionary,
         Lz4Targets.Block,
+        Lz4EncoderTargets.Frame,
+        Lz4EncoderTargets.Block,
     ];
 }

@@ -32,6 +32,95 @@ public sealed class Lz4BlockOptions
 /// </summary>
 public static class Lz4Block
 {
+    /// <summary>Gets the most bytes a block of <paramref name="inputLength"/> bytes can compress to; a destination of this size always suffices.</summary>
+    /// <param name="inputLength">The number of bytes to compress.</param>
+    /// <returns>The bound, saturating at <see cref="int.MaxValue"/>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="inputLength"/> is negative.</exception>
+    public static int GetMaxCompressedLength(int inputLength) => Lz4BlockWriter.GetMaxCompressedLength(inputLength);
+
+    /// <summary>Compresses <paramref name="source"/> into one block in a new array.</summary>
+    /// <param name="source">The bytes to compress, at most <see cref="Lz4BlockCompressor.MaxInputLength"/>; may be empty (the block is then the single byte 0x00).</param>
+    /// <param name="options">The level and dictionary (the other options do not apply to blocks); <see langword="null"/> for the defaults.</param>
+    /// <returns>The compressed block. Decode it with <see cref="Decompress(ReadOnlySpan{byte}, Lz4BlockOptions?)"/>, which needs to be told the same dictionary.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The level is out of range.</exception>
+    /// <exception cref="ArgumentException"><paramref name="source"/> is longer than one block can hold.</exception>
+    public static byte[] Compress(ReadOnlySpan<byte> source, Lz4CompressionOptions? options = null)
+    {
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(GetMaxCompressedLength(source.Length));
+        try
+        {
+            int n = CompressCore(source, buffer, options);
+            return buffer.AsSpan(0, n).ToArray();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    /// <summary>Compresses <paramref name="source"/> into one block in <paramref name="destination"/>.</summary>
+    /// <param name="source">The bytes to compress, at most <see cref="Lz4BlockCompressor.MaxInputLength"/>.</param>
+    /// <param name="destination">Receives the block.</param>
+    /// <param name="options">The level and dictionary; <see langword="null"/> for the defaults.</param>
+    /// <returns>The size of the block.</returns>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is too small for the block (a destination of <see cref="GetMaxCompressedLength"/> bytes never is), or <paramref name="source"/> is too long.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The level is out of range.</exception>
+    public static int Compress(ReadOnlySpan<byte> source, Span<byte> destination, Lz4CompressionOptions? options = null)
+    {
+        if (!TryCompress(source, destination, out int written, options))
+        {
+            throw new ArgumentException("The destination is too small for the compressed block.", nameof(destination));
+        }
+
+        return written;
+    }
+
+    /// <summary>Compresses <paramref name="source"/> into one block, reporting whether it fit.</summary>
+    /// <param name="source">The bytes to compress, at most <see cref="Lz4BlockCompressor.MaxInputLength"/>.</param>
+    /// <param name="destination">Receives the block.</param>
+    /// <param name="bytesWritten">The size of the block; meaningful only when the method returns true.</param>
+    /// <param name="options">The level and dictionary; <see langword="null"/> for the defaults.</param>
+    /// <returns>True on success; false when the block does not fit in <paramref name="destination"/>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The level is out of range.</exception>
+    /// <exception cref="ArgumentException"><paramref name="source"/> is longer than one block can hold.</exception>
+    public static bool TryCompress(ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten, Lz4CompressionOptions? options = null)
+    {
+        int bound = GetMaxCompressedLength(source.Length);
+        if (destination.Length >= bound)
+        {
+            bytesWritten = CompressCore(source, destination, options);
+            return true;
+        }
+
+        // The compressor wants room for the worst case; use a scratch buffer and see whether the result fits.
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(bound);
+        try
+        {
+            int n = CompressCore(source, buffer, options);
+            bytesWritten = n;
+            if (n > destination.Length)
+            {
+                return false;
+            }
+
+            buffer.AsSpan(0, n).CopyTo(destination);
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static int CompressCore(ReadOnlySpan<byte> source, Span<byte> destination, Lz4CompressionOptions? options)
+    {
+        options ??= Lz4CompressionOptions.Default;
+        options.Validate();
+        Lz4BlockCompressor compressor = Lz4BlockCompressor.Create(options.Level);
+        compressor.SetDictionary(options.Dictionary);
+        return compressor.Compress(source, 0, destination);
+    }
+
     /// <summary>Decodes a block into a new array of exactly the decoded size.</summary>
     /// <param name="source">The compressed block, exactly.</param>
     /// <param name="options">The output limit and dictionary; <see langword="null"/> for the defaults.</param>
