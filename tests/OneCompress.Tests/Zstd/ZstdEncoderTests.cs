@@ -178,6 +178,24 @@ public class ZstdEncoderTests
         }
     }
 
+    [Theory]
+    [InlineData(5, 20_000_000, 21, 18, 19, 3, 5, 2, ZstdStrategy.Greedy)]
+    [InlineData(9, 20_000_000, 22, 20, 21, 4, 5, 16, ZstdStrategy.Lazy2)]
+    [InlineData(12, 20_000_000, 22, 22, 23, 6, 5, 32, ZstdStrategy.Lazy2)]
+    [InlineData(15, 20_000_000, 22, 23, 23, 6, 5, 32, ZstdStrategy.BinaryTreeLazy2)]
+    [InlineData(4, 262_144, 18, 16, 17, 3, 5, 2, ZstdStrategy.Greedy)]
+    [InlineData(4, 131_072, 17, 17, 17, 2, 4, 0, ZstdStrategy.DoubleFast)]
+    [InlineData(4, 4097, 13, 13, 14, 4, 4, 2, ZstdStrategy.Greedy)]
+    [InlineData(9, 16_384, 14, 15, 14, 5, 4, 8, ZstdStrategy.BinaryTreeLazy2)]
+    [InlineData(7, 131_072, 17, 16, 17, 3, 4, 8, ZstdStrategy.Lazy2)]
+    [InlineData(12, 262_144, 18, 19, 19, 7, 4, 12, ZstdStrategy.BinaryTreeLazy2)]
+    public void LevelTablesFollowTheReferenceForEachSizeClass(int level, long size, int windowLog, int chainLog, int hashLog, int searchLog, int minMatch, int targetLength, ZstdStrategy strategy)
+    {
+        // Values read off `zstd --show-default-cparams` for sources of these sizes (the window shrinks to the source for small ones).
+        ZstdCompressionParameters p = ZstdCompressionParameters.Resolve(level, size, 0);
+        Assert.Equal((windowLog, chainLog, hashLog, searchLog, minMatch, targetLength, strategy), (p.WindowLog, p.ChainLog, p.HashLog, p.SearchLog, p.MinMatch, p.TargetLength, p.Strategy));
+    }
+
     [Fact]
     public void LevelsAboveTheImplementedRangeAreRejectedClearly()
     {
