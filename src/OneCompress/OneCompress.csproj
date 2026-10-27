@@ -5,6 +5,7 @@
     <RootNamespace>$(PackagePrefix).$(CompressName)</RootNamespace>
     <PackageId>$(PackagePrefix).$(CompressName)</PackageId>
     <Description>Compression codecs written in managed code: no native dependencies, identical output on every platform.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

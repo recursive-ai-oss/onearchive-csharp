@@ -103,6 +103,14 @@ public sealed class ZstdBlockWriter
     }
 
     /// <summary>
+    /// Declares the decoder's repeat offsets unknown, as they are at the start of a parallel job that follows another job in the
+    /// same frame: until the job has coded three explicit offsets of its own, no repeat code is used, because the decoder's values
+    /// come from the end of the previous job. The three stand-ins are above any offset a frame can use, so they match nothing.
+    /// </summary>
+    internal void ForgetRepeatOffsets() =>
+        _repeatOffsets = new ZstdRepeatOffsets { Offset1 = 0xFFFF_FFF0, Offset2 = 0xFFFF_FFF1, Offset3 = 0xFFFF_FFF2 };
+
+    /// <summary>
     /// Writes one block, header included.
     /// </summary>
     /// <param name="blockData">The block's original bytes (used for raw and RLE blocks); 0 to 128 KiB.</param>

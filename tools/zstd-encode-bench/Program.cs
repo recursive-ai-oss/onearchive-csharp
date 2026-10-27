@@ -26,10 +26,22 @@ bool checksum = false;
 int chunk = 0;
 int limit = int.MaxValue;
 string? perFile = null;
+bool longMatching = false;
+int windowLog = 0;
+int workers = 1;
+int jobSize = 0;
+int overlap = -1;
+bool once = false;
 for (int i = 3; i < args.Length; i++)
 {
     switch (args[i])
     {
+        case "--once": once = true; break;
+        case "--long": longMatching = true; windowLog = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
+        case "--window": windowLog = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
+        case "--workers": workers = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
+        case "--job": jobSize = args[++i] == "auto" ? ZstdCompressionOptions.AutoJobSize : int.Parse(args[i], CultureInfo.InvariantCulture); break;
+        case "--overlap": overlap = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
         case "--seconds": seconds = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
         case "--dict": dictPath = args[++i]; break;
         case "--out": outPath = args[++i]; break;
@@ -40,15 +52,31 @@ for (int i = 3; i < args.Length; i++)
     }
 }
 
+ZstdCompressionOptions Options(int level, ZstdCompressionDictionary? dictionary = null) => new()
+{
+    Level = level,
+    Checksum = checksum,
+    Dictionary = dictionary,
+    LongDistanceMatching = longMatching,
+    WindowLog = windowLog,
+    Workers = workers,
+    JobSize = jobSize,
+    OverlapSize = overlap,
+};
+
 double Best(Action run) => BestOf(run, out _, out _);
 
 // Runs once to warm up, then repeatedly for the given number of seconds; returns the best time and reports the median and worst.
 double BestOf(Action run, out double median, out double worst)
 {
-    run();
+    if (!once)
+    {
+        run();
+    }
+
     var times = new List<double>();
     var total = Stopwatch.StartNew();
-    while (total.Elapsed.TotalSeconds < seconds || times.Count < 3)
+    while (!once && (total.Elapsed.TotalSeconds < seconds || times.Count < 3) || times.Count == 0)
     {
         long t = Stopwatch.GetTimestamp();
         run();
@@ -107,13 +135,149 @@ if (args[0] == "split")
     return 0;
 }
 
+if (args[0] == "genfar")
+{
+    // genfar <enwik8> <silesia.tar> <out> [--size N]: a large input whose repeats lie far apart (about 96 MB), beyond any level's
+    // own window and inside a 2^27 window. Three 32 MB pieces of the corpora come round again and again, each time with one
+    // byte changed in every 64 KiB, so the repeats are long but never exact.
+    long size = 1_200_000_000;
+    for (int i = 3; i < args.Length; i++)
+    {
+        if (args[i] == "--size")
+        {
+            size = long.Parse(args[++i], CultureInfo.InvariantCulture);
+        }
+    }
+
+    const int PieceSize = 32 << 20;
+    byte[][] pieces = new byte[3][];
+    using (var a = File.OpenRead(args[1]))
+    using (var b = File.OpenRead(args[2]))
+    {
+        pieces[0] = new byte[PieceSize];
+        pieces[1] = new byte[PieceSize];
+        pieces[2] = new byte[PieceSize];
+        a.ReadExactly(pieces[0]);
+        b.ReadExactly(pieces[1]);
+        b.Seek(64L << 20, SeekOrigin.Begin);
+        b.ReadExactly(pieces[2]);
+    }
+
+    var rng = new Random(12345);
+    using var output = File.Create(args[3]);
+    long written = 0;
+    for (int round = 0; written < size; round++)
+    {
+        byte[] piece = pieces[round % 3];
+        if (round >= 3)
+        {
+            for (int offset = 0; offset < PieceSize; offset += 65536)
+            {
+                piece[offset + rng.Next(65536)] ^= (byte)(1 + rng.Next(255));
+            }
+        }
+
+        int n = (int)Math.Min(PieceSize, size - written);
+        output.Write(piece, 0, n);
+        written += n;
+    }
+
+    Console.WriteLine($"genfar {written} bytes");
+    return 0;
+}
+
+if (args[0] == "copy")
+{
+    // copy <file> <level>: what copying the input once would cost next to compressing it (the alternative to pinning it for worker threads).
+    byte[] source = File.ReadAllBytes(args[1]);
+    byte[] target = new byte[source.Length];
+    double copy = Best(() => source.AsSpan().CopyTo(target));
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"copy {source.Length} bytes in {copy * 1000:F1} ms"));
+    return 0;
+}
+
+if (args[0] == "ldm")
+{
+    // ldm <file> <windowLog>: the long-distance matcher alone over the whole file in 128 KiB blocks: speed and matches found.
+    byte[] source = File.ReadAllBytes(args[1]);
+    int wl = int.Parse(args[2], CultureInfo.InvariantCulture);
+    var matcher = new ZstdLongDistanceMatcher();
+    var found = new List<ZstdLongMatch>();
+    long covered = 0;
+    void Scan()
+    {
+        matcher.BeginFrame(ZstdLongDistanceParameters.Resolve(wl, wl));
+        found.Clear();
+        for (int start = 0; start < source.Length; start += 1 << 17)
+        {
+            matcher.FindMatches(source, start, Math.Min(source.Length, start + (1 << 17)), found);
+        }
+    }
+
+    double scan = Best(Scan);
+    foreach (ZstdLongMatch m in found)
+    {
+        covered += m.Length;
+    }
+
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"ldm {source.Length / scan / 1e6:F0} MB/s, {found.Count} matches covering {covered} bytes"));
+    return 0;
+}
+
+if (args[0] == "stream")
+{
+    // stream <file> <out.zst> <level> [options]: the streaming encoder, 1 MiB pieces from file to file; prints size and time.
+    long start = Stopwatch.GetTimestamp();
+    var encoder = new ZstdEncoder(Options(int.Parse(args[3], CultureInfo.InvariantCulture)));
+    using var input = File.OpenRead(args[1]);
+    using var sink = File.Create(args[2]);
+    byte[] piece = new byte[1 << 20];
+    byte[] buffer = new byte[1 << 20];
+    long total = 0;
+    long compressedTotal = 0;
+    while (true)
+    {
+        int n = input.Read(piece, 0, piece.Length);
+        bool final = n == 0;
+        int consumed = 0;
+        System.Buffers.OperationStatus status;
+        do
+        {
+            status = encoder.Compress(piece.AsSpan(consumed, n - consumed), buffer, out int taken, out int written, final);
+            consumed += taken;
+            sink.Write(buffer, 0, written);
+            compressedTotal += written;
+        }
+        while (status == System.Buffers.OperationStatus.DestinationTooSmall || consumed < n);
+        total += n;
+        if (final)
+        {
+            break;
+        }
+    }
+
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"stream size={total} compressed={compressedTotal} seconds={Stopwatch.GetElapsedTime(start).TotalSeconds:F1}"));
+    return 0;
+}
+
+if (args[0] == "verify")
+{
+    // verify <file.zst> <original>: our decoder, window up to 2^30, compared with the original.
+    var decoder = new ZstdDecoder(new ZstdDecompressionOptions { MaxOutputSize = long.MaxValue, MaxWindowSize = 1L << 30 });
+    byte[] frame = File.ReadAllBytes(args[1]);
+    byte[] original = File.ReadAllBytes(args[2]);
+    byte[] restored = new byte[original.Length];
+    bool good = Zstd.TryDecompress(decoder, frame, restored, out int produced) && produced == original.Length && restored.AsSpan().SequenceEqual(original);
+    Console.WriteLine(good ? "verify ok" : "verify MISMATCH");
+    return good ? 0 : 1;
+}
+
 if (args[0] == "big")
 {
     int level = int.Parse(args[2], CultureInfo.InvariantCulture);
     byte[] data = File.ReadAllBytes(args[1]);
     ZstdCompressionDictionary? dictionary = dictPath is null ? null : ZstdCompressionDictionary.Parse(File.ReadAllBytes(dictPath));
-    var options = new ZstdCompressionOptions { Level = level, Checksum = checksum, Dictionary = dictionary };
-    var encoder = new ZstdEncoder(options);
+    var encoder = new ZstdEncoder(Options(level, dictionary));
     int piece = chunk == 0 ? data.Length : chunk;
     int pieces = Math.Max(1, (data.Length + piece - 1) / piece);
     byte[] output = new byte[(pieces * (ZstdEncoder.GetMaxCompressedLength(piece) + 8)) + 64];
@@ -138,6 +302,7 @@ if (args[0] == "big")
     {
         Dictionary = dictPath is null ? null : ZstdDictionary.Parse(File.ReadAllBytes(dictPath)),
         MaxOutputSize = long.MaxValue,
+        MaxWindowSize = 1L << 30,
     });
     byte[] restored = new byte[data.Length];
     bool ok = true;

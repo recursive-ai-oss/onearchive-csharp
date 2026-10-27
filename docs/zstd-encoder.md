@@ -224,6 +224,68 @@ and in how far the parse looks ahead.
 offsets, content) and, for anything else, raw content (8 bytes or more; ID 0 unless given). The Huffman tree, the three FSE tables
 and the repeat offsets start the frame's carried state, so the first block can use repeat modes and treeless literals.
 
+## Windows
+
+`WindowLog` (10 to 31) replaces the level's window log. The header states it; matches never reach back further than 2^30 bytes, which is
+the most a window buffer can hold, so 31 is a declaration only (`zstd -d --long=31` or `--memory` is needed to decode it). A log below
+17 asked for explicitly is written as 17 in the header, because a block (128 KiB) may not exceed the window (RFC 8878 section 3.1.1.2.3);
+matching keeps to the smaller window. A frame whose content size is known and fits the window is single-segment and needs no window
+descriptor.
+
+What a decoder accepts: this library's `ZstdDecompressionOptions.MaxWindowSize` defaults to 8 MiB and is raised by the caller (it
+plays the part of `zstd -d --long=N` and `--memory`); it holds up to two windows, so it refuses windows of 2^30 and above. The `zstd`
+command line decodes up to 2^27 by default.
+
+## Long-distance matching
+
+`LongDistanceMatching` is `zstd --long`: with it on and no `WindowLog`, the window is 2^27 (smaller when the content size is known to be
+smaller: the log of the size, at least 10). A second matcher finds long repeats anywhere in the window; the level's own match finder
+parses the rest, whatever its strategy. The matcher is `ZstdLongDistanceMatcher` and the glue is `ZstdLongSequencer`, both public.
+
+- **Anchoring.** A gear hash runs over every byte: `h = (h << 1) + G[byte]`, with 256 constants from the SplitMix64 sequence seeded with
+  `0x2545F4914F6CDD1D` (each step adds `0x9E3779B97F4A7C15`, then `z = (z ^ z >> 30) * 0xBF58476D1CE4E5B9`, `z = (z ^ z >> 27) *
+  0x94D049BB133111EB`, `G = z ^ z >> 31`). The hash after byte `j` covers bytes `j-63` to `j`; position `i = j - 63` is a checkpoint when the
+  top `HashRateLog` bits of the hash are zero (content-defined sampling, so both copies of a repeat are anchored at the same place).
+- **Table.** `2^HashLog` entries of 8 bytes in buckets of `2^BucketSizeLog`: `check << 32 | (position + 1)`, newest first, the oldest falls
+  out. With `mixed = (h ^ h >> 29) * 0xBF58476D1CE4E5B9`, the bucket is the top `HashLog - BucketSizeLog` bits of `mixed` and the check
+  is its low 32 bits. Defaults: `HashLog = clamp(min(windowLog, sizeLog) - 7, 6, 24)`, `BucketSizeLog = 2`,
+  `HashRateLog = clamp(min(windowLog, sizeLog) - HashLog, 1, 24)`, `MinMatch = 64` (16 to 4096), where `sizeLog` is the log of the content
+  size when it is known.
+- **Search.** At a checkpoint at or after the end of the previous long match and the block start, each bucket entry with the same check
+  and a distance of at most the window is verified byte by byte, extended forward to the block end and backward to the previous match end
+  or block start; the longest wins, the newest on a tie, and it is taken when at least `MinMatch` long. Then the checkpoint is stored.
+  Positions scanned inside a match are stored but not searched from. The dictionary content is not indexed.
+- **Blocks.** Long matches are found per 128 KiB block (matches stay inside a block). In a block, each long match becomes a sequence; the
+  match finder parses the stretches between them, told the repeat offsets that follow from what came before, and the last 256 bytes of a
+  long match are added to its tables so that what follows can refer back into it. Hash tables hold position and check only, never
+  pointers, so the matches do not depend on the platform.
+- Sliding the stream's window buffer drops entries older than the window and changes nothing else: a stream and a one-shot call make the
+  same matches.
+
+## Jobs and threads
+
+`JobSize` (bytes, 0 = off) cuts the input into jobs; `Workers` (0 = one per processor, default 1) is how many are compressed at once.
+The bytes depend on the job size, the overlap and the other options, never on `Workers`, the processor count, the platform or the order
+in which jobs finish; a browser runs the jobs one after another. With `JobSize` 0 there is one job and `Workers` is ignored.
+
+- **Job size.** `AutoJobSize` (-1) is `max(1 MiB, 4 * min(windowSize, 4 MiB))`. Any size is rounded up to a multiple of 128 KiB (so the
+  jobs add no blocks of their own and `GetMaxCompressedLength` holds) and capped at 1 GiB. Job `k` covers input bytes `k * size` to
+  `(k + 1) * size`. An input no longer than one job is compressed exactly as without jobs.
+- **Overlap.** The bytes before a job are history for matching. `OverlapSize` (default `min(windowSize / 8, 1 MiB)`, at most the window)
+  of them are added to the match finder's tables when the job starts (`ZstdMatchFinder.Prime`: every position of the overlap, hashed as
+  during parsing); with long-distance matching the whole window before the job can be matched into, found by the one long-distance
+  matcher, which sees the whole input in order whichever thread runs which job (jobs take their turn at it in job order, then
+  compress in parallel).
+- **Job frames.** The header and checksum are written once. The jobs' blocks follow one another; every job writes its own blocks from
+  fresh tables: its first block uses no table of the previous job and no repeat offset code until it has coded three offsets of its own
+  (the decoder's offsets come from the end of the previous job; `ZstdBlockWriter.ForgetRepeatOffsets` makes the writer assume three
+  offsets above any real one). Only the job that starts the frame uses the dictionary. The last block of the last job is the frame's
+  last block.
+- **Streaming.** `ZstdEncoder.Compress` buffers the window (or overlap) behind the next batch of `Workers` jobs and compresses a batch when
+  more input than a batch has arrived, or at the end; the bytes do not depend on how the input is split across calls. Memory is
+  the window plus `Workers * JobSize` plus the batch's output. `Flush` compresses what is buffered as a short job and ends it (and so
+  changes the bytes).
+
 ## Measuring
 
 - Ratio: compressed bytes of the whole file in one frame, no checksum, against `zstd -N --no-check` (negative levels
@@ -267,3 +329,21 @@ sizes 0.2 to 1.1% smaller; snapshots and saves (hundreds of bytes to 6 KB) run a
 
 The unchecked accessors (`Raw`) are worth 5 to 7% of the encoder's speed: the same code built in the `Checked` configuration (every accessor
 bounds-checked) runs at 564/598 (level -5), 400/430 (level 1) and 259/273 MB/s (level 3), match finding 10% slower and block writing level.
+
+## Results: long-distance matching and jobs (zstd 1.5.7)
+
+Method as above, `run.sh --ref-opts ... --ours-opts ...` (`zstd -b<L> -e<L> -T<n> [--long=27]` against `ZstdEncodeBench big ... --workers n --job auto [--long 27]`, best of 3 s).
+`time ratio` is our time over the tool's. x64: Ryzen 9 7950X3D, 32 cores, load 2 to 7 from other work; arm64: Apple M2, 8 cores, load 3 to 6.
+Sizes are the same on both machines. Jobs cost 0.03% in size (silesia.tar level 1: 73,520,243 bytes as one job, 73,540,841 with jobs).
+
+| file, level | size vs tool | x64 time ratio: 1 thread, long | 4 jobs at once, long | 8 | 16 | arm64: 1 thread, long | 4 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| silesia.tar 1 | +0.57% | 1.44 | 1.13 | 0.67 | 0.62 | 1.38 | 1.06 | 0.85 |
+| silesia.tar 3 | +1.04% | 1.28 | 1.22 | 0.88 | 0.71 | 1.31 | 1.26 | 1.16 |
+| enwik8 1 | +0.68% | 1.57 | 1.83 | 1.04 | 0.93 | 1.53 | 1.65 | 1.22 |
+| enwik8 3 | +0.69% | 1.44 | 1.76 | 1.19 | 1.12 | 1.39 | 1.85 | 1.46 |
+
+The long-distance matcher alone scans 2.1 GB/s of silesia.tar (x64). On an input with far repeats (1.2 GB, three 32 MB pieces recurring
+at about 96 MB with one byte in 64 KiB changed) the output is 47% smaller than the tool's at levels 1 and 3, at 1.18 and 0.90 times its time.
+With jobs and no long matching the ratio of times is 1.25 to 1.5 (the single-thread gap) at 4 to 16 jobs, and size is +0.34% (level 1) and
++0.82% (level 3) on silesia.tar.

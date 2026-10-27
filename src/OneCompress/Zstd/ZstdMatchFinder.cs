@@ -39,4 +39,24 @@ public abstract class ZstdMatchFinder
     /// <summary>Tells the finder that the window was moved down by <paramref name="delta"/> bytes: stored positions below it are gone.</summary>
     /// <param name="delta">The number of bytes removed from the front of the window.</param>
     public abstract void Slide(int delta);
+
+    /// <summary>
+    /// Adds the positions <paramref name="firstPosition"/> to <paramref name="endPosition"/> of <paramref name="window"/> to the search tables without
+    /// parsing them, so later blocks can match into them. Used for history that was not parsed by this finder: the overlap
+    /// in front of a parallel job, and the tail of a long match found elsewhere. Bytes past <c>window.Length</c> are never read,
+    /// so a caller passes a window that ends where its valid bytes end. The default does nothing, which only costs ratio.
+    /// </summary>
+    /// <param name="window">The window; its length is the end of the valid bytes.</param>
+    /// <param name="firstPosition">Index of the first position to add.</param>
+    /// <param name="endPosition">Index just past the last position to add.</param>
+    public virtual void Prime(ReadOnlySpan<byte> window, int firstPosition, int endPosition)
+    {
+    }
+
+    /// <summary>Creates the finder for a strategy.</summary>
+    internal static ZstdMatchFinder Create(ZstdStrategy strategy) => strategy switch
+    {
+        ZstdStrategy.Fast or ZstdStrategy.DoubleFast => new ZstdFastMatchFinder(),
+        _ => throw new NotSupportedException($"Strategy {strategy} is not implemented."),
+    };
 }
