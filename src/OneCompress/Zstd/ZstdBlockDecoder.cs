@@ -218,21 +218,21 @@ internal sealed class ZstdBlockDecoder
     {
         if (!ReferenceEquals(_rowsLiteralLengths, literalLengths) || _rowsLiteralLengthsVersion != literalLengths.Version)
         {
-            Array.Copy(literalLengths.GetSequenceEntries(0), 0, _rows, 0, 1 << literalLengths.AccuracyLog);
+            literalLengths.FillSequenceEntries(0, _rows.AsSpan(0));
             _rowsLiteralLengths = literalLengths;
             _rowsLiteralLengthsVersion = literalLengths.Version;
         }
 
         if (!ReferenceEquals(_rowsOffsets, offsets) || _rowsOffsetsVersion != offsets.Version)
         {
-            Array.Copy(offsets.GetSequenceEntries(1), 0, _rows, 1 << FseDecodingTable.MaxAccuracyLog, 1 << offsets.AccuracyLog);
+            offsets.FillSequenceEntries(1, _rows.AsSpan(1 << FseDecodingTable.MaxAccuracyLog));
             _rowsOffsets = offsets;
             _rowsOffsetsVersion = offsets.Version;
         }
 
         if (!ReferenceEquals(_rowsMatchLengths, matchLengths) || _rowsMatchLengthsVersion != matchLengths.Version)
         {
-            Array.Copy(matchLengths.GetSequenceEntries(2), 0, _rows, 2 << FseDecodingTable.MaxAccuracyLog, 1 << matchLengths.AccuracyLog);
+            matchLengths.FillSequenceEntries(2, _rows.AsSpan(2 << FseDecodingTable.MaxAccuracyLog));
             _rowsMatchLengths = matchLengths;
             _rowsMatchLengthsVersion = matchLengths.Version;
         }

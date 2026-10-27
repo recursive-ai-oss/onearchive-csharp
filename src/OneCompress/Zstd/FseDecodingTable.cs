@@ -69,23 +69,13 @@ public sealed class FseDecodingTable
 
     internal FseEntry[] EntryArray => _entries;
 
-    private SequenceEntry[]? _sequenceEntries;
-    private int _sequenceKind = -1;
-
     /// <summary>
-    /// Gets the rows with the symbol meanings of a sequence field expanded (0 literals length, 1 offset, 2 match length).
-    /// Computed on first use after the table was built; tables shared between threads are never rebuilt, and a racing
-    /// first use writes the same values. The next-state baselines are offset by <c>kind &lt;&lt; MaxAccuracyLog</c>, so the three
-    /// tables of a block can sit in one array and a state is an index into it.
+    /// Writes the rows with the symbol meanings of a sequence field expanded (0 literals length, 1 offset, 2 match length)
+    /// into <paramref name="destination"/>, one per state. The next-state baselines are offset by <c>kind &lt;&lt; MaxAccuracyLog</c>,
+    /// so the three tables of a block can sit in one array and a state is an index into it.
     /// </summary>
-    internal SequenceEntry[] GetSequenceEntries(int kind)
+    internal void FillSequenceEntries(int kind, Span<SequenceEntry> destination)
     {
-        SequenceEntry[]? array = Volatile.Read(ref _sequenceEntries);
-        if (array is not null && Volatile.Read(ref _sequenceKind) == kind)
-        {
-            return array;
-        }
-
         int limit = kind switch
         {
             0 => ZstdFormat.LiteralLengthMaxSymbol,
@@ -93,41 +83,28 @@ public sealed class FseDecodingTable
             _ => ZstdFormat.MatchLengthMaxSymbol,
         };
         ArgumentOutOfRangeException.ThrowIfGreaterThan(_maxSymbol, limit, nameof(kind));
-        if (array is null)
-        {
-            Interlocked.CompareExchange(ref _sequenceEntries, new SequenceEntry[1 << MaxAccuracyLog], null);
-            array = _sequenceEntries!;
-        }
-
-        // A table that is being rebuilt has a single user, so the kind is invalid while this runs.
-        Volatile.Write(ref _sequenceKind, -1);
         int size = 1 << _accuracyLog;
-        for (int state = 0; state < size; state++)
+        FseEntry[] entries = _entries;
+        destination = destination[..size];
+        int shift = kind << MaxAccuracyLog;
+        if (kind == 1)
         {
-            FseEntry e = _entries[state];
-            uint baseValue;
-            int extra;
-            switch (kind)
+            for (int state = 0; state < destination.Length; state++)
             {
-                case 0:
-                    baseValue = ZstdFormat.LiteralLengthBase[e.Symbol];
-                    extra = ZstdFormat.LiteralLengthBits[e.Symbol];
-                    break;
-                case 1:
-                    baseValue = 1u << e.Symbol;
-                    extra = e.Symbol;
-                    break;
-                default:
-                    baseValue = ZstdFormat.MatchLengthBase[e.Symbol];
-                    extra = ZstdFormat.MatchLengthBits[e.Symbol];
-                    break;
+                FseEntry e = entries[state];
+                destination[state] = new SequenceEntry(0, e.Baseline + shift, e.NumBits, e.Symbol);
             }
 
-            array[state] = new SequenceEntry(kind == 1 ? 0 : baseValue, e.Baseline + (kind << MaxAccuracyLog), e.NumBits, extra);
+            return;
         }
 
-        Volatile.Write(ref _sequenceKind, kind);
-        return array;
+        uint[] bases = kind == 0 ? ZstdFormat.LiteralLengthBase : ZstdFormat.MatchLengthBase;
+        byte[] bits = kind == 0 ? ZstdFormat.LiteralLengthBits : ZstdFormat.MatchLengthBits;
+        for (int state = 0; state < destination.Length; state++)
+        {
+            FseEntry e = entries[state];
+            destination[state] = new SequenceEntry(bases[e.Symbol], e.Baseline + shift, e.NumBits, bits[e.Symbol]);
+        }
     }
 
     /// <summary>Gets the rows of the table, indexed by state.</summary>
@@ -334,7 +311,6 @@ public sealed class FseDecodingTable
 
         _accuracyLog = accuracyLog;
         _maxSymbol = normalizedCounts.Length - 1;
-        _sequenceKind = -1;
         Version++;
     }
 
@@ -345,7 +321,6 @@ public sealed class FseDecodingTable
         _entries[0] = new FseEntry { Symbol = symbol, NumBits = 0, Baseline = 0 };
         _accuracyLog = 0;
         _maxSymbol = symbol;
-        _sequenceKind = -1;
         Version++;
     }
 }
