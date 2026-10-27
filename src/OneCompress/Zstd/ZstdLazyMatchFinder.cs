@@ -147,6 +147,17 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The rows and the tree enter positions lazily: a search first enters every position since the last one entered. Priming therefore
+    /// moves that mark up to <paramref name="firstPosition"/>, and the next search enters the positions from there on, with the
+    /// block's own end as the bound as for any position. Positions before the mark are never entered.
+    /// </remarks>
+    public override void Prime(ReadOnlySpan<byte> window, int firstPosition, int endPosition)
+    {
+        _next = Math.Max(_next, Math.Max(firstPosition, 1));
+    }
+
+    /// <inheritdoc />
     public override void Slide(int delta)
     {
         uint d = (uint)delta;

@@ -13,7 +13,7 @@ internal static class ZstdEncoderMtEntries
     [ModuleInitializer]
     internal static void Register()
     {
-        foreach (int level in new[] { 1, 3 })
+        foreach (int level in new[] { 1, 3, 6, 12 })
         {
             int l = level;
             foreach (bool longDistance in new[] { false, true })
