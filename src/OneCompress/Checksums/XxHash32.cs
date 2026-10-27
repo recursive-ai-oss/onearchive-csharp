@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 
 namespace RecursiveAI.OneCompress.Checksums;
 
@@ -119,7 +120,8 @@ public struct XxHash32
     private static void Stripes(ref uint v1, ref uint v2, ref uint v3, ref uint v4, ReadOnlySpan<byte> d, int end, bool vector)
     {
         int i = 0;
-        if (vector && Vector128.IsHardwareAccelerated && BitConverter.IsLittleEndian)
+        // Arm cores multiply 32-bit scalars at least as fast as the vector lanes, so the scalar form wins there.
+        if (vector && Vector128.IsHardwareAccelerated && !AdvSimd.IsSupported && BitConverter.IsLittleEndian)
         {
             Vector128<uint> acc = Vector128.Create(v1, v2, v3, v4);
             for (; i < end; i += 16)

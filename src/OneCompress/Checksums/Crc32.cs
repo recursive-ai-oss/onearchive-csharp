@@ -1,5 +1,3 @@
-using System.Runtime.Intrinsics;
-
 namespace RecursiveAI.OneCompress.Checksums;
 
 /// <summary>
@@ -15,8 +13,7 @@ public struct Crc32
     private const uint ReflectedPolynomial = 0xEDB88320;
 
     private static readonly uint[] Tables = Crc32Common.BuildTables(ReflectedPolynomial);
-    private static readonly Vector128<ulong> K512 = Crc32Common.FoldConstants(ReflectedPolynomial, 512);
-    private static readonly Vector128<ulong> K128 = Crc32Common.FoldConstants(ReflectedPolynomial, 128);
+    private static readonly FoldKeys Keys = Crc32Common.Keys(ReflectedPolynomial);
 
     private uint _value;
 
@@ -54,7 +51,7 @@ public struct Crc32
     // Raw register: the checksum before the final inversion.
     internal static uint Raw(uint s, ReadOnlySpan<byte> d)
     {
-        s = Crc32Common.Folded(Tables, K512, K128, s, d, out int used);
+        s = Crc32Common.Folded(Tables, Keys, s, d, out int used);
         return Crc32Common.Ieee(Tables, s, d.Slice(used));
     }
 
@@ -62,7 +59,7 @@ public struct Crc32
 
     internal static uint RawFolded(uint s, ReadOnlySpan<byte> d)
     {
-        s = Crc32Common.Folded(Tables, K512, K128, s, d, out int used);
+        s = Crc32Common.Folded(Tables, Keys, s, d, out int used);
         return Crc32Common.Scalar(Tables, s, d.Slice(used));
     }
 

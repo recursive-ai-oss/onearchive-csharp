@@ -17,8 +17,7 @@ public struct Crc64
     private const ulong ReflectedPolynomial = 0xC96C5795D7870F42;
 
     private static readonly ulong[] Tables = BuildTables();
-    private static readonly Vector128<ulong> K512 = Vector128.Create(XPow(512 + 63), XPow(512 - 1));
-    private static readonly Vector128<ulong> K128 = Vector128.Create(XPow(128 + 63), XPow(128 - 1));
+    private static readonly FoldKeys Keys = new(Pair(1024), Pair(512), Pair(256), Pair(128));
 
     private ulong _value;
 
@@ -82,7 +81,7 @@ public struct Crc64
     {
         if (d.Length >= CrcFold.MinLength && CrcFold.IsSupported)
         {
-            Vector128<ulong> r = CrcFold.Fold(d, s, K512, K128, out int used);
+            Vector128<ulong> r = CrcFold.Fold(d, s, Keys, out int used);
             s = Step8(Step8(0, r.GetElement(0)), r.GetElement(1));
             d = d.Slice(used);
         }
@@ -142,6 +141,8 @@ public struct Crc64
 
         return r;
     }
+
+    private static Vector128<ulong> Pair(int bits) => Vector128.Create(XPow(bits + 63), XPow(bits - 1));
 
     private static ulong XPow(long n)
     {

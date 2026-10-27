@@ -39,6 +39,10 @@ internal static class Crc32Common
     public static Vector128<ulong> FoldConstants(uint reflectedPoly, int bits) =>
         Vector128.Create((ulong)XPow(reflectedPoly, bits + 31), XPow(reflectedPoly, bits - 33));
 
+    /// <summary>Builds every fold constant pair the folding kernel uses.</summary>
+    public static FoldKeys Keys(uint reflectedPoly) => new(
+        FoldConstants(reflectedPoly, 1024), FoldConstants(reflectedPoly, 512), FoldConstants(reflectedPoly, 256), FoldConstants(reflectedPoly, 128));
+
     /// <summary>Advances eight bytes (little-endian in <paramref name="v"/>) through the tables.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint Step8(uint[] t, uint s, ulong v)
@@ -75,7 +79,7 @@ internal static class Crc32Common
     /// Folds the leading whole blocks of <paramref name="d"/> when it holds at least <see cref="CrcFold.MinLength"/> bytes
     /// and the machine can; <paramref name="consumed"/> is 0 otherwise.
     /// </summary>
-    public static uint Folded(uint[] t, Vector128<ulong> k512, Vector128<ulong> k128, uint s, ReadOnlySpan<byte> d, out int consumed)
+    public static uint Folded(uint[] t, in FoldKeys keys, uint s, ReadOnlySpan<byte> d, out int consumed)
     {
         if (d.Length < CrcFold.MinLength || !CrcFold.IsSupported)
         {
@@ -83,7 +87,7 @@ internal static class Crc32Common
             return s;
         }
 
-        Vector128<ulong> r = CrcFold.Fold(d, s, k512, k128, out consumed);
+        Vector128<ulong> r = CrcFold.Fold(d, s, keys, out consumed);
         return Step8(t, Step8(t, 0, r.GetElement(0)), r.GetElement(1));
     }
 

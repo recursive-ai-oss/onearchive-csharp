@@ -50,36 +50,124 @@ internal static class CrcFold
     /// </summary>
     /// <param name="d">The data.</param>
     /// <param name="state">The CRC register (zero-extended when the CRC is 32 bits wide).</param>
-    /// <param name="k512">Constants for a 512-bit fold: low lane multiplies the low half, high lane the high half.</param>
-    /// <param name="k128">Constants for a 128-bit fold.</param>
+    /// <param name="k">The fold constants for the CRC polynomial.</param>
     /// <param name="consumed">The number of bytes folded (a multiple of 16).</param>
-    public static Vector128<ulong> Fold(ReadOnlySpan<byte> d, ulong state, Vector128<ulong> k512, Vector128<ulong> k128, out int consumed)
+    public static Vector128<ulong> Fold(ReadOnlySpan<byte> d, ulong state, in FoldKeys k, out int consumed)
     {
         int n = d.Length;
         Vector128<ulong> x0 = Mem.V128(d, 0).AsUInt64() ^ Vector128.CreateScalar(state);
-        Vector128<ulong> x1 = Mem.V128(d, 16).AsUInt64();
-        Vector128<ulong> x2 = Mem.V128(d, 32).AsUInt64();
-        Vector128<ulong> x3 = Mem.V128(d, 48).AsUInt64();
-        int i = 64;
-        while (n - i >= 64)
+        int i;
+        if (Pclmulqdq.V256.IsSupported && n >= 256)
         {
-            x0 = Step(x0, k512) ^ Mem.V128(d, i).AsUInt64();
-            x1 = Step(x1, k512) ^ Mem.V128(d, i + 16).AsUInt64();
-            x2 = Step(x2, k512) ^ Mem.V128(d, i + 32).AsUInt64();
-            x3 = Step(x3, k512) ^ Mem.V128(d, i + 48).AsUInt64();
-            i += 64;
+            // Wide path (VPCLMULQDQ): eight blocks in four 256-bit accumulators, 128 bytes per round. Each
+            // 128-bit lane keeps the fold distance of the narrow path, so the result is the same polynomial.
+            Vector256<ulong> y0 = Vector256.Create(x0, Mem.V128(d, 16).AsUInt64());
+            Vector256<ulong> y1 = Mem.V256(d, 32).AsUInt64();
+            Vector256<ulong> y2 = Mem.V256(d, 64).AsUInt64();
+            Vector256<ulong> y3 = Mem.V256(d, 96).AsUInt64();
+            Vector256<ulong> k1024 = Vector256.Create(k.K1024, k.K1024);
+            i = 128;
+            while (n - i >= 128)
+            {
+                y0 = Step(y0, k1024) ^ Mem.V256(d, i).AsUInt64();
+                y1 = Step(y1, k1024) ^ Mem.V256(d, i + 32).AsUInt64();
+                y2 = Step(y2, k1024) ^ Mem.V256(d, i + 64).AsUInt64();
+                y3 = Step(y3, k1024) ^ Mem.V256(d, i + 96).AsUInt64();
+                i += 128;
+            }
+
+            // Blocks b0..b7 sit in y0..y3 (two per register). Align y0 and y1 four blocks ahead onto y2 and y3,
+            // then y0 two blocks ahead onto y1, then the low lane one block onto the high lane.
+            Vector256<ulong> k512 = Vector256.Create(k.K512, k.K512);
+            Vector256<ulong> k256 = Vector256.Create(k.K256, k.K256);
+            y0 = Step(y0, k512) ^ y2;
+            y1 = Step(y1, k512) ^ y3;
+            y0 = Step(y0, k256) ^ y1;
+            x0 = Step(y0.GetLower(), k.K128) ^ y0.GetUpper();
+        }
+        else if (n >= 256)
+        {
+            // Eight independent chains hide the multiply latency on cores that can issue more than one per cycle.
+            Vector128<ulong> x1 = Mem.V128(d, 16).AsUInt64();
+            Vector128<ulong> x2 = Mem.V128(d, 32).AsUInt64();
+            Vector128<ulong> x3 = Mem.V128(d, 48).AsUInt64();
+            Vector128<ulong> x4 = Mem.V128(d, 64).AsUInt64();
+            Vector128<ulong> x5 = Mem.V128(d, 80).AsUInt64();
+            Vector128<ulong> x6 = Mem.V128(d, 96).AsUInt64();
+            Vector128<ulong> x7 = Mem.V128(d, 112).AsUInt64();
+            i = 128;
+            while (n - i >= 128)
+            {
+                x0 = Step(x0, k.K1024) ^ Mem.V128(d, i).AsUInt64();
+                x1 = Step(x1, k.K1024) ^ Mem.V128(d, i + 16).AsUInt64();
+                x2 = Step(x2, k.K1024) ^ Mem.V128(d, i + 32).AsUInt64();
+                x3 = Step(x3, k.K1024) ^ Mem.V128(d, i + 48).AsUInt64();
+                x4 = Step(x4, k.K1024) ^ Mem.V128(d, i + 64).AsUInt64();
+                x5 = Step(x5, k.K1024) ^ Mem.V128(d, i + 80).AsUInt64();
+                x6 = Step(x6, k.K1024) ^ Mem.V128(d, i + 96).AsUInt64();
+                x7 = Step(x7, k.K1024) ^ Mem.V128(d, i + 112).AsUInt64();
+                i += 128;
+            }
+
+            x0 = Step(x0, k.K128) ^ x1;
+            x0 = Step(x0, k.K128) ^ x2;
+            x0 = Step(x0, k.K128) ^ x3;
+            x0 = Step(x0, k.K128) ^ x4;
+            x0 = Step(x0, k.K128) ^ x5;
+            x0 = Step(x0, k.K128) ^ x6;
+            x0 = Step(x0, k.K128) ^ x7;
+        }
+        else
+        {
+            Vector128<ulong> x1 = Mem.V128(d, 16).AsUInt64();
+            Vector128<ulong> x2 = Mem.V128(d, 32).AsUInt64();
+            Vector128<ulong> x3 = Mem.V128(d, 48).AsUInt64();
+            i = 64;
+            while (n - i >= 64)
+            {
+                x0 = Step(x0, k.K512) ^ Mem.V128(d, i).AsUInt64();
+                x1 = Step(x1, k.K512) ^ Mem.V128(d, i + 16).AsUInt64();
+                x2 = Step(x2, k.K512) ^ Mem.V128(d, i + 32).AsUInt64();
+                x3 = Step(x3, k.K512) ^ Mem.V128(d, i + 48).AsUInt64();
+                i += 64;
+            }
+
+            x0 = Step(x0, k.K128) ^ x1;
+            x0 = Step(x0, k.K128) ^ x2;
+            x0 = Step(x0, k.K128) ^ x3;
         }
 
-        x0 = Step(x0, k128) ^ x1;
-        x0 = Step(x0, k128) ^ x2;
-        x0 = Step(x0, k128) ^ x3;
         while (n - i >= 16)
         {
-            x0 = Step(x0, k128) ^ Mem.V128(d, i).AsUInt64();
+            x0 = Step(x0, k.K128) ^ Mem.V128(d, i).AsUInt64();
             i += 16;
         }
 
         consumed = i;
         return x0;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<ulong> Step(Vector256<ulong> r, Vector256<ulong> k) =>
+        Pclmulqdq.V256.CarrylessMultiply(r, k, 0x00) ^ Pclmulqdq.V256.CarrylessMultiply(r, k, 0x11);
+}
+
+/// <summary>Fold constants (low lane for the low half of a register, high lane for the high half) for each fold distance used.</summary>
+internal readonly struct FoldKeys
+{
+    public FoldKeys(Vector128<ulong> k1024, Vector128<ulong> k512, Vector128<ulong> k256, Vector128<ulong> k128)
+    {
+        K1024 = k1024;
+        K512 = k512;
+        K256 = k256;
+        K128 = k128;
+    }
+
+    public Vector128<ulong> K1024 { get; }
+
+    public Vector128<ulong> K512 { get; }
+
+    public Vector128<ulong> K256 { get; }
+
+    public Vector128<ulong> K128 { get; }
 }
