@@ -72,5 +72,6 @@ for p in "$payloads"/*; do
   { printf "\\x$(printf %02x $((n % 4)))\\x$(printf %02x $((n * 5 % 8)))\\x02\\x03\\x04\\x40"; head -c 9000 "$p"; } > "$out/zstd-train-roundtrip/$b"
 done
 bash "$here/seeds-long.sh" "$out/zstd-encode-long-roundtrip" >/dev/null
+bash "$here/seeds-seekable.sh" "$out/zstd-seekable-read" >/dev/null
 rm -rf "$out/.lz4" "$payloads"
 for d in "$out"/*/; do printf '%s: %s seeds\n' "$(basename "$d")" "$(ls "$d" | wc -l)"; done
