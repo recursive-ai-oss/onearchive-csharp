@@ -330,6 +330,32 @@ public sealed class FseEncodingTable
         return cost > int.MaxValue ? int.MaxValue : (int)cost;
     }
 
+    /// <summary>
+    /// Counts the bits the encoder spends coding <paramref name="codes"/> with this table, exactly: the state machine is run
+    /// the way the sequence encoder runs it (last symbol first), so unlike <see cref="Cost(ReadOnlySpan{uint}, int)"/> there is
+    /// no rounding of probabilities.
+    /// </summary>
+    /// <param name="codes">The symbols in stream order; every one must have a state in this table.</param>
+    /// <returns>The number of bits for the symbols after the first one coded, plus the final state's bits.</returns>
+    public int ExactBits(ReadOnlySpan<byte> codes)
+    {
+        if (codes.IsEmpty)
+        {
+            return 0;
+        }
+
+        int state = InitialState(codes[^1]);
+        long bits = _accuracyLog;
+        for (int i = codes.Length - 2; i >= 0; i--)
+        {
+            uint nb = ((uint)state + _deltaNbBits[codes[i]]) >> 16;
+            bits += nb;
+            state = _stateTable[(state >> (int)nb) + _deltaFindState[codes[i]]];
+        }
+
+        return (int)bits;
+    }
+
     /// <summary>Prices a histogram under a distribution that is not built as a table; as the overload that takes a built table.</summary>
     public static int Cost(ReadOnlySpan<short> normalizedCounts, int accuracyLog, ReadOnlySpan<uint> histogram, int maxSymbol)
     {

@@ -8,8 +8,8 @@ using RecursiveAI.OneCompress.Zstd;
 //       Compresses the file as one frame (or in N-byte blocks, each a frame, like `zstd -B`) repeatedly with one encoder,
 //       prints the size, the best compression time as MB/s and the best time of our decoder on our output.
 //       The frame from the last pass is written to --out so the zstd tool can decode it.
-//   ZstdEncodeBench small <dictionary> <dir> <level> [--seconds 4]
-//       Compresses every file in the directory (a payload each) with one encoder that has the dictionary loaded and prints
+//   ZstdEncodeBench small <dictionary> <dir> <level> [--seconds 4] [--limit N]
+//       Compresses every file in the directory, the first N in name order (a payload each) with one encoder that has the dictionary loaded and prints
 //       payloads per second, total bytes and the compressed total. The first pass is checked by decoding.
 //
 // Compare with `zstd -b<level> -i<seconds> file` and `zstd -b<level> -D dict files...`.
@@ -24,6 +24,8 @@ string? dictPath = null;
 string? outPath = null;
 bool checksum = false;
 int chunk = 0;
+int limit = int.MaxValue;
+string? perFile = null;
 for (int i = 3; i < args.Length; i++)
 {
     switch (args[i])
@@ -33,6 +35,8 @@ for (int i = 3; i < args.Length; i++)
         case "--out": outPath = args[++i]; break;
         case "--checksum": checksum = true; break;
         case "--chunk": chunk = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
+        case "--perfile": perFile = args[++i]; break;
+        case "--limit": limit = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
     }
 }
 
@@ -119,7 +123,7 @@ if (args[0] == "big")
 {
     int level = int.Parse(args[3], CultureInfo.InvariantCulture);
     var dictionary = ZstdCompressionDictionary.Parse(File.ReadAllBytes(args[1]));
-    var payloads = Directory.GetFiles(args[2]).Order(StringComparer.Ordinal).Select(File.ReadAllBytes).ToList();
+    var payloads = Directory.GetFiles(args[2]).Order(StringComparer.Ordinal).Take(limit).Select(File.ReadAllBytes).ToList();
     var encoder = new ZstdEncoder(new ZstdCompressionOptions { Level = level, Dictionary = dictionary });
     var decoder = new ZstdDecoder(new ZstdDecompressionOptions { Dictionary = ZstdDictionary.Parse(File.ReadAllBytes(args[1])) });
     byte[] output = new byte[1 << 20];
@@ -147,6 +151,17 @@ if (args[0] == "big")
     }
 
     Pass(true);
+    if (perFile is not null)
+    {
+        var sizes = new List<string>();
+        foreach (byte[] p in payloads)
+        {
+            sizes.Add(encoder.CompressFrame(p, output).ToString(CultureInfo.InvariantCulture));
+        }
+
+        File.WriteAllLines(perFile, sizes);
+    }
+
     double best = Best(() => Pass(false));
     Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
         $"small\tlevel={level}\tpayloads={payloads.Count}\tbytes={total}\tcompressed={compressed}\tratio={(double)total / compressed:F4}\tpayloads/s={payloads.Count / best:F0}\tMB/s={total / best / 1e6:F0}"));

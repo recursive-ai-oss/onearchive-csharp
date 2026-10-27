@@ -34,6 +34,10 @@ public sealed class ZstdBlockWriter
     /// </summary>
     public const int DestinationSlack = 320;
 
+    // Blocks with at most this many sequences price each table choice by running the encoder's state machine; larger blocks
+    // use the histogram estimate, which is within a fraction of a percent there and costs less.
+    private const int ExactCostLimit = 1500;
+
     private readonly FseEncodingTable[,] _own = new FseEncodingTable[3, 2];
     private readonly FseEncodingTable?[] _previous = new FseEncodingTable?[3];
     private readonly FseEncodingTable?[] _chosen = new FseEncodingTable?[3];
@@ -568,10 +572,13 @@ public sealed class ZstdBlockWriter
 
             int bestCost = int.MaxValue;
             Mode bestMode = Mode.Compressed;
+            byte[] codes = k == 0 ? llCodes : k == 1 ? ofCodes : mlCodes;
+            bool exact = nseq <= ExactCostLimit;
+            ReadOnlySpan<byte> codeSpan = codes.AsSpan(0, nseq);
             FseEncodingTable? previous = _previous[k];
-            if (previous is not null)
+            if (previous is not null && previous.Contains(maxSymbol) && previous.Cost(histogram, maxSymbol) != int.MaxValue)
             {
-                int cost = previous.Cost(histogram, maxSymbol);
+                int cost = exact ? previous.ExactBits(codeSpan) * ZstdCost.Bit : previous.Cost(histogram, maxSymbol);
                 if (cost < bestCost)
                 {
                     bestCost = cost;
@@ -581,7 +588,8 @@ public sealed class ZstdBlockWriter
 
             if (maxSymbol <= defaultMaxSymbol[k])
             {
-                int cost = Default(k).Cost(histogram, maxSymbol);
+                FseEncodingTable predefined = Default(k);
+                int cost = exact ? predefined.ExactBits(codeSpan) * ZstdCost.Bit : predefined.Cost(histogram, maxSymbol);
                 if (cost < bestCost)
                 {
                     bestCost = cost;
@@ -595,7 +603,18 @@ public sealed class ZstdBlockWriter
                 FseEncodingTable.Normalize(_normalized, accuracyLog, histogram, (uint)nseq, maxSymbol);
                 ReadOnlySpan<short> counts = _normalized.AsSpan(0, maxSymbol + 1);
                 int descriptionBytes = FseEncodingTable.WriteDescription(_description, counts, accuracyLog);
-                int cost = FseEncodingTable.Cost(counts, accuracyLog, histogram, maxSymbol);
+                int cost;
+                if (exact)
+                {
+                    FseEncodingTable scratch = _previous[k] == _own[k, 0] ? _own[k, 1] : _own[k, 0];
+                    scratch.Build(counts, accuracyLog);
+                    cost = scratch.ExactBits(codeSpan) * ZstdCost.Bit;
+                }
+                else
+                {
+                    cost = FseEncodingTable.Cost(counts, accuracyLog, histogram, maxSymbol);
+                }
+
                 if (cost != int.MaxValue)
                 {
                     cost += descriptionBytes * 8 * ZstdCost.Bit;
