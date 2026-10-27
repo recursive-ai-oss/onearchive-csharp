@@ -55,6 +55,12 @@ internal static class ZstdLongTargets
         bool streamed = (flags & 4) != 0;
         bool flush = (flags & 8) != 0;
         int piece = 1 << (tuning & 15);
+        if (streamed && flush)
+        {
+            // Every flush ends a job, and each job starts by loading its overlap into the match finder, so a flush costs time
+            // in proportion to the window. A flush after every few bytes of a megabyte is slow by design, not a bug to find.
+            piece = Math.Max(piece, 1 << 12);
+        }
         ZstdCompressionOptions Make(int workers) => new()
         {
             Level = level,

@@ -546,4 +546,43 @@ public class Lz4EncoderTests
         byte[] decoded = Lz4Block.Decompress(block);
         Assert.Equal(20 + 300 + 6, decoded.Length);
     }
+
+    // Found by fuzzing: with a dictionary and linked blocks, a block compressed straight from the caller's memory (the first,
+    // when the whole input is given at once) left the next block unable to see it, so one call and many small calls
+    // produced different frames. The last 12 bytes repeat bytes from the first block, as a short match.
+    [Theory]
+    [InlineData(2)]
+    [InlineData(7)]
+    [InlineData(12)]
+    public void LinkedBlocksWithDictionaryDoNotDependOnHowTheInputArrives(int level)
+    {
+        byte[] data = new byte[65_536 + 12];
+        Random(65_536, 11).CopyTo(data, 0);
+        data.AsSpan(3_000, 12).CopyTo(data.AsSpan(65_536));
+        var dictionary = new Lz4Dictionary(Random(6_000, 12), 0x4242);
+        Lz4CompressionOptions Options(int? size) => new()
+        {
+            Level = level,
+            BlockSize = Lz4BlockSize.Size64KiB,
+            BlocksIndependent = false,
+            IncludeContentSize = size is null,
+            ContentSize = size,
+            Dictionary = dictionary,
+        };
+
+        byte[] whole = Lz4Api.Compress(data, Options(null));
+        var encoder = new Lz4Encoder(Options(data.Length));
+        var pieces = new MemoryStream();
+        byte[] buffer = new byte[1 << 20];
+        for (int pos = 0; pos < data.Length;)
+        {
+            int take = Math.Min(1_000, data.Length - pos);
+            encoder.Compress(data.AsSpan(pos, take), buffer, out int consumed, out int written, pos + take == data.Length);
+            pieces.Write(buffer, 0, written);
+            pos += consumed;
+        }
+
+        Assert.Equal(whole, pieces.ToArray());
+        Assert.Equal(data, Lz4Api.Decompress(whole, new Lz4DecompressionOptions { Dictionary = dictionary }));
+    }
 }

@@ -112,8 +112,16 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     public override void Rebase(int removed)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(removed);
+        if (_parked is not null)
+        {
+            // The tables hold only a dictionary's index and nothing of the window is indexed. Starting afresh, as a block that
+            // continues from here does anyway, keeps the history searchable; clearing the flag alone left the dictionary's
+            // coordinates standing in for the window's, so the next block could not see the one before it.
+            Forget();
+            return;
+        }
+
         ArgumentOutOfRangeException.ThrowIfGreaterThan(removed, _used);
-        _parked = null;
         _origin += removed;
         _used -= removed;
         _next = Math.Max(0, _next - removed);

@@ -6,9 +6,81 @@ using RecursiveAI.Fuzz;
 // The same targets can be wrapped by a coverage-guided fuzzer later.
 if (args.Length < 1)
 {
-    Console.Error.WriteLine("usage: fuzz <target> [--seeds <dir>] [--out <dir>] [--iterations <n>] [--seconds <n>] [--rng <n>]");
+    Console.Error.WriteLine("usage: fuzz list | afl <target> | replay <target> <file>... | <target> [--seeds <dir>] [--out <dir>] [--iterations <n>] [--seconds <n>] [--rng <n>]");
     Console.Error.WriteLine("targets: " + string.Join(", ", FuzzTargets.All.Select(static t => t.Name)));
     return 2;
+}
+
+// Coverage-guided mode: `fuzz afl <target>` reads each input from stdin under afl-fuzz. The library assembly
+// must be instrumented first (see README.md). Expected rejections return quietly; anything else is left
+// unhandled so the process aborts and the fuzzer records the input as a crash.
+if (args.Length == 2 && args[0] == "afl")
+{
+    // The instrumented library must not run before SharpFuzz has mapped the coverage buffer, so the target (and with
+    // it every static initializer of the registry) is only touched from inside the callback.
+    string aflName = args[1];
+    FuzzTarget? aflTarget = null;
+    SharpFuzz.Fuzzer.OutOfProcess.Run(stream =>
+    {
+        aflTarget ??= FuzzTargets.All.FirstOrDefault(t => t.Name == aflName)
+            ?? throw new ArgumentException($"unknown target '{aflName}'");
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        try
+        {
+            aflTarget.Run(buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
+        }
+        catch (Exception ex) when (aflTarget.IsExpected(ex))
+        {
+        }
+        catch (Exception ex) when (LogUnexpected(ex))
+        {
+        }
+    });
+    return 0;
+}
+
+// `fuzz replay <target> <file>...` runs the target once per file, unmodified, and prints what happened.
+if (args.Length >= 3 && args[0] == "replay")
+{
+    FuzzTarget? replayTarget = FuzzTargets.All.FirstOrDefault(t => t.Name == args[1]);
+    if (replayTarget is null)
+    {
+        Console.Error.WriteLine($"unknown target '{args[1]}'");
+        return 2;
+    }
+
+    int failed = 0;
+    foreach (string file in args.Skip(2))
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            replayTarget.Run(File.ReadAllBytes(file));
+            Console.WriteLine($"{file}: ok in {watch.ElapsedMilliseconds} ms");
+        }
+        catch (Exception ex) when (replayTarget.IsExpected(ex))
+        {
+            Console.WriteLine($"{file}: rejected ({ex.GetType().Name}) in {watch.ElapsedMilliseconds} ms");
+        }
+        catch (Exception ex)
+        {
+            failed++;
+            Console.WriteLine($"{file}: FINDING {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    return failed == 0 ? 0 : 1;
+}
+
+if (args[0] == "list")
+{
+    foreach (FuzzTarget t in FuzzTargets.All)
+    {
+        Console.WriteLine(t.Name);
+    }
+
+    return 0;
 }
 
 FuzzTarget? target = FuzzTargets.All.FirstOrDefault(t => t.Name == args[0]);
@@ -156,4 +228,16 @@ static byte[] Mutate(byte[] seed, Random rng, List<byte[]> seeds)
     }
 
     return [.. data];
+}
+
+// The fuzzer keeps only the input of a crash, so the exception text goes to a file named by ONEARCHIVE_FUZZ_ERRLOG for triage.
+// Always returns false: the exception still ends the process.
+static bool LogUnexpected(Exception ex)
+{
+    if (Environment.GetEnvironmentVariable("ONEARCHIVE_FUZZ_ERRLOG") is { Length: > 0 } path)
+    {
+        File.AppendAllText(path, ex + Environment.NewLine + "----" + Environment.NewLine);
+    }
+
+    return false;
 }
