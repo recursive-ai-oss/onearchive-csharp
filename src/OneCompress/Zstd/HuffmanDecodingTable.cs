@@ -17,6 +17,10 @@ public sealed class HuffmanDecodingTable
     private readonly byte[] _weights = new byte[260]; // 255 weights plus room for the final writes of the two-state loop
     private FseDecodingTable? _weightTable;
     private int _tableBits;
+    private int _weightCount;
+
+    /// <summary>The explicit weights of the last description read (the last symbol's weight is implied).</summary>
+    internal ReadOnlySpan<byte> Weights => _weights.AsSpan(0, _weightCount);
 
     /// <summary>Gets the length in bits of the longest code (the table has <c>1 &lt;&lt; TableBits</c> entries).</summary>
     public int TableBits => _tableBits;
@@ -77,6 +81,7 @@ public sealed class HuffmanDecodingTable
             consumed = 1 + header;
         }
 
+        _weightCount = weightCount;
         BuildFromWeights(_weights.AsSpan(0, weightCount), streamOffset);
         return consumed;
     }

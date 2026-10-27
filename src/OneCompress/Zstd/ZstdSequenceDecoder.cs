@@ -132,7 +132,7 @@ public ref struct ZstdSequenceDecoder
 /// The three most recent offsets of a frame (RFC 8878 §3.1.1.5), with the rules for resolving a sequence's
 /// offset value against them.
 /// </summary>
-public struct ZstdRepeatOffsets
+public partial struct ZstdRepeatOffsets
 {
     /// <summary>The most recently used offset.</summary>
     public uint Offset1 { get; set; }

@@ -3,10 +3,42 @@ using System.Buffers;
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>
-/// One-call Zstandard operations. Everything here is built on <see cref="ZstdDecoder"/>.
+/// One-call Zstandard operations. Everything here is built on <see cref="ZstdDecoder"/> and <see cref="ZstdEncoder"/>.
 /// </summary>
 public static class Zstd
 {
+    /// <summary>Compresses a buffer into one Zstandard frame.</summary>
+    /// <param name="source">The data; may be empty.</param>
+    /// <param name="options">Level, checksum, dictionary and so on; <see langword="null"/> for <see cref="ZstdCompressionOptions.Default"/> (level 3).</param>
+    /// <returns>The frame.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The level in <paramref name="options"/> is not supported.</exception>
+    /// <remarks>
+    /// Every call builds a new <see cref="ZstdEncoder"/>, with its tables. Code that compresses many buffers should keep an
+    /// encoder and call <see cref="ZstdEncoder.CompressFrame"/>, which reuses everything.
+    /// </remarks>
+    public static byte[] Compress(ReadOnlySpan<byte> source, ZstdCompressionOptions? options = null)
+    {
+        var encoder = new ZstdEncoder(options);
+        byte[] buffer = new byte[ZstdEncoder.GetMaxCompressedLength(source.Length)];
+        int written = encoder.CompressFrame(source, buffer);
+        return buffer.AsSpan(0, written).ToArray();
+    }
+
+    /// <summary>Compresses a buffer into one Zstandard frame in a caller-supplied buffer.</summary>
+    /// <param name="source">The data; may be empty.</param>
+    /// <param name="destination">Receives the frame.</param>
+    /// <param name="bytesWritten">The frame's length, or 0 when the destination is too small.</param>
+    /// <param name="options">Level, checksum, dictionary and so on; <see langword="null"/> for the defaults.</param>
+    /// <returns>True on success; false when <paramref name="destination"/> is too small.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The level in <paramref name="options"/> is not supported.</exception>
+    public static bool TryCompress(ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten, ZstdCompressionOptions? options = null) =>
+        new ZstdEncoder(options).TryCompressFrame(source, destination, out bytesWritten);
+
+    /// <summary>Gets the size of a buffer that always holds the frame <see cref="Compress"/> makes of <paramref name="sourceLength"/> bytes.</summary>
+    /// <param name="sourceLength">The number of bytes to compress.</param>
+    /// <returns>The bound in bytes.</returns>
+    public static int GetMaxCompressedLength(int sourceLength) => ZstdEncoder.GetMaxCompressedLength(sourceLength);
+
     /// <summary>
     /// Decompresses a buffer holding one or more Zstandard frames (skippable frames are passed to the options'
     /// handler and otherwise skipped) and returns the concatenated content.

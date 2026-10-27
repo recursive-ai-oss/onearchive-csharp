@@ -97,4 +97,38 @@ internal static class Raw
         Unsafe.Add(ref MemoryMarshal.GetReference(span), index) = value;
 #endif
     }
+
+    /// <summary>Reads four bytes at <paramref name="index"/> as a little-endian integer. The caller guarantees <c>index + 4 &lt;= span.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint ReadUInt32(ReadOnlySpan<byte> span, int index)
+    {
+#if CHECKED
+        return System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(index, 4));
+#else
+        uint value = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), index));
+        return BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value);
+#endif
+    }
+
+    /// <summary>Writes <c>array[index] = value</c>. The caller guarantees <c>0 &lt;= index &lt; array.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Set<T>(T[] array, int index, T value)
+    {
+#if CHECKED
+        array[index] = value;
+#else
+        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), index) = value;
+#endif
+    }
+
+    /// <summary>Reads <c>span[index]</c> of a byte span. The caller guarantees <c>0 &lt;= index &lt; span.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte ByteAt(ReadOnlySpan<byte> span, int index)
+    {
+#if CHECKED
+        return span[index];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetReference(span), index);
+#endif
+    }
 }
