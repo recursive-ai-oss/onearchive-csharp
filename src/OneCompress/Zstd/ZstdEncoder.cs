@@ -127,7 +127,7 @@ public sealed partial class ZstdEncoder
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
         SelectFinder(parameters.Strategy);
         _finder.BeginFrame(parameters, dictionary);
-        _writer.BeginFrame(dictionary, parameters.CompressLiterals);
+        _writer.BeginFrame(dictionary, parameters.CompressLiterals, parameters.Strategy <= ZstdStrategy.DoubleFast);
         BeginLongDistance(declaredSize);
         int p;
         Span<byte> header = stackalloc byte[ZstdFrameWriter.MaxHeaderSize];
@@ -470,7 +470,7 @@ public sealed partial class ZstdEncoder
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
         SelectFinder(parameters.Strategy);
         _finder.BeginFrame(parameters, dictionary);
-        _writer.BeginFrame(dictionary, parameters.CompressLiterals);
+        _writer.BeginFrame(dictionary, parameters.CompressLiterals, parameters.Strategy <= ZstdStrategy.DoubleFast);
         BeginLongDistance(pledged);
         _hash = new XxHash64(0);
         _totalIn = 0;

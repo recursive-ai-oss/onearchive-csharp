@@ -114,7 +114,7 @@ internal sealed class ZstdJobCompressor
         ZstdMatchFinder finder = _finders[(int)parameters.Strategy] ??= ZstdMatchFinder.Create(parameters.Strategy);
         ZstdCompressionDictionary? used = startsFrame ? dictionary : null;
         finder.BeginFrame(parameters, used);
-        _writer.BeginFrame(used, parameters.CompressLiterals);
+        _writer.BeginFrame(used, parameters.CompressLiterals, parameters.Strategy <= ZstdStrategy.DoubleFast);
         if (!startsFrame)
         {
             _writer.ForgetRepeatOffsets();

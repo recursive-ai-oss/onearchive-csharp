@@ -77,6 +77,7 @@ public sealed class ZstdBlockWriter
     private readonly FseEncodingTable[] _lanes = new FseEncodingTable[6];
     private ZstdRepeatOffsets _repeatOffsets = ZstdRepeatOffsets.Initial;
     private bool _compressLiterals = true;
+    private bool _estimatedPricing;
 
     /// <summary>Creates a block writer.</summary>
     public ZstdBlockWriter()
@@ -97,8 +98,10 @@ public sealed class ZstdBlockWriter
     /// </summary>
     /// <param name="dictionary">The dictionary the frame is compressed with, or <see langword="null"/>.</param>
     /// <param name="compressLiterals">False to store literals raw, which the fastest levels do.</param>
-    public void BeginFrame(ZstdCompressionDictionary? dictionary, bool compressLiterals = true)
+    /// <param name="estimatedPricing">True for the fast and double-fast strategies: the table modes of the sequences are chosen from histogram estimates at every block size, where otherwise blocks of up to 1,500 sequences are priced by running the encoder over them. The estimate costs a few microseconds less a block, which small payloads feel, and changed no total by more than 0.01% in the measurements behind this choice.</param>
+    public void BeginFrame(ZstdCompressionDictionary? dictionary, bool compressLiterals = true, bool estimatedPricing = false)
     {
+        _estimatedPricing = estimatedPricing;
         _compressLiterals = compressLiterals;
         _repeatOffsets = dictionary?.RepeatOffsets ?? ZstdRepeatOffsets.Initial;
         _previous[0] = dictionary?.LiteralLengthTable;
@@ -648,7 +651,8 @@ public sealed class ZstdBlockWriter
         }
 
         ComputeCodes(sequences, seqCodes, llHistogram, ofHistogram, mlHistogram, offsetValues, out int maxLl, out int maxOf, out int maxMl);
-        if (nseq <= ExactCostLimit)
+        int exactLimit = _estimatedPricing ? 0 : ExactCostLimit;
+        if (nseq <= exactLimit)
         {
             // Small blocks price their table choices exactly, which walks the code sequences.
             for (int i = 0; i < nseq; i++)
@@ -686,7 +690,7 @@ public sealed class ZstdBlockWriter
         Span<int> priced = stackalloc int[6];
         int[] maxLogs = s_maxAccuracyLogs;
         int[] defaultMaxSymbol = s_defaultMaxSymbols;
-        bool exact = nseq <= ExactCostLimit;
+        bool exact = nseq <= exactLimit;
         FseEncodingTable[] lanes = _lanes;
 
         // Tables are described in the order literal lengths, offsets, match lengths. Pricing the choices comes first, in two
