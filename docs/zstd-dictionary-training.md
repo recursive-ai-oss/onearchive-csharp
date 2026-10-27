@@ -43,22 +43,23 @@ segments chosen per epoch by the frequencies of their k-mers, covered k-mers set
 ## Parameter search
 
 With `Optimize` (the default), `ZstdCoverTrainer.Optimize` tries every combination of `DmerSizeCandidates`, `ScoreCandidates` and
-`SegmentSizeCandidates` (distinct values, `k >= d`), in the order d ascending, then score (`SquareRoot` before `Frequency`), then k
+`SegmentSizeCandidates` (distinct values, `k >= d`), in the order d ascending, then score (`SquareRoot` before `Frequency`, when both are given), then k
 ascending. A combination is scored by the total size of the held-out samples compressed with the dictionary it makes at
 `ScoringLevel` by this library's encoder; the **smallest total wins, and the first of equal totals** (the rule above). Scoring runs
 on `MaxDegreeOfParallelism` threads (0: the processor count, at most 8); each combination's total is independent of the others,
 so the choice does not depend on scheduling.
 
 - **Held-out samples.** `TrainingPercent` (default 75) gives `F = ceil(100 / (100 - TrainingPercent))` folds (4 for 75; 1 and
-  train = test when 100). The samples are cut into blocks of `max(1, count / 64)` consecutive samples; block `j` belongs to fold
+  train = test when 100). The samples are cut into blocks of `max(1, count / 16)` consecutive samples; block `j` belongs to fold
   `j mod F`. Fold `f` is scored by training on the samples outside it and compressing those inside it (at most
   `MaxScoringSamples`, default 2000, thinned by taking every n-th). Sample sets up to 24 MiB add up the totals of the first
   `min(F, 4)` folds; larger ones use fold 0 only. Blocks, not single samples, are held out because neighbouring samples (ticks of one
   game, pieces of one file) are alike.
-- **Candidate dictionaries** are built exactly as the final one, with the tables measured on at most 2000 training samples
-  and 4 MiB (every n-th).
+- **Candidate dictionaries** are built exactly as the final one, except that their tables are measured on the fold's held-out
+  samples (at most 2000, every n-th), against content chosen from the fold's training samples; with one fold (training percent 100)
+  on at most 2000 training samples and 4 MiB (every n-th).
 
-Defaults: `d` in {6, 8}; `k` in {32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048}; both scores. Without `Optimize`,
+Defaults: `d` in {6, 8}; `k` in {32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048}; the `SquareRoot` score only (26 combinations). Without `Optimize`,
 `SegmentSize` (256), `DmerSize` (8) and `Score` (`SquareRoot`) are used.
 
 ## The dictionary file
@@ -68,7 +69,13 @@ tables for offsets, match lengths and literal lengths, three repeat offsets (1, 
 is at most `DictionarySize`: the content is chosen with 350 bytes reserved for the tables, then again with the real size of the
 tables; if the final tables are bigger, the oldest (first) content bytes are dropped.
 
-- **Statistics.** Each sample is parsed by the level-3 fast match finder with the content as history (one sample is one frame;
+- **Statistics.** Sample sets up to 24 MiB with at least 8 samples are measured on held-out frames: the samples are cut into 4
+  folds as for the search (blocks of `max(1, count / 16)` samples, block `j` in fold `j mod 4`); for each fold, content of the
+  final content's length is chosen from the other three folds with the final `k`, `d` and score, and the fold's samples are parsed
+  against that content. The four histograms are added. Measuring against the final content itself would parse samples that the
+  content was cut from, so almost every sample would be one long match and the tables would describe nothing like new data; the
+  effect grows as the dictionary approaches the size of the samples. Larger sample sets, where the content is a small part of
+  the samples, are measured against the final content. In both cases each sample is parsed by the level-3 fast match finder with the content as history (one sample is one frame;
   blocks of 128 KiB). Every sequence is counted in the literal length code, match length code and offset code histograms
   (offset *value*: 1 to 3 for repeat offsets as the decoder resolves them, otherwise offset + 3; code = floor(log2 value)), starting
   each sample from the repeat offsets 1, 4, 8. All literals, including those after the last match, go into the byte histogram.

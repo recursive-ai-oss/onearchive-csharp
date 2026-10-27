@@ -30,7 +30,6 @@ internal static class Program
         var score = ZstdSegmentScore.SquareRoot;
         string? rebuild = null;
         long maxBytes = 64L << 20;
-        bool scoreGiven = false;
         for (int i = 1; i < args.Length; i++)
         {
             switch (args[i])
@@ -56,7 +55,7 @@ internal static class Program
                 case "--f": hashBits = Int(args[++i]); break;
                 case "--max-bytes": maxBytes = long.Parse(args[++i], CultureInfo.InvariantCulture); break;
                 case "--rebuild": rebuild = args[++i]; break;
-                case "--score": score = args[++i] == "freq" ? ZstdSegmentScore.Frequency : ZstdSegmentScore.SquareRoot; scoreGiven = true; break;
+                case "--score": score = args[++i] == "freq" ? ZstdSegmentScore.Frequency : ZstdSegmentScore.SquareRoot; break;
                 default: Console.Error.WriteLine("unknown option " + args[i]); return 2;
             }
         }
@@ -106,7 +105,7 @@ internal static class Program
             HashBits = hashBits,
             MaxTrainingBytes = maxBytes,
             Score = score,
-            ScoreCandidates = scoreGiven ? [score] : [ZstdSegmentScore.SquareRoot, ZstdSegmentScore.Frequency],
+            ScoreCandidates = [score],
         };
         var watch = Stopwatch.StartNew();
         ZstdCoverParameters chosen = search ? ZstdCoverTrainer.Optimize(samples, options) : new ZstdCoverParameters(options.SegmentSize, options.DmerSize, score);

@@ -57,8 +57,8 @@ public sealed class ZstdDictionaryTrainingOptions
     /// <summary>Gets the segment sizes the search tries. Default 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048.</summary>
     public IReadOnlyList<int> SegmentSizeCandidates { get; init; } = [32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048];
 
-    /// <summary>Gets the scores the search tries. Default <see cref="ZstdSegmentScore.SquareRoot"/> and <see cref="ZstdSegmentScore.Frequency"/>: which suits depends on the data.</summary>
-    public IReadOnlyList<ZstdSegmentScore> ScoreCandidates { get; init; } = [ZstdSegmentScore.SquareRoot, ZstdSegmentScore.Frequency];
+    /// <summary>Gets the scores the search tries. Default <see cref="ZstdSegmentScore.SquareRoot"/> only: it won more rows than <see cref="ZstdSegmentScore.Frequency"/> on game payloads and Silesia chunks, and halves the search.</summary>
+    public IReadOnlyList<ZstdSegmentScore> ScoreCandidates { get; init; } = [ZstdSegmentScore.SquareRoot];
 
     /// <summary>Gets the d-mer sizes the search tries. Default 6 and 8.</summary>
     public IReadOnlyList<int> DmerSizeCandidates { get; init; } = [6, 8];

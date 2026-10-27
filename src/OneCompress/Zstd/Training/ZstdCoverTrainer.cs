@@ -70,7 +70,7 @@ public static class ZstdCoverTrainer
         }
 
         stats = new ZstdDictionaryBuilder.Statistics();
-        ZstdDictionaryBuilder.CollectStatistics(content, set.Slice(0, set.Count, int.MaxValue, long.MaxValue), stats);
+        CollectTableStatistics(set, parameters, content, stats, options, cancellationToken);
         byte[] dictionary = ZstdDictionaryBuilder.Assemble(content, stats, options.DictionaryId);
         if (dictionary.Length > size)
         {
@@ -279,6 +279,46 @@ public static class ZstdCoverTrainer
         return candidates[best];
     }
 
+    // The tables are measured on frames the content has not been chosen from. A dictionary chosen from the samples contains them, so
+    // parsing them against it finds one long match each and the tables would describe frames that are nothing like new data (the
+    // smaller the samples are against the dictionary, the worse). Instead the samples are cut into four folds; for each, content of the
+    // same size is chosen from the other three and the fold is parsed against that. Large sample sets are far bigger than the
+    // dictionary, where the effect is small, and are measured against the final content directly.
+    private const int StatisticsFolds = 4;
+
+    // The samples are cut into this many blocks of neighbours, dealt to the folds in turn.
+    private const int FoldBlocks = 16;
+
+    private static void CollectTableStatistics(ZstdTrainingSet set, ZstdCoverParameters parameters, byte[] content, ZstdDictionaryBuilder.Statistics stats, ZstdDictionaryTrainingOptions options, CancellationToken cancellationToken)
+    {
+        if (set.Length > CrossValidateBytes || set.Count < StatisticsFolds * 2)
+        {
+            ZstdDictionaryBuilder.CollectStatistics(content, set.Slice(0, set.Count, int.MaxValue, long.MaxValue), stats);
+            return;
+        }
+
+        int blockSize = Math.Max(1, set.Count / FoldBlocks);
+        for (int f = 0; f < StatisticsFolds; f++)
+        {
+            var trainList = new List<ReadOnlyMemory<byte>>();
+            var testList = new List<ReadOnlyMemory<byte>>();
+            for (int i = 0; i < set.Count; i++)
+            {
+                ((i / blockSize) % StatisticsFolds == f ? testList : trainList).Add(set.Sample(i));
+            }
+
+            ZstdTrainingSet train = trainList.Count == 0 || testList.Count == 0 ? set : ZstdTrainingSet.Create(trainList, long.MaxValue >> 2);
+            if (train.Length < 8)
+            {
+                train = set;
+            }
+
+            ZstdDmerIndex index = ZstdDmerIndex.Build(train, parameters.DmerSize, options, cancellationToken);
+            byte[] foldContent = SelectFrom(train, index, parameters, content.Length, cancellationToken);
+            ZstdDictionaryBuilder.CollectStatistics(foldContent, testList.Count == 0 ? set.Slice(0, set.Count, int.MaxValue, long.MaxValue) : testList, stats);
+        }
+    }
+
     private sealed record Fold(ZstdTrainingSet Train, IReadOnlyList<ReadOnlyMemory<byte>> Test, IReadOnlyList<ReadOnlyMemory<byte>> StatSamples);
 
     private static Fold MakeFold(ZstdTrainingSet set, int foldCount, int fold, ZstdDictionaryTrainingOptions options)
@@ -291,7 +331,7 @@ public static class ZstdCoverTrainer
 
         var trainList = new List<ReadOnlyMemory<byte>>();
         var testList = new List<ReadOnlyMemory<byte>>();
-        int blockSize = Math.Max(1, set.Count / 64);
+        int blockSize = Math.Max(1, set.Count / FoldBlocks);
         for (int i = 0; i < set.Count; i++)
         {
             ((i / blockSize) % foldCount == fold ? testList : trainList).Add(set.Sample(i));
@@ -308,7 +348,7 @@ public static class ZstdCoverTrainer
             return new Fold(set, all, set.Slice(0, set.Count, CandidateStatSamples, CandidateStatBytes));
         }
 
-        return new Fold(train, Thin(testList, options.MaxScoringSamples), train.Slice(0, train.Count, CandidateStatSamples, CandidateStatBytes));
+        return new Fold(train, Thin(testList, options.MaxScoringSamples), Thin(testList, CandidateStatSamples));
     }
 
     private static long TotalCompressedSize(byte[] dictionaryBytes, IReadOnlyList<ReadOnlyMemory<byte>> test, int level, CancellationToken cancellationToken)
