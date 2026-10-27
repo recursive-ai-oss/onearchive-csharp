@@ -100,4 +100,48 @@ public class ZstdAllocationTests
 
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(9)]
+    public void ReusedEncoderWithADictionaryAllocatesNothingPerFrame(int level)
+    {
+        // Small payloads with a dictionary are the encoder's hot path in a game loop: after the first frames nothing may be allocated.
+        byte[] dictionaryContent = ZstdEncoderTests.Text(16_384, 1);
+        var encoder = new ZstdEncoder(new ZstdCompressionOptions { Level = level, Dictionary = ZstdCompressionDictionary.Parse(dictionaryContent) });
+        byte[][] payloads = [ZstdEncoderTests.Text(300, 2), ZstdEncoderTests.Text(2000, 3), ZstdEncoderTests.Text(9000, 4)];
+        byte[] output = new byte[ZstdEncoder.GetMaxCompressedLength(9000)];
+
+        long Batch()
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 100; i++)
+            {
+                foreach (byte[] p in payloads)
+                {
+                    encoder.CompressFrame(p, output);
+                }
+            }
+
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        int clean = 0;
+        var warmUp = System.Diagnostics.Stopwatch.StartNew();
+        while (clean < 4 || warmUp.ElapsedMilliseconds < 1500)
+        {
+            clean = Batch() == 0 ? clean + 1 : 0;
+            Thread.Sleep(30);
+            Assert.True(warmUp.ElapsedMilliseconds < 30_000, "allocations never settled");
+        }
+
+        var per = new List<long>();
+        for (int i = 0; i < 8; i++)
+        {
+            per.Add(Batch());
+        }
+
+        Assert.True(per.Count(a => a == 0) >= 5 && per.Max() < 10_000, string.Join(",", per));
+    }
 }

@@ -55,7 +55,7 @@ for f in $files; do
     rc="$(echo "$line" | grep -o '[0-9.]* MB/s' | sed -n 1p | cut -d' ' -f1)"
     rd="$(echo "$line" | grep -o '[0-9.]* MB/s' | sed -n 2p | cut -d' ' -f1)"
     timev "$dotnet" "$dll" big "$path" "$L" --seconds "$secs" $ours_opts > "$work/ours.out" 2> "$work/ours.time"
-    kv() { tr '\t' '\n' < "$work/ours.out" | sed -n "s/^$1=\([0-9]*\).*/\1/p" | head -1; }
+    kv() { tr '\t' '\n' < "$work/ours.out" | sed -n "s/^$1=\([0-9.]*\).*/\1/p" | head -1; }
     ob="$(kv compressed)"; oc="$(kv compress)"; ocm="$(kv compress_median)"; ocn="$(kv compress_min)"
     od="$(kv decompress)"; odm="$(kv decompress_median)"; odn="$(kv decompress_min)"
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$f" "$L" "$rb" "$ob" \

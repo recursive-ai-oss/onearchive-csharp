@@ -21,6 +21,9 @@ public sealed class FseEncodingTable
     private readonly ushort[] _stateTable = new ushort[1 << MaxAccuracyLog];
     private readonly SymbolTransform[] _transform = new SymbolTransform[256];
     private readonly short[] _normalized = new short[256];
+    private readonly ushort[] _cumulative = new ushort[257];
+    private readonly byte[] _spread = new byte[1 << MaxAccuracyLog];
+    private readonly ushort[] _fill = new ushort[256];
     private int _accuracyLog;
     private int _symbolCount;
 
@@ -203,8 +206,10 @@ public sealed class FseEncodingTable
             throw new ArgumentException("The probabilities must sum to the table size.", nameof(normalizedCounts));
         }
 
-        Span<ushort> cumulative = stackalloc ushort[257];
-        Span<byte> spread = stackalloc byte[1 << MaxAccuracyLog];
+        // Scratch lives in the table so that a build does not zero a few hundred bytes of stack each time; every entry read below is
+        // written first (cumulative up to the symbol count, spread for each of the tableSize states) or cleared (fill).
+        ushort[] cumulative = _cumulative;
+        byte[] spread = _spread;
         int highThreshold = tableSize - 1;
         int running = 0;
         for (int s = 0; s < normalizedCounts.Length; s++)
@@ -240,7 +245,8 @@ public sealed class FseEncodingTable
 
         // For each symbol the states that decode it, in increasing order, are listed; the k-th is where the encoder lands
         // when the previous state, shifted down, is count + k.
-        Span<ushort> fill = stackalloc ushort[256];
+        ushort[] fill = _fill;
+        Array.Clear(fill, 0, normalizedCounts.Length);
         for (int u = 0; u < tableSize; u++)
         {
             int s = spread[u];
@@ -371,6 +377,111 @@ public sealed class FseEncodingTable
         }
 
         return (int)bits;
+    }
+
+    private static FseEncodingTable? s_every;
+
+    /// <summary>A table that has a state for each of the 256 symbols; it stands in for the unused lanes of <see cref="ExactBits(ReadOnlySpan{byte}, ReadOnlySpan{byte}, ReadOnlySpan{byte}, FseEncodingTable[], Span{int})"/>.</summary>
+    internal static FseEncodingTable Every
+    {
+        get
+        {
+            if (s_every is null)
+            {
+                var counts = new short[256];
+                Array.Fill(counts, (short)2);
+                var table = new FseEncodingTable();
+                table.Build(counts, MaxAccuracyLog);
+                s_every = table;
+            }
+
+            return s_every;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="ExactBits(ReadOnlySpan{byte})"/> for up to six tables at once: lanes 0 and 1 code <paramref name="codes0"/>, 2 and 3
+    /// code <paramref name="codes1"/>, 4 and 5 code <paramref name="codes2"/>. The state machines are independent, so running them side
+    /// by side hides the latency of each one's chain of table reads. Every table must have a state for each symbol its codes use
+    /// (<see cref="Every"/> fills unused lanes); the three code spans have the same, nonzero, length.
+    /// </summary>
+    internal static void ExactBits(ReadOnlySpan<byte> codes0, ReadOnlySpan<byte> codes1, ReadOnlySpan<byte> codes2, FseEncodingTable[] tables, Span<int> bits)
+    {
+        int n = codes0.Length;
+        if (n == 0 || codes1.Length != n || codes2.Length != n || tables.Length < 6 || bits.Length < 6)
+        {
+            throw new ArgumentException("The code spans must have the same nonzero length, and there must be six tables and six results.");
+        }
+
+        FseEncodingTable t0 = tables[0], t1 = tables[1], t2 = tables[2], t3 = tables[3], t4 = tables[4], t5 = tables[5];
+        int q0 = t0.InitialState(codes0[n - 1]);
+        int q1 = t1.InitialState(codes0[n - 1]);
+        int q2 = t2.InitialState(codes1[n - 1]);
+        int q3 = t3.InitialState(codes1[n - 1]);
+        int q4 = t4.InitialState(codes2[n - 1]);
+        int q5 = t5.InitialState(codes2[n - 1]);
+        long b0 = t0._accuracyLog, b1 = t1._accuracyLog, b2 = t2._accuracyLog, b3 = t3._accuracyLog, b4 = t4._accuracyLog, b5 = t5._accuracyLog;
+        SymbolTransform[] f0 = t0._transform, f1 = t1._transform, f2 = t2._transform, f3 = t3._transform, f4 = t4._transform, f5 = t5._transform;
+        ushort[] a0 = t0._stateTable, a1 = t1._stateTable, a2 = t2._stateTable, a3 = t3._stateTable, a4 = t4._stateTable, a5 = t5._stateTable;
+        // Bounds: the codes are at most 255, so every transform read is inside its 256 entries; each state stays in
+        // [1 << log, 2 << log) for symbols the table has (the same property Encode relies on), so the next-state read is inside the table.
+        for (int i = n - 2; i >= 0; i--)
+        {
+            int c0 = Raw.Get(codes0, i), c1 = Raw.Get(codes1, i), c2 = Raw.Get(codes2, i);
+            ref readonly SymbolTransform x0 = ref Raw.Ref(f0, c0);
+            ref readonly SymbolTransform x1 = ref Raw.Ref(f1, c0);
+            ref readonly SymbolTransform x2 = ref Raw.Ref(f2, c1);
+            ref readonly SymbolTransform x3 = ref Raw.Ref(f3, c1);
+            ref readonly SymbolTransform x4 = ref Raw.Ref(f4, c2);
+            ref readonly SymbolTransform x5 = ref Raw.Ref(f5, c2);
+            uint n0 = ((uint)q0 + x0.NbBits) >> 16, n1 = ((uint)q1 + x1.NbBits) >> 16, n2 = ((uint)q2 + x2.NbBits) >> 16;
+            uint n3 = ((uint)q3 + x3.NbBits) >> 16, n4 = ((uint)q4 + x4.NbBits) >> 16, n5 = ((uint)q5 + x5.NbBits) >> 16;
+            b0 += n0; b1 += n1; b2 += n2; b3 += n3; b4 += n4; b5 += n5;
+            q0 = Raw.Get(a0, (q0 >> (int)n0) + x0.FindState);
+            q1 = Raw.Get(a1, (q1 >> (int)n1) + x1.FindState);
+            q2 = Raw.Get(a2, (q2 >> (int)n2) + x2.FindState);
+            q3 = Raw.Get(a3, (q3 >> (int)n3) + x3.FindState);
+            q4 = Raw.Get(a4, (q4 >> (int)n4) + x4.FindState);
+            q5 = Raw.Get(a5, (q5 >> (int)n5) + x5.FindState);
+        }
+
+        bits[0] = (int)b0; bits[1] = (int)b1; bits[2] = (int)b2; bits[3] = (int)b3; bits[4] = (int)b4; bits[5] = (int)b5;
+    }
+
+    /// <summary>
+    /// <see cref="ExactBits(ReadOnlySpan{byte})"/> for three tables at once, each coding its own code sequence (all of the same,
+    /// nonzero length); see the six-table overload for why.
+    /// </summary>
+    internal static void ExactBits(ReadOnlySpan<byte> codes0, ReadOnlySpan<byte> codes1, ReadOnlySpan<byte> codes2, FseEncodingTable t0, FseEncodingTable t1, FseEncodingTable t2, out int bits0, out int bits1, out int bits2)
+    {
+        int n = codes0.Length;
+        if (n == 0 || codes1.Length != n || codes2.Length != n)
+        {
+            throw new ArgumentException("The code spans must have the same nonzero length.");
+        }
+
+        int q0 = t0.InitialState(codes0[n - 1]);
+        int q1 = t1.InitialState(codes1[n - 1]);
+        int q2 = t2.InitialState(codes2[n - 1]);
+        long b0 = t0._accuracyLog, b1 = t1._accuracyLog, b2 = t2._accuracyLog;
+        SymbolTransform[] f0 = t0._transform, f1 = t1._transform, f2 = t2._transform;
+        ushort[] a0 = t0._stateTable, a1 = t1._stateTable, a2 = t2._stateTable;
+        // Bounds: as in the six-table overload.
+        for (int i = n - 2; i >= 0; i--)
+        {
+            ref readonly SymbolTransform x0 = ref Raw.Ref(f0, Raw.Get(codes0, i));
+            ref readonly SymbolTransform x1 = ref Raw.Ref(f1, Raw.Get(codes1, i));
+            ref readonly SymbolTransform x2 = ref Raw.Ref(f2, Raw.Get(codes2, i));
+            uint n0 = ((uint)q0 + x0.NbBits) >> 16, n1 = ((uint)q1 + x1.NbBits) >> 16, n2 = ((uint)q2 + x2.NbBits) >> 16;
+            b0 += n0; b1 += n1; b2 += n2;
+            q0 = Raw.Get(a0, (q0 >> (int)n0) + x0.FindState);
+            q1 = Raw.Get(a1, (q1 >> (int)n1) + x1.FindState);
+            q2 = Raw.Get(a2, (q2 >> (int)n2) + x2.FindState);
+        }
+
+        bits0 = (int)b0;
+        bits1 = (int)b1;
+        bits2 = (int)b2;
     }
 
     /// <summary>Prices a histogram under a distribution that is not built as a table; as the overload that takes a built table.</summary>

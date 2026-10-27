@@ -551,12 +551,7 @@ public sealed class HuffmanEncodingTable
     /// <param name="source">The bytes to code; every one must have a code.</param>
     /// <param name="destination">Receives the stream; it needs <c>source.Length * MaxCodeLength / 8 + 16</c> bytes.</param>
     /// <returns>The stream's length in bytes.</returns>
-    public int Compress1(ReadOnlySpan<byte> source, Span<byte> destination)
-    {
-        var writer = new ZstdBitWriter(destination);
-        EncodeSymbols(ref writer, source);
-        return writer.CloseBackward();
-    }
+    public int Compress1(ReadOnlySpan<byte> source, Span<byte> destination) => EncodeStream(source, destination);
 
     /// <summary>
     /// Encodes literals as the four streams of RFC 8878 §4.2.2: a 6-byte table of the first three streams' sizes, then the
@@ -572,9 +567,7 @@ public sealed class HuffmanEncodingTable
         for (int i = 0; i < 4; i++)
         {
             ReadOnlySpan<byte> part = i < 3 ? source.Slice(i * segment, segment) : source[(3 * segment)..];
-            var writer = new ZstdBitWriter(destination[position..]);
-            EncodeSymbols(ref writer, part);
-            int size = writer.CloseBackward();
+            int size = EncodeStream(part, destination[position..]);
             if (i < 3)
             {
                 if (size > ushort.MaxValue)
@@ -591,31 +584,56 @@ public sealed class HuffmanEncodingTable
         return position;
     }
 
-    private void EncodeSymbols(ref ZstdBitWriter writer, ReadOnlySpan<byte> source)
+    // One backward stream (RFC 8878 §4.2.2), the symbols last to first, then the end marker. The bit container lives in locals so
+    // that the four adds of a round stay in registers.
+    private int EncodeStream(ReadOnlySpan<byte> source, Span<byte> destination)
     {
         ushort[] code = _code;
         byte[] length = _length;
+        ulong container = 0;
+        int bitCount = 0;
+        int position = 0;
         int i = source.Length;
         while (i >= 4)
         {
-            byte a = source[i - 1];
-            byte b = source[i - 2];
-            byte c = source[i - 3];
-            byte d = source[i - 4];
-            writer.AddMasked(code[a], length[a]);
-            writer.AddMasked(code[b], length[b]);
-            writer.AddMasked(code[c], length[c]);
-            writer.AddMasked(code[d], length[d]);
-            writer.Flush();
+            // Bounds: 4 <= i <= source.Length, so the four reads are inside the source; a symbol is a byte and the tables have 256 entries.
+            int a = Raw.Get(source, i - 1);
+            int b = Raw.Get(source, i - 2);
+            int c = Raw.Get(source, i - 3);
+            int d = Raw.Get(source, i - 4);
+            container |= (ulong)Raw.Get(code, a) << bitCount;
+            bitCount += Raw.Get(length, a);
+            container |= (ulong)Raw.Get(code, b) << bitCount;
+            bitCount += Raw.Get(length, b);
+            container |= (ulong)Raw.Get(code, c) << bitCount;
+            bitCount += Raw.Get(length, c);
+            container |= (ulong)Raw.Get(code, d) << bitCount;
+            bitCount += Raw.Get(length, d);
+            BinaryPrimitives.WriteUInt64LittleEndian(destination[position..], container);
+            int bytes = bitCount >> 3;
+            position += bytes;
+            container >>= bytes << 3;
+            bitCount &= 7;
             i -= 4;
         }
 
         while (i > 0)
         {
-            byte a = source[--i];
-            writer.AddMasked(code[a], length[a]);
+            int a = source[--i];
+            container |= (ulong)code[a] << bitCount;
+            bitCount += length[a];
         }
 
-        writer.Flush();
+        // The end marker, then the last whole bytes and the padding.
+        container |= 1UL << bitCount;
+        bitCount++;
+        BinaryPrimitives.WriteUInt64LittleEndian(destination[position..], container);
+        position += bitCount >> 3;
+        if ((bitCount & 7) != 0)
+        {
+            position++;
+        }
+
+        return position;
     }
 }
