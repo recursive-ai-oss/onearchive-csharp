@@ -124,6 +124,22 @@ public class ZstdLongDistanceTests
         }
     }
 
+    [Theory]
+    [InlineData(5, false)]
+    [InlineData(6, true)]
+    [InlineData(9, false)]
+    [InlineData(12, true)]
+    [InlineData(15, true)]
+    public void JobsAndLongMatchesAtTheMidLevels(int level, bool longDistance)
+    {
+        byte[] data = [.. FarRepeats(2_500_000, 60 + level), .. ZstdEncoderTests.Text(600_000, 9)];
+        ZstdCompressionOptions Make(int workers) => new() { Level = level, LongDistanceMatching = longDistance, WindowLog = 22, JobSize = 512 * 1024, Workers = workers };
+        byte[] one = Zstd.Zstd.Compress(data, Make(1));
+        Assert.Equal(data, Decode(one));
+        Assert.True(one.AsSpan().SequenceEqual(Zstd.Zstd.Compress(data, Make(4))));
+        Assert.Equal(data, Decode(Stream(data, Make(2), 333_333)));
+    }
+
     [Fact]
     public void AutoJobSizeAndDictionaryAndNoContentSize()
     {

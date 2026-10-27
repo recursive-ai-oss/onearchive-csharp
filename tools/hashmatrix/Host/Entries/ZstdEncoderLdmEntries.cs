@@ -14,7 +14,7 @@ internal static class ZstdEncoderLdmEntries
     [ModuleInitializer]
     internal static void Register()
     {
-        foreach (int level in new[] { 1, 3 })
+        foreach (int level in new[] { 1, 3, 6, 12 })
         {
             int l = level;
             Matrix.Add("zstd-encode", $"ldm-off-level{l}-doubled", (input, _) => Zstd.Compress(Doubled(input), new ZstdCompressionOptions { Level = l, WindowLog = 22 }), "text-64k", "text-3m", "binary-1m");
