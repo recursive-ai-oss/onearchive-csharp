@@ -29,6 +29,20 @@ internal static class ZstdEncoderMtEntries
             }
         }
 
+        // The optimal-parsing levels split blocks after parsing; jobs must do the same, with and without long matches.
+        foreach (int level in new[] { 16, 19 })
+        {
+            int l = level;
+            foreach (bool longDistance in new[] { false, true })
+            {
+                bool ldm = longDistance;
+                string tag = ldm ? "ldm" : "plain";
+                Matrix.Add("zstd-encode", $"mt-{tag}-level{l}-job128k", (input, ctx) => Zstd.Compress(input, Make(l, ldm, 128 * 1024, ctx.Threads)), "text-64k", "binary-1m", "runs-1m");
+                Matrix.Add("zstd-encode", $"mt-{tag}-level{l}-job300000-checksum", (input, ctx) => Zstd.Compress(input, Make(l, ldm, 300_000, ctx.Threads, checksum: true)), "binary-1m", "text-64k");
+                Matrix.Add("zstd-encode", $"mt-{tag}-level{l}-stream", (input, ctx) => ZstdEncoderLdmEntries.Stream(input, Make(l, ldm, 256 * 1024, ctx.Threads)), "binary-1m");
+            }
+        }
+
         // Four workers whatever the column asks for: a browser runs them one after another, and the bytes must not notice.
         Matrix.Add("zstd-encode", "mt-level3-job256k-fixed-workers4", (input, _) => Zstd.Compress(input, Make(3, false, 256 * 1024, 4)), "text-3m", "binary-1m");
         Matrix.Add("zstd-encode", "mt-ldm-level1-job256k-fixed-workers4", (input, _) => Zstd.Compress(input, Make(1, true, 256 * 1024, 4)), "text-3m", "binary-1m");
