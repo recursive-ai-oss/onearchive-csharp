@@ -7,4 +7,8 @@
     <Description>Compression codecs written in managed code: no native dependencies, identical output on every platform.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="OneCompress.Tests" />
+  </ItemGroup>
+
 </Project>
