@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using RecursiveAI.OneArchive;
 using RecursiveAI.OneCompress;
+using RecursiveAI.OneCompress.Lz4;
 using RecursiveAI.OneCompress.Zstd;
 using RecursiveAI.OneCompress.Checksums;
 
@@ -44,6 +45,41 @@ using (var stream = new ZstdStream(new MemoryStream(compressed)))
 try
 {
     Zstd.Decompress(compressed.AsSpan(0, 100));
+    return 1;
+}
+catch (CompressionFormatException e) when (e.IsTruncated)
+{
+}
+
+// An LZ4 frame (content checksum on) through the one-liner, the stream and the raw block layer; a truncated frame must fail typed.
+byte[] lz4Frame = Convert.FromHexString("04224d186440a738000000ff1e54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e202d00145020646f672e0000000087752026");
+string lz4Text = "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.";
+if (System.Text.Encoding.ASCII.GetString(Lz4.Decompress(lz4Frame)) != lz4Text)
+{
+    Console.Error.WriteLine("lz4 frame failed");
+    return 1;
+}
+
+using (var lz4Stream = new Lz4Stream(new MemoryStream(lz4Frame)))
+{
+    var lz4Result = new MemoryStream();
+    lz4Stream.CopyTo(lz4Result);
+    if (System.Text.Encoding.ASCII.GetString(lz4Result.ToArray()) != lz4Text)
+    {
+        Console.Error.WriteLine("lz4 stream failed");
+        return 1;
+    }
+}
+
+if (System.Text.Encoding.ASCII.GetString(Lz4Block.Decompress(lz4Frame.AsSpan(11, 0x38))) != lz4Text)
+{
+    Console.Error.WriteLine("lz4 block failed");
+    return 1;
+}
+
+try
+{
+    Lz4.Decompress(lz4Frame.AsSpan(0, 30));
     return 1;
 }
 catch (CompressionFormatException e) when (e.IsTruncated)

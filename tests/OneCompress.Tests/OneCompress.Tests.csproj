@@ -11,7 +11,7 @@
 
   <!-- Vectors written by the generators under testdata/, copied next to the test assembly. -->
   <ItemGroup>
-    <Content Include="../../testdata/**/*.zst;../../testdata/**/*.zdict;../../testdata/**/*.bin;../../testdata/**/*.tsv"
+    <Content Include="../../testdata/**/*.zst;../../testdata/**/*.lz4;../../testdata/**/*.zdict;../../testdata/**/*.bin;../../testdata/**/*.tsv"
              Link="testdata/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
