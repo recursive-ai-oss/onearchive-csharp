@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The hash-matrix host: runs every registered entry and writes a manifest of
+    SHA-256 digests. Run as a JIT app, or published with NativeAOT
+    (-p:PublishAot=true, which tools/hashmatrix/columns.sh does).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>HashMatrix</AssemblyName>
+    <RootNamespace>RecursiveAI.HashMatrix</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/OneCompress/OneCompress.csproj" />
+    <ProjectReference Include="../../../src/OneArchive/OneArchive.csproj" />
+  </ItemGroup>
+
+</Project>

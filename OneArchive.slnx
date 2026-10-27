@@ -19,6 +19,9 @@
     <Project Path="src/OneArchive/OneArchive.csproj" />
     <Project Path="src/OneCompress/OneCompress.csproj" />
   </Folder>
+  <Folder Name="/tools/hashmatrix/">
+    <Project Path="tools/hashmatrix/Host/HashMatrix.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OneArchive.Tests/OneArchive.Tests.csproj" />
     <Project Path="tests/OneCompress.Tests/OneCompress.Tests.csproj" />

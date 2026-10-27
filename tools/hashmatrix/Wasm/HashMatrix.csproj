@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!-- The same host sources as ../Host, built for browser-wasm and run headless under Node. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>HashMatrix</AssemblyName>
+    <RootNamespace>RecursiveAI.HashMatrix</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <WasmEnableThreads>false</WasmEnableThreads>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../Host/**/*.cs" Exclude="../Host/obj/**;../Host/bin/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/OneCompress/OneCompress.csproj" />
+    <ProjectReference Include="../../../src/OneArchive/OneArchive.csproj" />
+  </ItemGroup>
+
+</Project>
