@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Zstd;
 
@@ -150,68 +151,9 @@ internal sealed class ZstdBlockDecoder
         int literalPosition = 0;
 
         // RFC 8878 §3.1.1.4: each sequence copies literals, then a match from earlier output.
-        for (int i = 0; i < sequenceCount; i++)
-        {
-            sequences.Next(out int literalLength, out int matchLength, out uint offsetValue, i != sequenceCount - 1);
-
-            if (literalLength > literals.Length - literalPosition)
-            {
-                ZstdFormat.ThrowCorrupt(blockOffset + p, "a literals length within the block's literals");
-            }
-
-            if (literalLength > end - current)
-            {
-                ZstdFormat.ThrowCorrupt(blockOffset + p, "block output within the block size limit and the frame content size");
-            }
-
-            if (literalLength <= 16 && buffer.Length - current >= 16 && literals.Length - literalPosition >= 16)
-            {
-                // A fixed 16-byte copy beats a variable-length one; the bytes past the literals are overwritten
-                // by what follows, and both 16-byte ranges are inside their buffers (checked just above).
-                Raw.Copy16(buffer, current, literals, literalPosition);
-            }
-            else
-            {
-                literals.Slice(literalPosition, literalLength).CopyTo(buffer[current..]);
-            }
-
-            literalPosition += literalLength;
-            current += literalLength;
-
-            uint offset = reps.Resolve(offsetValue, literalLength);
-            long produced = frameOutput + (current - position);
-            // RFC 8878 §3.1.1.4 and §5: a match reaches at most a window back; while the output so far is within
-            // the window, it may reach on into the dictionary, even past the window's size.
-            bool inRange = offset <= produced
-                ? offset <= windowSize
-                : produced <= windowSize && offset - produced <= dictionary.Length;
-            if (offset == 0 || !inRange)
-            {
-                ZstdFormat.ThrowCorrupt(blockOffset + p, "a match offset from 1 to the window size and the history available");
-            }
-
-            if (matchLength > end - current)
-            {
-                ZstdFormat.ThrowCorrupt(blockOffset + p, "block output within the block size limit and the frame content size");
-            }
-
-            if (offset >= 16 && offset <= current && buffer.Length - current - matchLength >= 16)
-            {
-                // The common case, in line: pieces of 16 bytes that read only bytes written before the piece starts
-                // (the offset is at least 16) and overshoot by less than 16 bytes, inside the buffer (checked above).
-                int from = current - (int)offset;
-                for (int k = 0; k < matchLength; k += 16)
-                {
-                    Raw.Copy16(buffer, current + k, buffer, from + k);
-                }
-            }
-            else
-            {
-                CopyMatch(buffer, current, (int)offset, matchLength, dictionary);
-            }
-
-            current += matchLength;
-        }
+        current = ExecuteSequences(
+            ref sequences, block[p..], sequenceCount, literals, buffer, position, end, ref reps, windowSize, frameOutput,
+            dictionary, blockOffset + p, out literalPosition);
 
         if (sequences.IsOverflowed || !sequences.IsFinished)
         {
@@ -230,6 +172,169 @@ internal sealed class ZstdBlockDecoder
         literals[literalPosition..].CopyTo(buffer[current..]);
         current += remaining;
         return current - position;
+    }
+
+    // The sequence loop of a block (RFC 8878 §3.1.1.4) with the bit reader, the three FSE states and the positions in
+    // local variables: the same steps as ZstdSequenceDecoder.Next followed by the copies, without a struct round trip.
+    private static int ExecuteSequences(
+        ref ZstdSequenceDecoder sequences,
+        ReadOnlySpan<byte> data,
+        int sequenceCount,
+        ReadOnlySpan<byte> literals,
+        Span<byte> buffer,
+        int position,
+        int end,
+        ref ZstdRepeatOffsets reps,
+        long windowSize,
+        long frameOutput,
+        ReadOnlySpan<byte> dictionary,
+        long streamOffset,
+        out int literalPosition)
+    {
+        FseEntry[] llTable = sequences.LiteralLengthEntries;
+        FseEntry[] ofTable = sequences.OffsetEntries;
+        FseEntry[] mlTable = sequences.MatchLengthEntries;
+        sequences.Export(out ulong container, out int consumed, out int ptr, out uint llState, out uint ofState, out uint mlState);
+        uint[] llBase = ZstdFormat.LiteralLengthBase;
+        byte[] llBits = ZstdFormat.LiteralLengthBits;
+        uint[] mlBase = ZstdFormat.MatchLengthBase;
+        byte[] mlBitsTable = ZstdFormat.MatchLengthBits;
+        ZstdRepeatOffsets r = reps;
+        int current = position;
+        int litPos = 0;
+        int litLength = literals.Length;
+        int bufferLength = buffer.Length;
+        long dictionaryLength = dictionary.Length;
+
+        for (int i = 0; i < sequenceCount; i++)
+        {
+            // Each state is below its table's size (see ZstdSequenceDecoder.Next).
+            FseEntry ll = Raw.Get(llTable, (int)llState);
+            FseEntry of = Raw.Get(ofTable, (int)ofState);
+            FseEntry ml = Raw.Get(mlTable, (int)mlState);
+
+            ReloadBits(data, ref container, ref consumed, ref ptr);
+            int offsetCode = of.Symbol;
+            uint offsetValue = (1u << offsetCode) + ReadBits(container, ref consumed, offsetCode);
+            if (offsetCode > 20)
+            {
+                ReloadBits(data, ref container, ref consumed, ref ptr);
+            }
+
+            int matchLength = (int)(Raw.Get(mlBase, ml.Symbol) + ReadBits(container, ref consumed, Raw.Get(mlBitsTable, ml.Symbol)));
+            int literalLength = (int)(Raw.Get(llBase, ll.Symbol) + ReadBits(container, ref consumed, Raw.Get(llBits, ll.Symbol)));
+
+            if (i != sequenceCount - 1)
+            {
+                ReloadBits(data, ref container, ref consumed, ref ptr);
+                llState = ll.Baseline + ReadBits(container, ref consumed, ll.NumBits);
+                mlState = ml.Baseline + ReadBits(container, ref consumed, ml.NumBits);
+                ofState = of.Baseline + ReadBits(container, ref consumed, of.NumBits);
+            }
+
+            if (literalLength > litLength - litPos)
+            {
+                ZstdFormat.ThrowCorrupt(streamOffset, "a literals length within the block's literals");
+            }
+
+            if (literalLength > end - current)
+            {
+                ZstdFormat.ThrowCorrupt(streamOffset, "block output within the block size limit and the frame content size");
+            }
+
+            if (bufferLength - current - literalLength >= 16 && litLength - litPos - literalLength >= 16)
+            {
+                // Pieces of 16 bytes may run up to 15 bytes past the literals on both sides; both stay inside their
+                // buffers (checked just above), and the extra output bytes are overwritten by what follows.
+                for (int k = 0; k < literalLength; k += 16)
+                {
+                    Raw.Copy16(buffer, current + k, literals, litPos + k);
+                }
+            }
+            else
+            {
+                literals.Slice(litPos, literalLength).CopyTo(buffer[current..]);
+            }
+
+            litPos += literalLength;
+            current += literalLength;
+
+            uint offset = r.Resolve(offsetValue, literalLength);
+            long produced = frameOutput + (current - position);
+            // RFC 8878 §3.1.1.4 and §5: a match reaches at most a window back; while the output so far is within
+            // the window, it may reach on into the dictionary, even past the window's size.
+            bool inRange = offset <= produced
+                ? offset <= windowSize
+                : produced <= windowSize && offset - produced <= dictionaryLength;
+            if (offset == 0 || !inRange)
+            {
+                ZstdFormat.ThrowCorrupt(streamOffset, "a match offset from 1 to the window size and the history available");
+            }
+
+            if (matchLength > end - current)
+            {
+                ZstdFormat.ThrowCorrupt(streamOffset, "block output within the block size limit and the frame content size");
+            }
+
+            if (offset >= 16 && offset <= (uint)current && bufferLength - current - matchLength >= 16)
+            {
+                // The common case, in line: pieces of 16 bytes that read only bytes written before the piece starts
+                // (the offset is at least 16) and overshoot by less than 16 bytes, inside the buffer (checked above).
+                int from = current - (int)offset;
+                for (int k = 0; k < matchLength; k += 16)
+                {
+                    Raw.Copy16(buffer, current + k, buffer, from + k);
+                }
+            }
+            else
+            {
+                CopyMatch(buffer, current, (int)offset, matchLength, dictionary);
+            }
+
+            current += matchLength;
+        }
+
+        sequences.Import(container, consumed, ptr, llState, ofState, mlState);
+        reps = r;
+        literalPosition = litPos;
+        return current;
+    }
+
+    // Refills the register so at least 56 bits can be read; the same rule as ZstdReverseBitReader.Reload.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReloadBits(ReadOnlySpan<byte> data, ref ulong container, ref int consumed, ref int ptr)
+    {
+        if (ptr >= 8)
+        {
+            // At least eight bytes remain below the register, so the refill never reaches the start.
+            ptr -= consumed >> 3;
+            consumed &= 7;
+            container = Raw.ReadUInt64(data, ptr);
+        }
+        else if (ptr != 0)
+        {
+            int bytes = consumed >> 3;
+            if (ptr >= bytes)
+            {
+                ptr -= bytes;
+                consumed &= 7;
+            }
+            else
+            {
+                consumed -= ptr << 3;
+                ptr = 0;
+            }
+
+            container = Raw.ReadUInt64(data, ptr);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint ReadBits(ulong container, ref int consumed, int count)
+    {
+        uint value = (uint)(((container << (consumed & 63)) >> 1) >> (63 - count));
+        consumed += count;
+        return value;
     }
 
     private static void CopyMatch(Span<byte> buffer, int current, int offset, int length, ReadOnlySpan<byte> dictionary)

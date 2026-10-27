@@ -56,6 +56,31 @@ public ref struct ZstdSequenceDecoder
         }
     }
 
+    // The block decoder's sequence loop keeps all of this in local variables and hands it back afterwards.
+    internal readonly FseEntry[] LiteralLengthEntries => _literalLengths;
+
+    internal readonly FseEntry[] OffsetEntries => _offsets;
+
+    internal readonly FseEntry[] MatchLengthEntries => _matchLengths;
+
+    internal readonly void Export(out ulong container, out int consumed, out int pointer, out uint literalLengthState, out uint offsetState, out uint matchLengthState)
+    {
+        container = _bits.Container;
+        consumed = _bits.Consumed;
+        pointer = _bits.Pointer;
+        literalLengthState = _literalLengthState;
+        offsetState = _offsetState;
+        matchLengthState = _matchLengthState;
+    }
+
+    internal void Import(ulong container, int consumed, int pointer, uint literalLengthState, uint offsetState, uint matchLengthState)
+    {
+        _bits.Restore(container, consumed, pointer);
+        _literalLengthState = literalLengthState;
+        _offsetState = offsetState;
+        _matchLengthState = matchLengthState;
+    }
+
     /// <summary>Gets a value indicating whether the whole bitstream has been used. It must be true after the last sequence.</summary>
     public readonly bool IsFinished => _bits.IsFinished;
 
