@@ -333,7 +333,7 @@ if (args[0] == "big")
     }
 
     Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-        $"big\t{Path.GetFileName(args[1])}\tlevel={level}\tsize={data.Length}\tcompressed={compressed}\tratio={(double)data.Length / compressed:F4}\tcompress={data.Length / compressTime / 1e6:F0} MB/s\tcompress_median={data.Length / compressMedian / 1e6:F0}\tcompress_min={data.Length / compressWorst / 1e6:F0}\tdecompress={data.Length / decompressTime / 1e6:F0} MB/s\tdecompress_median={data.Length / decompressMedian / 1e6:F0}\tdecompress_min={data.Length / decompressWorst / 1e6:F0}\troundtrip={(ok ? "ok" : "MISMATCH")}"));
+        $"big\t{Path.GetFileName(args[1])}\tlevel={level}\tsize={data.Length}\tcompressed={compressed}\tratio={(double)data.Length / compressed:F4}\tcompress={data.Length / compressTime / 1e6:F2} MB/s\tcompress_median={data.Length / compressMedian / 1e6:F2}\tcompress_min={data.Length / compressWorst / 1e6:F2}\tdecompress={data.Length / decompressTime / 1e6:F0} MB/s\tdecompress_median={data.Length / decompressMedian / 1e6:F0}\tdecompress_min={data.Length / decompressWorst / 1e6:F0}\troundtrip={(ok ? "ok" : "MISMATCH")}"));
     return ok ? 0 : 1;
 }
 

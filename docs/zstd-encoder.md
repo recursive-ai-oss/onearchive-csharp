@@ -403,6 +403,33 @@ sizes 0.2 to 1.1% smaller; snapshots and saves (hundreds of bytes to 6 KB) run a
 The unchecked accessors (`Raw`) are worth 5 to 7% of the encoder's speed: the same code built in the `Checked` configuration (every accessor
 bounds-checked) runs at 564/598 (level -5), 400/430 (level 1) and 259/273 MB/s (level 3), match finding 10% slower and block writing level.
 
+### Block writer speed work (arm64, zstd 1.5.7)
+
+The block writer prices the three sequence tables side by side (their state machines are independent, so the walks overlap), keeps
+the table it priced instead of building it again, and keeps the Huffman bit container in registers; the fast and double-fast
+strategies choose table modes from the histogram estimate at every block size (above). Output is unchanged except for one small
+block in the matrix (same size). Apple M2, `time ratio` as above (reference speed divided by ours, bar 1.15), load 3 to 6 from other
+work on the machine; the whole-file rows move by less than their run-to-run spread, because the match finders dominate there:
+
+| file | level | before | after |
+|---|---|---|---|
+| silesia.tar | 1 / 3 / 6 / 9 | 1.37 / 1.25 / 1.46 / 1.47 | 1.41 / 1.30 / 1.46 / 1.42 |
+| enwik8 | 1 / 3 / 6 / 9 | 1.49 / 1.29 / 1.57 / 1.52 | 1.49 / 1.28 / 1.44 / 1.50 |
+| silesia.tar | 12 / 16 / 19 | | 1.35 / 1.18 / 1.20 |
+| enwik8 | 12 / 16 / 19 | | 1.49 / 1.05 / 0.92 |
+
+Small payloads with a 16 or 112 KiB trained dictionary (payloads per second divided by the tool's, geometric mean of three games and
+two dictionary sizes; above 1 is faster than the tool; bar 0.87):
+
+| payloads | level | before | after |
+|---|---|---|---|
+| frames | 1 / 3 | 1.20 / 1.06 | 1.26 / 1.07 |
+| snapshots | 3 / 9 / 19 | 0.39 / 0.97 / 0.45 | 0.48 / 1.11 / 0.50 |
+| saves | 3 / 9 / 19 | 0.39 / 0.81 / 0.42 | 0.54 / 0.89 / 0.45 |
+
+At a few hundred bytes to a few kilobytes a block costs about a hundred matches and three table decisions, and the time is spread
+over the match loop (about 45 ns a match), the literal section and the sequence section; no single step is more than a third.
+
 ## Results: long-distance matching and jobs (zstd 1.5.7)
 
 Method as above, `run.sh --ref-opts ... --ours-opts ...` (`zstd -b<L> -e<L> -T<n> [--long=27]` against `ZstdEncodeBench big ... --workers n --job auto [--long 27]`, best of 3 s).
