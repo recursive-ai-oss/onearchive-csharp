@@ -98,6 +98,55 @@ internal static class Lz4Raw
         }
     }
 
+    /// <summary>Writes <c>span[index] = value</c>. The caller guarantees <c>0 &lt;= index &lt; span.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Put(Span<byte> span, nint index, byte value)
+    {
+#if CHECKED
+        span[(int)index] = value;
+#else
+        Unsafe.Add(ref MemoryMarshal.GetReference(span), index) = value;
+#endif
+    }
+
+    /// <summary>Reads <c>span[index]</c> from a writable span. The caller guarantees <c>0 &lt;= index &lt; span.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte Get(Span<byte> span, nint index)
+    {
+#if CHECKED
+        return span[(int)index];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetReference(span), index);
+#endif
+    }
+
+    /// <summary>
+    /// <see cref="RepeatShort"/> without calls, for the decoder's fast loop: a call inside that loop makes the compiler keep its
+    /// state in stack slots across every iteration. The same bytes are written, and no byte beyond <c>position + length</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RepeatShortInline(Span<byte> destination, nint position, nint offset, nint length)
+    {
+        // A whole number of periods of at least 8 bytes: from that far back, 8-byte steps are exact.
+        nint distance = offset switch { 1 => 8, 2 => 8, 3 => 9, 4 => 8, 5 => 10, 6 => 12, _ => 14 };
+        nint head = Math.Min(length, distance);
+        nint done = 0;
+        for (; done < head; done++)
+        {
+            Put(destination, position + done, Get(destination, position + done - offset));
+        }
+
+        for (; length - done >= 8; done += 8)
+        {
+            Copy8(destination, position + done, destination, position + done - distance);
+        }
+
+        for (; done < length; done++)
+        {
+            Put(destination, position + done, Get(destination, position + done - offset));
+        }
+    }
+
     /// <summary>Reads four bytes at <paramref name="index"/> as a little-endian integer. The caller guarantees <c>index + 4 &lt;= span.Length</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint ReadUInt32(ReadOnlySpan<byte> span, nint index)

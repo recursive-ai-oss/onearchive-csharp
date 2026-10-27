@@ -418,7 +418,7 @@ public static class Lz4BlockDecoder
                 // Matches of 4 to 18 bytes: 24 bytes are always written (the surplus is overwritten by what follows), which
                 // costs less than a branch on the length.
                 length += Lz4Format.MinMatch;
-                ms = op;
+                //ms = op;
                 if (offset >= 16)
                 {
                     Lz4Raw.Copy16(dst, op, dst, source);
@@ -453,7 +453,7 @@ public static class Lz4BlockDecoder
                 }
                 else
                 {
-                    Lz4Raw.RepeatShort(dst, op, offset, length);
+                    Lz4Raw.RepeatShortInline(dst, op, offset, length);
                 }
             }
             else
@@ -483,7 +483,7 @@ public static class Lz4BlockDecoder
                     goto exit;
                 }
 
-                ms = op;
+                //ms = op;
                 if (offset >= 16)
                 {
                     nint k = 0;
@@ -506,7 +506,7 @@ public static class Lz4BlockDecoder
                 }
                 else
                 {
-                    Lz4Raw.RepeatShort(dst, op, offset, length);
+                    Lz4Raw.RepeatShortInline(dst, op, offset, length);
                 }
 
                 ip = p;
