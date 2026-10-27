@@ -356,7 +356,9 @@ in which jobs finish; a browser runs the jobs one after another. With `JobSize` 
 - **Streaming.** `ZstdEncoder.Compress` buffers the window (or overlap) behind the next batch of `Workers` jobs and compresses a batch when
   more input than a batch has arrived, or at the end; the bytes do not depend on how the input is split across calls. Memory is
   the window plus `Workers * JobSize` plus the batch's output. `Flush` compresses what is buffered as a short job and ends it (and so
-  changes the bytes).
+  changes the bytes). Each new job loads its overlap into the match finder again, so flushing after every few bytes costs time that
+  grows with the square of the stream length (about 3.7 s for 80 KB written one byte per flush). Writers that flush often should leave
+  jobs off.
 
 ## Measuring
 
