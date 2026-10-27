@@ -68,8 +68,13 @@ public sealed class ZstdBlockWriter
     private readonly uint[] _histogram4 = new uint[4 * 256];
     private readonly uint[] _literalHistogram = new uint[256];
     private readonly uint[][] _codeHistogram = [new uint[64], new uint[64], new uint[64]];
-    private readonly short[] _normalized = new short[64];
     private readonly byte[] _description = new byte[160];
+    private readonly short[][] _normalizedByKind = [new short[64], new short[64], new short[64]];
+    private readonly byte[][] _descriptionByKind = [new byte[160], new byte[160], new byte[160]];
+    private readonly int[] _descriptionSize = new int[3];
+    private readonly bool[] _newPriced = new bool[3];
+    private readonly bool[] _builtNew = new bool[3];
+    private readonly FseEncodingTable[] _lanes = new FseEncodingTable[6];
     private ZstdRepeatOffsets _repeatOffsets = ZstdRepeatOffsets.Initial;
     private bool _compressLiterals = true;
 
@@ -386,6 +391,20 @@ public sealed class ZstdBlockWriter
         return header + treeSize + streamSize;
     }
 
+    private static bool DistinctAtMost(uint[] histogram, int maxSymbol, int limit)
+    {
+        int distinct = 0;
+        for (int s = 0; s <= maxSymbol; s++)
+        {
+            if (histogram[s] != 0)
+            {
+                distinct++;
+            }
+        }
+
+        return distinct <= limit;
+    }
+
     private static int StreamBytes(long bits, bool singleStream, int n)
     {
         // One stream ends with a marker bit; four streams add the 6-byte size table and up to a byte of padding each.
@@ -662,10 +681,19 @@ public sealed class ZstdBlockWriter
         Span<Mode> modes = stackalloc Mode[3];
         Span<int> rleSymbols = stackalloc int[3];
         Span<int> maxSymbols = stackalloc int[3] { maxLl, maxOf, maxMl };
+        Span<int> bestCosts = stackalloc int[3];
+        Span<int> accuracyLogs = stackalloc int[3];
+        Span<int> priced = stackalloc int[6];
         int[] maxLogs = s_maxAccuracyLogs;
         int[] defaultMaxSymbol = s_defaultMaxSymbols;
+        bool exact = nseq <= ExactCostLimit;
+        FseEncodingTable[] lanes = _lanes;
 
-        // Tables are described in the order literal lengths, offsets, match lengths.
+        // Tables are described in the order literal lengths, offsets, match lengths. Pricing the choices comes first, in two
+        // rounds over all three kinds: the repeat and predefined tables, then the new ones. The exact price of a table walks the
+        // code sequence through a chain of dependent table reads, so the walks of all the tables of a round run side by side.
+        Span<bool> repeatOk = stackalloc bool[3];
+        Span<bool> predefinedOk = stackalloc bool[3];
         for (int k = 0; k < 3; k++)
         {
             uint[] histogram = _codeHistogram[k];
@@ -684,18 +712,46 @@ public sealed class ZstdBlockWriter
                 // An RLE table costs one byte and nothing per symbol.
                 modes[k] = Mode.Rle;
                 rleSymbols[k] = maxSymbol;
+                lanes[2 * k] = lanes[(2 * k) + 1] = FseEncodingTable.Every;
                 continue;
             }
 
+            modes[k] = Mode.Compressed;
+            FseEncodingTable? previous = _previous[k];
+            repeatOk[k] = previous is not null && previous.Contains(maxSymbol) && previous.Cost(histogram, maxSymbol) != int.MaxValue;
+            predefinedOk[k] = maxSymbol <= defaultMaxSymbol[k];
+            lanes[2 * k] = repeatOk[k] ? previous! : FseEncodingTable.Every;
+            lanes[(2 * k) + 1] = predefinedOk[k] ? Default(k) : FseEncodingTable.Every;
+        }
+
+        _builtNew[0] = _builtNew[1] = _builtNew[2] = false;
+        if (exact)
+        {
+            if (repeatOk[0] || repeatOk[1] || repeatOk[2])
+            {
+                FseEncodingTable.ExactBits(_llCodes.AsSpan(0, nseq), _ofCodes.AsSpan(0, nseq), _mlCodes.AsSpan(0, nseq), lanes, priced);
+            }
+            else
+            {
+                FseEncodingTable.ExactBits(_llCodes.AsSpan(0, nseq), _ofCodes.AsSpan(0, nseq), _mlCodes.AsSpan(0, nseq), lanes[1], lanes[3], lanes[5], out priced[1], out priced[3], out priced[5]);
+            }
+        }
+
+        bool anyNew = false;
+        for (int k = 0; k < 3; k++)
+        {
+            if (modes[k] == Mode.Rle)
+            {
+                continue;
+            }
+
+            uint[] histogram = _codeHistogram[k];
+            int maxSymbol = maxSymbols[k];
             int bestCost = int.MaxValue;
             Mode bestMode = Mode.Compressed;
-            byte[] codes = k == 0 ? llCodes : k == 1 ? ofCodes : mlCodes;
-            bool exact = nseq <= ExactCostLimit;
-            ReadOnlySpan<byte> codeSpan = codes.AsSpan(0, nseq);
-            FseEncodingTable? previous = _previous[k];
-            if (previous is not null && previous.Contains(maxSymbol) && previous.Cost(histogram, maxSymbol) != int.MaxValue)
+            if (repeatOk[k])
             {
-                int cost = exact ? previous.ExactBits(codeSpan) * ZstdCost.Bit : previous.Cost(histogram, maxSymbol);
+                int cost = exact ? priced[2 * k] * ZstdCost.Bit : _previous[k]!.Cost(histogram, maxSymbol);
                 if (cost < bestCost)
                 {
                     bestCost = cost;
@@ -703,10 +759,9 @@ public sealed class ZstdBlockWriter
                 }
             }
 
-            if (maxSymbol <= defaultMaxSymbol[k])
+            if (predefinedOk[k])
             {
-                FseEncodingTable predefined = Default(k);
-                int cost = exact ? predefined.ExactBits(codeSpan) * ZstdCost.Bit : predefined.Cost(histogram, maxSymbol);
+                int cost = exact ? priced[(2 * k) + 1] * ZstdCost.Bit : Default(k).Cost(histogram, maxSymbol);
                 if (cost < bestCost)
                 {
                     bestCost = cost;
@@ -722,35 +777,52 @@ public sealed class ZstdBlockWriter
             bool tryNew = bestCost == int.MaxValue
                 || (nseq >= MinimumSequencesForNewTable
                     && ZstdCost.EntropyLowerBound(histogram, maxSymbol, nseq) + (16 * ZstdCost.Bit) < bestCost);
-            if (tryNew && distinct <= (1 << accuracyLog))
+            bestCosts[k] = bestCost;
+            modes[k] = bestMode;
+            accuracyLogs[k] = accuracyLog;
+            lanes[2 * k] = lanes[(2 * k) + 1] = FseEncodingTable.Every;
+            _newPriced[k] = false;
+            if (tryNew && DistinctAtMost(histogram, maxSymbol, 1 << accuracyLog))
             {
-                FseEncodingTable.Normalize(_normalized, accuracyLog, histogram, (uint)nseq, maxSymbol);
-                ReadOnlySpan<short> counts = _normalized.AsSpan(0, maxSymbol + 1);
-                int descriptionBytes = FseEncodingTable.WriteDescription(_description, counts, accuracyLog);
-                int cost;
+                short[] counts = _normalizedByKind[k];
+                FseEncodingTable.Normalize(counts, accuracyLog, histogram, (uint)nseq, maxSymbol);
+                _descriptionSize[k] = FseEncodingTable.WriteDescription(_descriptionByKind[k], counts.AsSpan(0, maxSymbol + 1), accuracyLog);
+                _newPriced[k] = true;
                 if (exact)
                 {
                     FseEncodingTable scratch = _previous[k] == _own[k, 0] ? _own[k, 1] : _own[k, 0];
-                    scratch.Build(counts, accuracyLog);
-                    cost = scratch.ExactBits(codeSpan) * ZstdCost.Bit;
-                }
-                else
-                {
-                    cost = FseEncodingTable.Cost(counts, accuracyLog, histogram, maxSymbol);
-                }
-
-                if (cost != int.MaxValue)
-                {
-                    cost += descriptionBytes * 8 * ZstdCost.Bit;
-                    if (cost < bestCost)
-                    {
-                        bestCost = cost;
-                        bestMode = Mode.Compressed;
-                    }
+                    scratch.Build(counts.AsSpan(0, maxSymbol + 1), accuracyLog);
+                    _builtNew[k] = true;
+                    lanes[2 * k] = scratch;
+                    anyNew = true;
                 }
             }
+        }
 
-            modes[k] = bestMode;
+        if (anyNew)
+        {
+            FseEncodingTable.ExactBits(_llCodes.AsSpan(0, nseq), _ofCodes.AsSpan(0, nseq), _mlCodes.AsSpan(0, nseq), lanes[0], lanes[2], lanes[4], out priced[0], out priced[2], out priced[4]);
+        }
+
+        for (int k = 0; k < 3; k++)
+        {
+            if (modes[k] == Mode.Rle || !_newPriced[k])
+            {
+                continue;
+            }
+
+            int maxSymbol = maxSymbols[k];
+            int cost = exact
+                ? priced[2 * k] * ZstdCost.Bit
+                : FseEncodingTable.Cost(_normalizedByKind[k].AsSpan(0, maxSymbol + 1), accuracyLogs[k], _codeHistogram[k], maxSymbol);
+            if (cost != int.MaxValue)
+            {
+                cost += _descriptionSize[k] * 8 * ZstdCost.Bit;
+                if (cost < bestCosts[k])
+                {
+                    modes[k] = Mode.Compressed;
+                }
+            }
         }
 
         destination[modePosition] = (byte)(((int)modes[0] << 6) | ((int)modes[1] << 4) | ((int)modes[2] << 2));
@@ -770,19 +842,20 @@ public sealed class ZstdBlockWriter
                     break;
                 default:
                 {
-                    uint[] histogram = _codeHistogram[k];
-                    int maxSymbol = maxSymbols[k];
-                    int accuracyLog = FseEncodingTable.OptimalAccuracyLog(maxLogs[k], nseq, maxSymbol);
-                    FseEncodingTable.Normalize(_normalized, accuracyLog, histogram, (uint)nseq, maxSymbol);
-                    ReadOnlySpan<short> counts = _normalized.AsSpan(0, maxSymbol + 1);
-                    p += FseEncodingTable.WriteDescription(destination[p..], counts, accuracyLog);
+                    // The table priced above is the one to write (the pricing round always ran for a kind that ends up here).
+                    _descriptionByKind[k].AsSpan(0, _descriptionSize[k]).CopyTo(destination[p..]);
+                    p += _descriptionSize[k];
                     if (p >= limit)
                     {
                         return -1;
                     }
 
                     FseEncodingTable target = _previous[k] == _own[k, 0] ? _own[k, 1] : _own[k, 0];
-                    target.Build(counts, accuracyLog);
+                    if (!_builtNew[k])
+                    {
+                        target.Build(_normalizedByKind[k].AsSpan(0, maxSymbols[k] + 1), accuracyLogs[k]);
+                    }
+
                     chosen[k] = target;
                     break;
                 }
