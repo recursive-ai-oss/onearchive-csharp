@@ -27,7 +27,7 @@ printf 'file\tlevel\tref_bytes\tours_bytes\tdelta_pct\ttool_decodes_ours\n'
 for f in $files; do
   path="$(find_file "$f")"
   for L in $levels; do
-    if [ "${L#-}" != "$L" ]; then flag="--fast=${L#-}"; else flag="-$L"; fi
+    if [ "${L#-}" != "$L" ]; then flag="--fast=${L#-}"; elif [ "$L" -gt 19 ]; then flag="--ultra -$L"; else flag="-$L"; fi
     ref=$("$zstd" $flag --no-check -q -c "$path" | wc -c)
     "$dotnet" "$dll" big "$path" "$L" --seconds 0 --out "$work/ours.zst" > "$work/ours.out"
     ours=$(stat -c %s "$work/ours.zst")

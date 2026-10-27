@@ -190,9 +190,9 @@ btultra2 parses the first block of a frame twice.
 - **Prices:** in 1/256 bit. A symbol costs `log2(total) - log2(count)` (counts below 1 are 1; `log2` is the integer table of `ZstdCost`), plus
   its extra bits. Four count sets: literals (256), literal length codes (36), match length codes (53) and offset codes (32; the offset
   value's base-2 logarithm, so the repeat codes 1 to 3 are codes 0 and 1). Counts of the first block start from the block's literal
-  histogram and the predefined distributions (a distribution entry of -1 counts 1). Prices are rebuilt from the counts at the start of each block
-  (half the older counts plus nothing), every 4096 bytes parsed (half the counts at the block start plus the counts in this block
-  so far), and the counts of a finished block are added to half the old ones. A match of length 3 costs two bits more than its symbols.
+  histogram and the predefined distributions (a distribution entry of -1 counts 1). Prices are rebuilt from the statistics alone at the start of each
+  block, and again every 4096 bytes parsed (half the statistics at the block start plus the counts of this block so far). When a block
+  finishes, its counts are added to half the old statistics. A match of length 3 costs two bits more than its symbols.
 - **Path search:** from the start of a stretch (the first position with a candidate, with the literals since the last match pending) a
   cell per following position records the cheapest known price of reaching it, whether a literal or a match got there, the match's length,
   offset, starting cell and literals before it, and the repeat offsets after that path. The price of a cell includes the code of the literal
@@ -339,3 +339,30 @@ sizes 0.2 to 1.1% smaller; snapshots and saves (hundreds of bytes to 6 KB) run a
 
 The unchecked accessors (`Raw`) are worth 5 to 7% of the encoder's speed: the same code built in the `Checked` configuration (every accessor
 bounds-checked) runs at 564/598 (level -5), 400/430 (level 1) and 259/273 MB/s (level 3), match finding 10% slower and block writing level.
+
+### Levels 16 to 22 (optimal parsing)
+
+Sizes against `zstd --ultra -N` (1.5.7) on the full files, our size divided by the tool's minus one; the tool decodes every frame we write.
+Level 21 is not measured on the big files. Times are from the Apple M2 (8 cores, load 2.4 to 4.2 from other work), `run.sh --seconds 1`; the
+x64 timing rows wait for a quiet window.
+
+| file, level | size vs tool | compress time ratio | decompress time ratio (our decoder, our output, against the tool's own) | peak memory ours / tool (MB) |
+|---|---|---|---|---|
+| silesia.tar 16 | -0.17% | 1.18 | 1.23 | 767 / 642 |
+| silesia.tar 17 | -0.29% | | | |
+| silesia.tar 18 | +0.41% | | | |
+| silesia.tar 19 | +0.30% | 1.37 | 1.18 | 813 / 690 |
+| silesia.tar 20 | +0.38% | | | |
+| silesia.tar 22 | +0.29% | 1.36 | 1.32 | 1117 / 1315 |
+| enwik8 16 | +0.02% | 1.22 | 1.28 | 303 / 321 |
+| enwik8 17 | -0.30% | | | |
+| enwik8 18 | +0.59% | | | |
+| enwik8 19 | -0.01% | 1.26 | 1.14 | 337 / 369 |
+| enwik8 20 | +0.50% | | | |
+| enwik8 22 | +1.16% | 0.82 | 1.69 | 876 / 994 |
+
+Compression time is over the 1.15 bar everywhere but enwik8 22 (where the size is also over the 1% bar), so levels 16 to 22 stay preview.
+Outliers by file (first 4 MB of Silesia files, levels 16 and 19): mr +1.1% and +1.3%, x-ray 0.0% and +1.7%, nci +0.9% and +0.4%; the others
+are within 0.4% (osdb is 1.3% smaller). x-ray at levels 18 and up is 1.7% larger than at level 17 for us but 1.2% smaller for the tool: skipping the search at a
+position where a literal is almost as cheap (what level 17 does) brings it to +0.4% and costs 0.3% on text, so the other levels do not do it.
+Inputs of 16 KB or less at levels 13 to 15 can be up to 1.8% larger than the tool's.

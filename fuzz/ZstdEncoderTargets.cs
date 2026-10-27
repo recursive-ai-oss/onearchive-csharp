@@ -70,7 +70,7 @@ internal static class ZstdEncoderTargets
             throw new InvalidOperationException($"frame of {frame.Length} bytes exceeds the bound for {data.Length}");
         }
 
-        var decompression = new ZstdDecompressionOptions { Dictionary = decodeDictionary };
+        var decompression = new ZstdDecompressionOptions { Dictionary = decodeDictionary, MaxWindowSize = 1L << 30 };
         byte[] back = Zstd.Decompress(frame, decompression);
         if (!back.AsSpan().SequenceEqual(data))
         {

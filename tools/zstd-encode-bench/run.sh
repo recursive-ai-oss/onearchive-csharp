@@ -43,7 +43,7 @@ printf 'file\tlevel\tref_bytes\tours_bytes\tdelta_pct\tref_c_MB/s\tours_c_MB/s\t
 for f in $files; do
   path="$(find_file "$f")"
   for L in $levels; do
-    if [ "${L#-}" != "$L" ]; then sel="-b --fast=${L#-}"; else sel="-b$L -e$L"; fi
+    if [ "${L#-}" != "$L" ]; then sel="-b --fast=${L#-}"; elif [ "$L" -gt 19 ]; then sel="--ultra -b$L -e$L"; else sel="-b$L -e$L"; fi
     timev "$zstd" $sel -i"$secs" -T1 "$path" > "$work/ref.out" 2> "$work/ref.time" || true
     line="$(tr '\r' '\n' < "$work/ref.out" | grep 'MB/s' | tail -1)"
     rb="$(echo "$line" | awk '{for (i = 1; i <= NF; i++) if ($i == "->") print $(i + 1)}')"
