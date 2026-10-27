@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- Test-only oracle for random cross-checks; used as a black box. -->
+    <PackageReference Include="System.IO.Hashing" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
   </ItemGroup>
 

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using RecursiveAI.OneCompress.Checksums;
 
 namespace RecursiveAI.OneCompress.Zstd;
 
@@ -54,7 +55,7 @@ public sealed class ZstdDecoder
     private long _windowSize;
     private int _blockMax;
     private long _frameOutput;
-    private ContentChecksum _checksum;
+    private XxHash64 _checksum;
     private bool _lastBlock;
     private int _blockSize;
     private int _blockRemaining;
@@ -595,7 +596,7 @@ public sealed class ZstdDecoder
     {
         if (_header.HasChecksum && _options.VerifyChecksum)
         {
-            _checksum.Update(_window.AsSpan(_position, produced));
+            _checksum.Append(_window.AsSpan(_position, produced));
         }
 
         _position += produced;
@@ -643,7 +644,7 @@ public sealed class ZstdDecoder
         if (_options.VerifyChecksum)
         {
             uint stored = BinaryPrimitives.ReadUInt32LittleEndian(_small);
-            uint computed = _checksum.Digest();
+            uint computed = (uint)_checksum.GetCurrentValue();
             if (stored != computed)
             {
                 ZstdFormat.ThrowCorrupt(start, $"a content checksum of 0x{computed:X8}, found 0x{stored:X8}");
@@ -765,10 +766,8 @@ public sealed class ZstdDecoder
 
         if (header.HasChecksum && _options.VerifyChecksum)
         {
-            _checksum.Reset();
-            _checksum.Update(output);
             uint stored = BinaryPrimitives.ReadUInt32LittleEndian(source[q..]);
-            uint computed = _checksum.Digest();
+            uint computed = (uint)XxHash64.Compute(output);
             if (stored != computed)
             {
                 ZstdFormat.ThrowCorrupt(start + q, $"a content checksum of 0x{computed:X8}, found 0x{stored:X8}");
