@@ -18,9 +18,10 @@ carried tables untouched, as the decoder sees it. A frame writer can take blocks
 
 ## Levels
 
-Level numbers and meanings follow the `zstd` command line tool. Level 0 means 3. Levels 1 to 15 and every negative level down to
+Level numbers and meanings follow the `zstd` command line tool. Level 0 means 3. Levels 1 to 22 and every negative level down to
 -131072 are implemented; the negative level is the acceleration (the fast strategy's target length). Higher levels throw
-`ArgumentOutOfRangeException`.
+`ArgumentOutOfRangeException`. Levels 20 to 22 are the tool's ultra levels: their windows reach 128 MiB (window log 27), so a decoder
+has to allow that window (`ZstdDecompressionOptions.MaxWindowSize` defaults to 8 MiB; `zstd -d` allows 128 MiB without a flag).
 
 Parameters are looked up by the source size class, then shrunk to what the source can use. The size used is the content size plus
 the dictionary's content size; it is unknown for a streaming encoder that was not told the content size, and then the largest class
@@ -44,6 +45,13 @@ applies.
 |  | 13 | 22 | 22 | 22 | 4 | 5 | 32 | btlazy2 |
 |  | 14 | 22 | 22 | 23 | 5 | 5 | 32 | btlazy2 |
 |  | 15 | 22 | 23 | 23 | 6 | 5 | 32 | btlazy2 |
+|  | 16 | 22 | 22 | 22 | 5 | 5 | 48 | btopt |
+|  | 17 | 23 | 23 | 22 | 5 | 4 | 64 | btopt |
+|  | 18 | 23 | 23 | 22 | 6 | 3 | 64 | btultra |
+|  | 19 | 23 | 24 | 22 | 7 | 3 | 256 | btultra2 |
+|  | 20 | 25 | 25 | 23 | 7 | 3 | 256 | btultra2 |
+|  | 21 | 26 | 26 | 24 | 7 | 3 | 512 | btultra2 |
+|  | 22 | 27 | 27 | 25 | 9 | 3 | 999 | btultra2 |
 | <= 256 KiB | negative | 18 | 12 | 13 | 1 | 5 | acceleration | fast |
 |  | 1 | 18 | 13 | 14 | 1 | 6 | 0 | fast |
 |  | 2 | 18 | 14 | 14 | 1 | 5 | 0 | double fast |
@@ -57,9 +65,16 @@ applies.
 |  | 10 | 18 | 18 | 19 | 6 | 4 | 8 | lazy2 |
 |  | 11 | 18 | 18 | 19 | 5 | 4 | 12 | btlazy2 |
 |  | 12 | 18 | 19 | 19 | 7 | 4 | 12 | btlazy2 |
-|  | 13 | 18 | 18 | 19 | 4 | 4 | 16 | btopt (parsed as btlazy2 for now) |
-|  | 14 | 18 | 18 | 19 | 4 | 3 | 32 | btopt (parsed as btlazy2 for now) |
-|  | 15 | 18 | 18 | 19 | 6 | 3 | 128 | btopt (parsed as btlazy2 for now) |
+|  | 13 | 18 | 18 | 19 | 4 | 4 | 16 | btopt |
+|  | 14 | 18 | 18 | 19 | 4 | 3 | 32 | btopt |
+|  | 15 | 18 | 18 | 19 | 6 | 3 | 128 | btopt |
+|  | 16 | 18 | 19 | 19 | 6 | 3 | 128 | btultra |
+|  | 17 | 18 | 19 | 19 | 8 | 3 | 256 | btultra |
+|  | 18 | 18 | 19 | 19 | 6 | 3 | 128 | btultra2 |
+|  | 19 | 18 | 19 | 19 | 8 | 3 | 256 | btultra2 |
+|  | 20 | 18 | 19 | 19 | 10 | 3 | 512 | btultra2 |
+|  | 21 | 18 | 19 | 19 | 12 | 3 | 512 | btultra2 |
+|  | 22 | 18 | 19 | 19 | 13 | 3 | 999 | btultra2 |
 | <= 128 KiB | negative | 17 | 12 | 12 | 1 | 5 | acceleration | fast |
 |  | 1 | 17 | 12 | 13 | 1 | 6 | 0 | fast |
 |  | 2 | 17 | 13 | 15 | 1 | 5 | 0 | fast |
@@ -73,9 +88,16 @@ applies.
 |  | 10 | 17 | 16 | 17 | 6 | 4 | 8 | lazy2 |
 |  | 11 | 17 | 17 | 17 | 5 | 4 | 8 | btlazy2 |
 |  | 12 | 17 | 18 | 17 | 7 | 4 | 12 | btlazy2 |
-|  | 13 | 17 | 18 | 17 | 3 | 4 | 12 | btopt (parsed as btlazy2 for now) |
-|  | 14 | 17 | 18 | 17 | 4 | 3 | 32 | btopt (parsed as btlazy2 for now) |
-|  | 15 | 17 | 18 | 17 | 6 | 3 | 256 | btopt (parsed as btlazy2 for now) |
+|  | 13 | 17 | 18 | 17 | 3 | 4 | 12 | btopt |
+|  | 14 | 17 | 18 | 17 | 4 | 3 | 32 | btopt |
+|  | 15 | 17 | 18 | 17 | 6 | 3 | 256 | btopt |
+|  | 16 | 17 | 18 | 17 | 6 | 3 | 128 | btultra |
+|  | 17 | 17 | 18 | 17 | 8 | 3 | 256 | btultra |
+|  | 18 | 17 | 18 | 17 | 10 | 3 | 512 | btultra |
+|  | 19 | 17 | 18 | 17 | 5 | 3 | 256 | btultra2 |
+|  | 20 | 17 | 18 | 17 | 7 | 3 | 512 | btultra2 |
+|  | 21 | 17 | 18 | 17 | 9 | 3 | 512 | btultra2 |
+|  | 22 | 17 | 18 | 17 | 11 | 3 | 999 | btultra2 |
 | <= 16 KiB | negative | 14 | 12 | 13 | 1 | 5 | acceleration | fast |
 |  | 1 | 14 | 14 | 15 | 1 | 5 | 0 | fast |
 |  | 2 | 14 | 14 | 15 | 1 | 4 | 0 | fast |
@@ -87,15 +109,21 @@ applies.
 |  | 8 | 14 | 14 | 14 | 8 | 4 | 8 | lazy2 |
 |  | 9 | 14 | 15 | 14 | 5 | 4 | 8 | btlazy2 |
 |  | 10 | 14 | 15 | 14 | 9 | 4 | 8 | btlazy2 |
-|  | 11 | 14 | 15 | 14 | 3 | 4 | 12 | btopt (parsed as btlazy2 for now) |
-|  | 12 | 14 | 15 | 14 | 4 | 3 | 24 | btopt (parsed as btlazy2 for now) |
-|  | 13 | 14 | 15 | 14 | 5 | 3 | 32 | btultra (parsed as btlazy2 for now) |
-|  | 14 | 14 | 15 | 15 | 6 | 3 | 64 | btultra (parsed as btlazy2 for now) |
-|  | 15 | 14 | 15 | 15 | 7 | 3 | 256 | btultra (parsed as btlazy2 for now) |
+|  | 11 | 14 | 15 | 14 | 3 | 4 | 12 | btopt |
+|  | 12 | 14 | 15 | 14 | 4 | 3 | 24 | btopt |
+|  | 13 | 14 | 15 | 14 | 5 | 3 | 32 | btultra |
+|  | 14 | 14 | 15 | 15 | 6 | 3 | 64 | btultra |
+|  | 15 | 14 | 15 | 15 | 7 | 3 | 256 | btultra |
+|  | 16 | 14 | 15 | 15 | 5 | 3 | 48 | btultra2 |
+|  | 17 | 14 | 15 | 15 | 6 | 3 | 128 | btultra2 |
+|  | 18 | 14 | 15 | 15 | 7 | 3 | 256 | btultra2 |
+|  | 19 | 14 | 15 | 15 | 8 | 3 | 256 | btultra2 |
+|  | 20 | 14 | 15 | 15 | 8 | 3 | 512 | btultra2 |
+|  | 21 | 14 | 15 | 15 | 9 | 3 | 512 | btultra2 |
+|  | 22 | 14 | 15 | 15 | 10 | 3 | 999 | btultra2 |
 
-The strategies above btlazy2 (btopt, btultra) occupy levels 13 to 15 of the 256 KiB and 128 KiB classes and 11 to 15 of the 16 KiB class; the optimal
-parsers do not exist yet, so those rows are parsed with the btlazy2 finder (the parameters stay the reference's). Their output is a
-valid frame that is a little larger than the reference's for small sources.
+The strategies above btlazy2 (btopt, btultra, btultra2) take levels 13 to 15 of the 256 KiB and 128 KiB classes, 11 to 15 of the 16 KiB class
+and levels 16 to 22 of every class; they are the optimal parsers described below.
 
 The values were read off the reference tool's own report (`zstd --show-default-cparams`) for sources of the class boundary sizes;
 they are measured behaviour, not copied code. Shrinking: `windowLog = min(table, max(10, ceil(log2(size))))` when the size is
@@ -146,6 +174,50 @@ and in how far the parse looks ahead.
   `DictionaryHashLog` and `DictionaryChainLog` when set). The dictionary's candidates count only while the bytes produced do not
   exceed the window size, and the binary-tree strategy searches the dictionary through chains, not a tree. Repeat offsets that
   reach before the frame's first byte are tried against the dictionary content.
+
+## Optimal parsing (btopt, btultra, btultra2)
+
+`ZstdOptimalMatchFinder` implements the three strategies. They differ only in the parameters of their rows (search depth, target length,
+minimum match) and in two details: btopt skips searching a position whose successor is already reachable at nearly the same price, and
+btultra2 parses the first block of a frame twice.
+
+- **Tree:** the binary tree of btlazy2 (one tree per hash of `minMatch` bytes, `2^(chainLog-1)` nodes, every position entered once, in order),
+  compared up to 1024 bytes (the tree's "long enough"), at most `2^searchLog` nodes per search. The matches met on the way down, each longer
+  than the one before, are the candidates; with a dictionary, the dictionary's hash chains add candidates longer than the tree's best,
+  using the attempts that are left. The three repeat offsets (with a literal in front; with none, the second, the third and the first minus
+  one, RFC 8878 section 3.1.1.5) are candidates too, from four bytes (three when `minMatch` is 3). A candidate that reaches the
+  target length ends the stretch at once: the longest candidate is measured to its end and taken.
+- **Prices:** in 1/256 bit. A symbol costs `log2(total) - log2(count)` (counts below 1 are 1; `log2` is the integer table of `ZstdCost`), plus
+  its extra bits. Four count sets: literals (256), literal length codes (36), match length codes (53) and offset codes (32; the offset
+  value's base-2 logarithm, so the repeat codes 1 to 3 are codes 0 and 1). Counts of the first block start from the block's literal
+  histogram and the predefined distributions (a distribution entry of -1 counts 1). Prices are rebuilt from the statistics alone at the start of each
+  block, and again every 4096 bytes parsed (half the statistics at the block start plus the counts of this block so far). When a block
+  finishes, its counts are added to half the old statistics. A match of length 3 costs two bits more than its symbols.
+- **Path search:** from the start of a stretch (the first position with a candidate, with the literals since the last match pending) a
+  cell per following position records the cheapest known price of reaching it, whether a literal or a match got there, the match's length,
+  offset, starting cell and literals before it, and the repeat offsets after that path. The price of a cell includes the code of the literal
+  run pending at it, so a literal extends a cell by its own price plus the difference between the run's code prices, and a match adds its
+  offset, length and (for the next run) zero-length literal code prices. Cell by cell: the literal transition is applied (ties go to the
+  literal), the cell's repeat offsets are derived from its path, candidates at the position are found (using that path's repeat offsets)
+  and every length from the candidate's first new length to its length relaxes the cell it reaches. Offsets that equal a repeat offset
+  of the path are priced as repeat codes (the same resolution the block writer uses). The stretch ends when the cell reached is the
+  farthest any match got to; the cheapest path there is written out and the literals at its end stay pending, so a stretch is never forced
+  to end with a match that costs more than literals. A stretch is at most 4096 positions; a candidate that would pass that, or that reaches
+  the target length, is taken as the stretch's last match.
+- **btultra2:** the first block of a frame is parsed once with the starting prices, the counts of that parse become the statistics, the
+  tree is emptied, and the block is parsed again. (Blocks after the first use the statistics of the blocks before them.)
+- **Window sliding:** as for btlazy2: stored positions are rebased, the tree is turned around by the distance moved.
+
+## Block splitting
+
+Blocks of the optimal strategies are cut again after parsing. `ZstdBlockSplitter` groups the block's sequences into chunks of about
+4096 input bytes and estimates the cost of coding a run of chunks as one block: the entropy of its literals, literal length codes, match
+length codes and offset codes (integer, from the counts), plus the extra bits, plus an allowance for the headers and table descriptions of
+`12 + distinct literals / 2 + 3/4 * (distinct codes of the three sequence alphabets)` bytes (a literal alphabet is not counted when raw
+literals are cheaper). A shortest-path search over the chunk boundaries (at most 32 blocks per 128 KiB) picks the cuts of least total
+cost. Each part is written as a block of its own with its own tables; repeat offsets run on from part to part exactly as the decoder
+sees them. Because every part may cost three header bytes more than the single block would have, the bound of `GetMaxCompressedLength`
+allows 32 parts per 128 KiB.
 
 ## Frames
 
@@ -347,3 +419,30 @@ The long-distance matcher alone scans 2.1 GB/s of silesia.tar (x64). On an input
 at about 96 MB with one byte in 64 KiB changed) the output is 47% smaller than the tool's at levels 1 and 3, at 1.18 and 0.90 times its time.
 With jobs and no long matching the ratio of times is 1.25 to 1.5 (the single-thread gap) at 4 to 16 jobs, and size is +0.34% (level 1) and
 +0.82% (level 3) on silesia.tar.
+
+### Levels 16 to 22 (optimal parsing)
+
+Sizes against `zstd --ultra -N` (1.5.7) on the full files, our size divided by the tool's minus one; the tool decodes every frame we write.
+Level 21 is not measured on the big files. Times are from the Apple M2 (8 cores, load 2.4 to 4.2 from other work), `run.sh --seconds 1`; the
+x64 timing rows wait for a quiet window.
+
+| file, level | size vs tool | compress time ratio | decompress time ratio (our decoder, our output, against the tool's own) | peak memory ours / tool (MB) |
+|---|---|---|---|---|
+| silesia.tar 16 | -0.17% | 1.18 | 1.23 | 767 / 642 |
+| silesia.tar 17 | -0.29% | | | |
+| silesia.tar 18 | +0.41% | | | |
+| silesia.tar 19 | +0.30% | 1.37 | 1.18 | 813 / 690 |
+| silesia.tar 20 | +0.38% | | | |
+| silesia.tar 22 | +0.29% | 1.36 | 1.32 | 1117 / 1315 |
+| enwik8 16 | +0.02% | 1.22 | 1.28 | 303 / 321 |
+| enwik8 17 | -0.30% | | | |
+| enwik8 18 | +0.59% | | | |
+| enwik8 19 | -0.01% | 1.26 | 1.14 | 337 / 369 |
+| enwik8 20 | +0.50% | | | |
+| enwik8 22 | +1.16% | 0.82 | 1.69 | 876 / 994 |
+
+Compression time is over the 1.15 bar everywhere but enwik8 22 (where the size is also over the 1% bar), so levels 16 to 22 stay preview.
+Outliers by file (first 4 MB of Silesia files, levels 16 and 19): mr +1.1% and +1.3%, x-ray 0.0% and +1.7%, nci +0.9% and +0.4%; the others
+are within 0.4% (osdb is 1.3% smaller). x-ray at levels 18 and up is 1.7% larger than at level 17 for us but 1.2% smaller for the tool: skipping the search at a
+position where a literal is almost as cheap (what level 17 does) brings it to +0.4% and costs 0.3% on text, so the other levels do not do it.
+Inputs of 16 KB or less at levels 13 to 15 can be up to 1.8% larger than the tool's.

@@ -9,7 +9,7 @@ public sealed class ZstdCompressionOptions
     public static ZstdCompressionOptions Default { get; } = new();
 
     /// <summary>
-    /// Gets the compression level, numbered as the <c>zstd</c> command line tool numbers them: 1 to 15 are implemented here (levels 13 to 15 of small sources use the strategy of level 12 until the optimal parsers exist), 0 means
+    /// Gets the compression level, numbered as the <c>zstd</c> command line tool numbers them: 1 to 22 are implemented (20 to 22 are the tool's ultra levels, with windows up to 128 MiB: decoding large inputs compressed at these levels needs <see cref="ZstdDecompressionOptions.MaxWindowSize"/> raised above its 8 MiB default), 0 means
     /// the default (3), and negative levels (-1 and below) trade ratio for speed. The default is 3. Other levels throw
     /// <see cref="ArgumentOutOfRangeException"/> when compression starts.
     /// </summary>

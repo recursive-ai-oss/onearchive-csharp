@@ -86,7 +86,7 @@ public readonly struct ZstdCompressionParameters
     public const int MinLevel = -131072;
 
     /// <summary>The highest level this version implements.</summary>
-    public const int MaxLevel = 15;
+    public const int MaxLevel = 22;
 
     // Level tables, one row per level (row 0 is the base of the negative levels), for source sizes above 256 KiB, up to 256 KiB, up to
     // 128 KiB and up to 16 KiB. Columns: window log, chain log, hash log, search log, minimum match, target length, strategy.
@@ -112,6 +112,13 @@ public readonly struct ZstdCompressionParameters
             22, 22, 22, 4, 5, 32, 6,
             22, 22, 23, 5, 5, 32, 6,
             22, 23, 23, 6, 5, 32, 6,
+            22, 22, 22, 5, 5, 48, 7,
+            23, 23, 22, 5, 4, 64, 7,
+            23, 23, 22, 6, 3, 64, 8,
+            23, 24, 22, 7, 3, 256, 9,
+            25, 25, 23, 7, 3, 256, 9,
+            26, 26, 24, 7, 3, 512, 9,
+            27, 27, 25, 9, 3, 999, 9,
         ],
         [
             18, 12, 13, 1, 5, 0, 1,
@@ -130,6 +137,13 @@ public readonly struct ZstdCompressionParameters
             18, 18, 19, 4, 4, 16, 7,
             18, 18, 19, 4, 3, 32, 7,
             18, 18, 19, 6, 3, 128, 7,
+            18, 19, 19, 6, 3, 128, 8,
+            18, 19, 19, 8, 3, 256, 8,
+            18, 19, 19, 6, 3, 128, 9,
+            18, 19, 19, 8, 3, 256, 9,
+            18, 19, 19, 10, 3, 512, 9,
+            18, 19, 19, 12, 3, 512, 9,
+            18, 19, 19, 13, 3, 999, 9,
         ],
         [
             17, 12, 12, 1, 5, 0, 1,
@@ -148,6 +162,13 @@ public readonly struct ZstdCompressionParameters
             17, 18, 17, 3, 4, 12, 7,
             17, 18, 17, 4, 3, 32, 7,
             17, 18, 17, 6, 3, 256, 7,
+            17, 18, 17, 6, 3, 128, 8,
+            17, 18, 17, 8, 3, 256, 8,
+            17, 18, 17, 10, 3, 512, 8,
+            17, 18, 17, 5, 3, 256, 9,
+            17, 18, 17, 7, 3, 512, 9,
+            17, 18, 17, 9, 3, 512, 9,
+            17, 18, 17, 11, 3, 999, 9,
         ],
         [
             14, 12, 13, 1, 5, 0, 1,
@@ -166,6 +187,13 @@ public readonly struct ZstdCompressionParameters
             14, 15, 14, 5, 3, 32, 8,
             14, 15, 15, 6, 3, 64, 8,
             14, 15, 15, 7, 3, 256, 8,
+            14, 15, 15, 5, 3, 48, 9,
+            14, 15, 15, 6, 3, 128, 9,
+            14, 15, 15, 7, 3, 256, 9,
+            14, 15, 15, 8, 3, 256, 9,
+            14, 15, 15, 8, 3, 512, 9,
+            14, 15, 15, 9, 3, 512, 9,
+            14, 15, 15, 10, 3, 999, 9,
         ],
     ];
 
@@ -176,7 +204,7 @@ public readonly struct ZstdCompressionParameters
     /// Derives the parameters of a level for a source of a known (or unknown) size and an optional dictionary: the size class
     /// picks the table, and the window and tables shrink to what a source of that size can use.
     /// </summary>
-    /// <param name="level">The level: 1 to 15, 0 for the default (3), or negative for the faster-than-1 levels; the level is the acceleration.</param>
+    /// <param name="level">The level: 1 to 22 (20 and above are the reference tool's ultra levels), 0 for the default (3), or negative for the faster-than-1 levels; the level is the acceleration.</param>
     /// <param name="contentSize">The number of bytes to compress, or -1 when unknown.</param>
     /// <param name="dictionarySize">The size of the dictionary content, 0 for none.</param>
     /// <returns>The parameters.</returns>
