@@ -195,7 +195,21 @@ internal sealed class ZstdBlockDecoder
                 ZstdFormat.ThrowCorrupt(blockOffset + p, "block output within the block size limit and the frame content size");
             }
 
-            CopyMatch(buffer, current, (int)offset, matchLength, dictionary);
+            if (offset >= 16 && offset <= current && buffer.Length - current - matchLength >= 16)
+            {
+                // The common case, in line: pieces of 16 bytes that read only bytes written before the piece starts
+                // (the offset is at least 16) and overshoot by less than 16 bytes, inside the buffer (checked above).
+                int from = current - (int)offset;
+                for (int k = 0; k < matchLength; k += 16)
+                {
+                    Raw.Copy16(buffer, current + k, buffer, from + k);
+                }
+            }
+            else
+            {
+                CopyMatch(buffer, current, (int)offset, matchLength, dictionary);
+            }
+
             current += matchLength;
         }
 

@@ -5,6 +5,7 @@
 #
 # Environment: ONEARCHIVE_ZSTD (tool, default zstd), ONEARCHIVE_CORPORA (default ~/onearchive/corpora),
 # ONEARCHIVE_BENCH_TMP (scratch), BENCH_DLL (built ZstdDecodeBench.dll), DOTNET (dotnet executable).
+# The frames we decode are written with --no-check because `zstd -b` frames carry no checksum; checking costs extra.
 # Prints one TSV row per measurement with the tool's version, load average before and after, and peak memory
 # (from /usr/bin/time -v) of both sides. Run it when nothing else heavy is running; it is a timing run.
 set -euo pipefail
@@ -35,7 +36,7 @@ printf 'kind\tfile\tlevel\tcompressed\tref_MB/s\tours_oneshot_MB/s\tours_stream_
 for f in $files; do
   path="$(find_file "$f")"
   for L in $levels; do
-    "$zstd" -"$L" -q -f -c "$path" > "$work/f.zst"
+    "$zstd" -"$L" --no-check -q -f -c "$path" > "$work/f.zst"
     /usr/bin/time -v "$zstd" -b"$L" -e"$L" -i4 "$path" > "$work/ref.out" 2> "$work/ref.time" || true
     ref="$(tr '\r' '\n' < "$work/ref.out" | grep 'MB/s' | tail -1 | sed 's/.*MB\/s, *//; s/ *MB\/s.*//')"
     /usr/bin/time -v "$dotnet" "$dll" big "$work/f.zst" --seconds 4 > "$work/ours.out" 2> "$work/ours.time"
@@ -49,7 +50,7 @@ done
 rm -rf "$work/pl" "$work/frames"; mkdir -p "$work/frames"
 python3 "$here/payloads.py" "$work/pl" 3000 7
 "$zstd" --train -q --maxdict=16384 -o "$work/d16.zdict" "$work"/pl/p0* > /dev/null 2>&1
-for p in "$work"/pl/p0*; do "$zstd" -3 -q -D "$work/d16.zdict" -c "$p" > "$work/frames/$(basename "$p").zst"; done
+for p in "$work"/pl/p0*; do "$zstd" -3 --no-check -q -D "$work/d16.zdict" -c "$p" > "$work/frames/$(basename "$p").zst"; done
 total=$(cat "$work"/pl/p0* | wc -c)
 /usr/bin/time -v "$zstd" -b3 -e3 -i4 -D "$work/d16.zdict" "$work"/pl/p0* > "$work/ref.out" 2> "$work/ref.time" || true
 ref="$(tr '\r' '\n' < "$work/ref.out" | grep 'MB/s' | tail -1 | sed 's/.*MB\/s, *//; s/ *MB\/s.*//')"
