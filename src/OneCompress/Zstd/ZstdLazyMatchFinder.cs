@@ -614,7 +614,8 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     //
     // A node entered within the nice length of the end of a block was ordered by fewer bytes than the others, so what its
     // place in the tree implies about common prefixes does not hold; such nodes carry TaintBit in their stored value, and a walk
-    // compares them from the first byte and forgets the prefix lengths it has relied on so far.
+    // compares them from the first byte and forgets the prefix lengths it has relied on so far. A node that takes over a marked
+    // node's children is marked as well.
     private void TreeWalk(ReadOnlySpan<byte> window, int p, int end, bool record, ref int budget, ref int bestLength, ref uint bestOffset, ref int bestGain)
     {
         uint[] head = _head;
@@ -664,8 +665,16 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
             int node = (c & mask) * 2;
             if (length >= maxLength)
             {
+                // The new node takes the old one's place and children. Those children were ordered against the old node, which is
+                // only the same as ordering them against this one for the bytes the two have in common; if either was entered with a
+                // shortened comparison, that is not all the bytes, so the new root is marked too.
                 Raw.Set(tree, smallSlot, Raw.Get(tree, node));
                 Raw.Set(tree, largeSlot, Raw.Get(tree, node + 1));
+                if (tainted)
+                {
+                    Raw.Set(head, h, (uint)p | TaintBit);
+                }
+
                 return;
             }
 

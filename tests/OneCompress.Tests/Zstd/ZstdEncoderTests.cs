@@ -119,6 +119,65 @@ public class ZstdEncoderTests
         }
     }
 
+    [Theory]
+    [InlineData(5)]
+    [InlineData(9)]
+    [InlineData(13)]
+    [InlineData(15)]
+    public void EveryMatchTheMidFindersReportIsReal(int level)
+    {
+        // Parses many short blocks of repetitive data with repeats far longer than the comparison cap, so that the ends of blocks,
+        // takeovers of old tree nodes and stale table entries all occur, and checks every reported match against the bytes.
+        for (int seed = 1; seed <= 60; seed++)
+        {
+            var random = new Random(seed);
+            byte[] data = new byte[500_000];
+            byte[] unit = new byte[1 + random.Next(random.Next(3) == 0 ? 400 : 6000)];
+            for (int i = 0; i < data.Length; i += unit.Length)
+            {
+                if (i == 0 || random.Next(4) == 0)
+                {
+                    for (int k = 0; k < unit.Length; k++)
+                    {
+                        unit[k] = (byte)('a' + random.Next(3));
+                    }
+                }
+
+                Array.Copy(unit, 0, data, i, Math.Min(unit.Length, data.Length - i));
+                for (int m = random.Next(500); m < unit.Length && i + m < data.Length; m += 50 + random.Next(600))
+                {
+                    data[i + m] = (byte)('a' + random.Next(3));
+                }
+            }
+
+            ZstdCompressionParameters parameters = ZstdCompressionParameters.Resolve(level, -1, 0);
+            var finder = new ZstdLazyMatchFinder();
+            finder.BeginFrame(parameters, null);
+            var store = new ZstdSequenceStore();
+            var reps = new ZstdRepeatOffsets { Offset1 = 1, Offset2 = 4, Offset3 = 8 };
+            int start = 0;
+            while (start < data.Length)
+            {
+                int end = Math.Min(data.Length, start + 100 + random.Next(random.Next(4) == 0 ? 120_000 : 3000));
+                store.Clear();
+                finder.FindSequences(data, start, end, 0, reps, store);
+                int position = start;
+                foreach (ZstdSequence sequence in store.Sequences)
+                {
+                    position += (int)sequence.LiteralLength;
+                    Assert.True(sequence.Offset >= 1 && sequence.Offset <= position, $"level {level} seed {seed}: offset {sequence.Offset} at {position}");
+                    ReadOnlySpan<byte> match = data.AsSpan(position, (int)sequence.MatchLength);
+                    Assert.True(match.SequenceEqual(data.AsSpan(position - (int)sequence.Offset, (int)sequence.MatchLength)), $"level {level} seed {seed}: match of {sequence.MatchLength} at {position}, offset {sequence.Offset}, is not in the data");
+                    position += (int)sequence.MatchLength;
+                    Assert.True(position <= end);
+                    reps.Apply(sequence.Offset, sequence.LiteralLength);
+                }
+
+                start = end;
+            }
+        }
+    }
+
     [Fact]
     public void LevelsAboveTheImplementedRangeAreRejectedClearly()
     {
