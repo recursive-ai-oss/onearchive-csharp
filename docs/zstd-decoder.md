@@ -53,9 +53,32 @@ and the tests and the fuzzer run that way.
 
 ## Sequence loop
 
-A block with 32 or more sequences runs a fast loop. The three FSE tables' rows are expanded once per table build into
-`{baseline value, next-state baseline, state bits, extra bits}` and stored in one array, so a state indexes it directly.
-Each sequence takes one register refill, and the six bit fields are cut from that register at positions known from the three
-rows. The loop makes no calls; it hands the last sequence, anything near the start of the bitstream, offsets below 16,
-copies that would reach past the safe end of the buffer, and matches into a dictionary to a careful path. Blocks with
-fewer sequences use the plain loop over the tier-3 sequence decoder, because expanding the tables costs more than they save.
+Blocks with fewer than 4 sequences run the plain loop over the tier-3 sequence decoder, because setting up the fast loops costs
+more than they save. Blocks with 4 to 63 sequences (the size of game payloads) run `RunSmall`, one function that also handles
+the last sequence and the stream's start. Larger blocks run `RunFast`, with a second instance that stops its refill short of
+the stream's start so that only the last sequence needs the careful path.
+
+- The three FSE tables' rows are expanded when the block's tables are known (`FseDecodingTable.FillSequenceEntries`) and
+  stored in one array, so a state indexes it directly. A row is one 64-bit value: next-state baseline (16 bits), total bits
+  (8), state bits (8), extra bits (8) and the baseline value (24).
+- Each sequence reads the bitstream once into a 64-bit register and cuts the six fields from it with the bit counts held
+  in the rows; sequences that need more than 56 bits take a slower read.
+- Literals are copied with 16-byte moves. The literals buffer keeps 32 bytes of slack for that, and raw literals up to
+  4096 bytes are copied into it.
+- Matches with an offset of 8 or more copy 8 or 16 bytes at a time; offsets below 8 use a pattern fill; matches that reach
+  into a dictionary are copied inline when 32 bytes of dictionary follow the match, otherwise by the careful path.
+- Corrupt data, a copy that would pass the safe end of the output buffer and anything else unusual goes to `RunGeneral`, which
+  checks every bound and is the only code that raises errors.
+
+## Literals
+
+The four-stream Huffman loop keeps one register per stream with a marker bit above the data, so the bits used come from a
+trailing-zero count, and it refills in batches sized for the worst case. A single-stream section of 32 or more literals that
+uses a dictionary's table decodes two symbols per lookup from a pair table built on first use (published with an
+`Interlocked` exchange; the dictionary is shared between threads and the table is never changed after it is published).
+
+## Speed
+
+Bar rows are in `docs/zstd-decoder-bench.md` (method: memory to memory, warm, best of the pass, against `zstd -b<L> -e<L>`
+on the same frames; `tools/zstd-decode-bench/run.sh` and `game.sh`). With the `Checked` configuration the decoder is about
+27% slower than with the unchecked accessors (silesia.tar, level 3 frames, x64: 1787 against 1315 MB/s).

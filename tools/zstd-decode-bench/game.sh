@@ -53,7 +53,7 @@ for g in $games; do
         i=$((i + 1))
         "$zstd" -"$L" --no-check -q -D "$work/d.zdict" -c "$f" > "$work/frames/$(printf '%06d' "$i").zst"
       done < "$work/test.list"
-      ref=$("$zstd" -b"$L" -e"$L" -i"$seconds" -D "$work/d.zdict" --filelist="$work/test.list" 2>&1 | tr '\r' '\n' | grep 'MB/s' | tail -1 | sed 's/.*MB\/s, *//; s/ *MB\/s.*//')
+      ref=$("$zstd" -b"$L" -e"$L" -i"$seconds" -D "$work/d.zdict" --filelist="$work/test.list" 2>&1 | tr '\r' '\n' | grep -E 'MB/s, *[0-9.]+ *MB/s' | tail -1 | sed 's/.*MB\/s, *//; s/ *MB\/s.*//')
       ours=$("$dotnet" "$dll" small "$work/d.zdict" "$work/frames" --seconds "$seconds" | awk -F'\t' '{ split($4, a, " "); print a[1] }')
       awk -v g="$g" -v k="$k" -v d="$d" -v L="$L" -v n="$files" -v b="$bytes" -v r="$ref" -v o="$ours" \
         'BEGIN { rp = r * 1e6 / (b / n); printf "%s\t%s\t%s\t%s\t%d\t%d\t%.0f\t%.0f\t%.2f\n", g, k, d, L, n, b, rp, o, o / rp }'

@@ -218,26 +218,40 @@ internal sealed class ZstdBlockDecoder
     {
         if (!ReferenceEquals(_rowsLiteralLengths, literalLengths) || _rowsLiteralLengthsVersion != literalLengths.Version)
         {
-            literalLengths.FillSequenceEntries(0, _rows.AsSpan(0));
+            FillRows(literalLengths, 0, _literalLengthScratch, 0);
             _rowsLiteralLengths = literalLengths;
             _rowsLiteralLengthsVersion = literalLengths.Version;
         }
 
         if (!ReferenceEquals(_rowsOffsets, offsets) || _rowsOffsetsVersion != offsets.Version)
         {
-            offsets.FillSequenceEntries(1, _rows.AsSpan(1 << FseDecodingTable.MaxAccuracyLog));
+            FillRows(offsets, 1, _offsetScratch, 1 << FseDecodingTable.MaxAccuracyLog);
             _rowsOffsets = offsets;
             _rowsOffsetsVersion = offsets.Version;
         }
 
         if (!ReferenceEquals(_rowsMatchLengths, matchLengths) || _rowsMatchLengthsVersion != matchLengths.Version)
         {
-            matchLengths.FillSequenceEntries(2, _rows.AsSpan(2 << FseDecodingTable.MaxAccuracyLog));
+            FillRows(matchLengths, 2, _matchLengthScratch, 2 << FseDecodingTable.MaxAccuracyLog);
             _rowsMatchLengths = matchLengths;
             _rowsMatchLengthsVersion = matchLengths.Version;
         }
 
         return _rows;
+    }
+
+    // A scratch table is rebuilt for every block that sends a new description, so its rows are written straight into the combined
+    // array. A dictionary's or predefined table never changes, so its rows are expanded once and copied.
+    private void FillRows(FseDecodingTable table, int kind, FseDecodingTable scratch, int offset)
+    {
+        if (ReferenceEquals(table, scratch))
+        {
+            table.FillSequenceEntries(kind, _rows.AsSpan(offset));
+        }
+        else
+        {
+            Array.Copy(table.GetSequenceEntries(kind), 0, _rows, offset, 1 << table.AccuracyLog);
+        }
     }
 
     // The sequence loop of a block (RFC 8878 §3.1.1.4): decode each sequence's three codes, copy its literals, then
@@ -1310,4 +1324,3 @@ internal sealed class ZstdBlockDecoder
         }
     }
 }
-

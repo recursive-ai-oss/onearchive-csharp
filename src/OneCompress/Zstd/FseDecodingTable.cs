@@ -69,6 +69,33 @@ public sealed class FseDecodingTable
 
     internal FseEntry[] EntryArray => _entries;
 
+    private SequenceEntry[]? _sequenceEntries;
+    private int _sequenceKind = -1;
+
+    /// <summary>
+    /// Gets the rows of <see cref="FillSequenceEntries"/> for a table that is never rebuilt (a dictionary's or a predefined one),
+    /// computed on first use. Tables shared between threads are never rebuilt, and a racing first use writes the same values.
+    /// The caller must always ask for the same kind.
+    /// </summary>
+    internal SequenceEntry[] GetSequenceEntries(int kind)
+    {
+        SequenceEntry[]? array = Volatile.Read(ref _sequenceEntries);
+        if (array is not null && Volatile.Read(ref _sequenceKind) == kind)
+        {
+            return array;
+        }
+
+        if (array is null)
+        {
+            Interlocked.CompareExchange(ref _sequenceEntries, new SequenceEntry[1 << MaxAccuracyLog], null);
+            array = _sequenceEntries!;
+        }
+
+        FillSequenceEntries(kind, array);
+        Volatile.Write(ref _sequenceKind, kind);
+        return array;
+    }
+
     /// <summary>
     /// Writes the rows with the symbol meanings of a sequence field expanded (0 literals length, 1 offset, 2 match length)
     /// into <paramref name="destination"/>, one per state. The next-state baselines are offset by <c>kind &lt;&lt; MaxAccuracyLog</c>,
@@ -311,6 +338,7 @@ public sealed class FseDecodingTable
 
         _accuracyLog = accuracyLog;
         _maxSymbol = normalizedCounts.Length - 1;
+        _sequenceKind = -1;
         Version++;
     }
 
@@ -321,6 +349,7 @@ public sealed class FseDecodingTable
         _entries[0] = new FseEntry { Symbol = symbol, NumBits = 0, Baseline = 0 };
         _accuracyLog = 0;
         _maxSymbol = symbol;
+        _sequenceKind = -1;
         Version++;
     }
 }
