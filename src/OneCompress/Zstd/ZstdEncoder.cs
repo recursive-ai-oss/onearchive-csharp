@@ -21,6 +21,10 @@ public sealed class ZstdEncoder
     private readonly ZstdCompressionOptions _options;
     private readonly ZstdFastMatchFinder _fastFinder = new();
     private ZstdLazyMatchFinder? _lazyFinder;
+    private ZstdOptimalMatchFinder? _optimalFinder;
+    private ZstdBlockSplitter? _splitter;
+    private ZstdSequenceStore? _subStore;
+    private bool _split;
     private ZstdMatchFinder _finder;
     private readonly ZstdBlockWriter _writer = new();
     private readonly ZstdSequenceStore _store = new();
@@ -68,7 +72,7 @@ public sealed class ZstdEncoder
     {
         ArgumentOutOfRangeException.ThrowIfNegative(sourceLength);
         long blocks = Math.Max(1, ((long)sourceLength + BlockSize - 1) / BlockSize);
-        long bound = ZstdFrameWriter.MaxHeaderSize + sourceLength + (3 * blocks) + 4;
+        long bound = ZstdFrameWriter.MaxHeaderSize + sourceLength + (3 * blocks * ZstdBlockSplitter.MaxSegments) + 4;
         return (int)Math.Min(bound, int.MaxValue - 64);
     }
 
@@ -119,7 +123,7 @@ public sealed class ZstdEncoder
         written = 0;
         ZstdCompressionParameters parameters = ResolveParameters(declaredSize);
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
-        _finder = parameters.Strategy >= ZstdStrategy.Greedy ? _lazyFinder ??= new ZstdLazyMatchFinder() : _fastFinder;
+        SelectFinder(parameters.Strategy);
         _finder.BeginFrame(parameters, dictionary);
         _writer.BeginFrame(dictionary, parameters.CompressLiterals);
         int p;
@@ -195,14 +199,14 @@ public sealed class ZstdEncoder
     {
         int n = end - start;
         ReadOnlySpan<byte> block = window[start..end];
-        int needed = n + 3 + OutputSlack;
+        int needed = n + 3 + OutputSlack + (_split ? 3 * (ZstdBlockSplitter.MaxSegments - 1) : 0);
         Span<byte> target = destination;
         bool scratch = destination.Length < needed;
         if (scratch)
         {
-            if (_blockScratch.Length < BlockSize + 3 + OutputSlack)
+            if (_blockScratch.Length < BlockSize + 3 + OutputSlack + (3 * ZstdBlockSplitter.MaxSegments))
             {
-                _blockScratch = new byte[BlockSize + 3 + OutputSlack];
+                _blockScratch = new byte[BlockSize + 3 + OutputSlack + (3 * ZstdBlockSplitter.MaxSegments)];
             }
 
             target = _blockScratch;
@@ -217,7 +221,7 @@ public sealed class ZstdEncoder
         {
             _store.Clear();
             _finder.FindSequences(window, start, end, windowStartPosition, _writer.RepeatOffsets, _store);
-            size = _writer.WriteBlock(block, _store, last, target);
+            size = _split ? WriteSplit(block, last, target) : _writer.WriteBlock(block, _store, last, target);
         }
 
         fits = true;
@@ -233,6 +237,47 @@ public sealed class ZstdEncoder
         }
 
         return size;
+    }
+
+    // Writes the parsed block (in _store) as one block or, when the sequences' statistics change enough to pay for another set of
+    // headers and tables, as several consecutive blocks.
+    private int WriteSplit(ReadOnlySpan<byte> block, bool last, Span<byte> target)
+    {
+        ZstdBlockSplitter splitter = _splitter ??= new ZstdBlockSplitter();
+        int segments = splitter.Plan(_store, _writer.RepeatOffsets);
+        if (segments < 2)
+        {
+            return _writer.WriteBlock(block, _store, last, target);
+        }
+
+        _subStore ??= new ZstdSequenceStore();
+        ReadOnlySpan<ZstdSequence> sequences = _store.Sequences;
+        ReadOnlySpan<byte> literals = _store.Literals;
+        int written = 0;
+        for (int s = 0; s < segments; s++)
+        {
+            _subStore.Clear();
+            _subStore.BeginTracking(splitter.Reps[s]);
+            int literalPosition = splitter.LiteralStart[s];
+            for (int i = splitter.SequenceStart[s]; i < splitter.SequenceStart[s + 1]; i++)
+            {
+                ZstdSequence q = sequences[i];
+                _subStore.AppendCopied(literals.Slice(literalPosition, (int)q.LiteralLength), q.LiteralLength, q.MatchLength, q.Offset, splitter.OffsetValue(i));
+                literalPosition += (int)q.LiteralLength;
+            }
+
+            if (s == segments - 1)
+            {
+                _subStore.AppendLiterals(literals[literalPosition..]);
+            }
+
+            ZstdRepeatOffsets end = splitter.Reps[s + 1];
+            _subStore.SetTrackedEnd(end.Offset1, end.Offset2, end.Offset3);
+            int byteEnd = s == segments - 1 ? block.Length : splitter.ByteStart[s + 1];
+            written += _writer.WriteBlock(block[splitter.ByteStart[s]..byteEnd], _subStore, last && s == segments - 1, target[written..]);
+        }
+
+        return written;
     }
 
     // ---- Streaming ----
@@ -381,12 +426,30 @@ public sealed class ZstdEncoder
         return false;
     }
 
+    private void SelectFinder(ZstdStrategy strategy)
+    {
+        _split = strategy >= ZstdStrategy.BinaryTreeOptimal;
+        if (strategy >= ZstdStrategy.BinaryTreeOptimal)
+        {
+            _finder = _optimalFinder ??= new ZstdOptimalMatchFinder();
+            return;
+        }
+
+        if (strategy >= ZstdStrategy.Greedy)
+        {
+            _finder = _lazyFinder ??= new ZstdLazyMatchFinder();
+            return;
+        }
+
+        _finder = _fastFinder;
+    }
+
     private void StartFrame()
     {
         long pledged = _options.ContentSize ?? -1;
         ZstdCompressionParameters parameters = ResolveParameters(pledged);
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
-        _finder = parameters.Strategy >= ZstdStrategy.Greedy ? _lazyFinder ??= new ZstdLazyMatchFinder() : _fastFinder;
+        SelectFinder(parameters.Strategy);
         _finder.BeginFrame(parameters, dictionary);
         _writer.BeginFrame(dictionary, parameters.CompressLiterals);
         _hash = new XxHash64(0);

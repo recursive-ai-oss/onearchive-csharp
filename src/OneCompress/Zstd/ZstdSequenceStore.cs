@@ -124,6 +124,23 @@ public sealed class ZstdSequenceStore
         _offsetValues[_sequenceCount++] = offsetValue;
     }
 
+    // Appends a sequence together with its literals and the offset value the sequence was coded with (see AppendTracked);
+    // used to cut a block's store into several blocks.
+    internal void AppendCopied(ReadOnlySpan<byte> literals, uint literalLength, uint matchLength, uint offset, uint offsetValue)
+    {
+        AppendLiterals(literals);
+        if (_sequenceCount == _sequences.Length)
+        {
+            Grow();
+        }
+
+        ref ZstdSequence seq = ref _sequences[_sequenceCount];
+        seq.LiteralLength = literalLength;
+        seq.MatchLength = matchLength;
+        seq.Offset = offset;
+        _offsetValues[_sequenceCount++] = offsetValue;
+    }
+
     /// <summary>Records the offsets in force after the block's last sequence.</summary>
     internal void SetTrackedEnd(uint offset1, uint offset2, uint offset3) =>
         _trackedEnd = new ZstdRepeatOffsets { Offset1 = offset1, Offset2 = offset2, Offset3 = offset3 };

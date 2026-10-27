@@ -22,8 +22,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// search that reaches it, so blocks continue each other seamlessly. A dictionary's search chains are built once per parameter set
 /// (see <see cref="ZstdCompressionDictionary"/>); a search that exhausts the frame's own candidates continues into them with the
 /// attempts it has left. The binary-tree strategy's own positions form a tree; the dictionary side is searched as chains.</para>
-/// <para>Strategies above <see cref="ZstdStrategy.BinaryTreeLazy2"/> are accepted and parsed as binary-tree lazy2 until their
-/// optimal parsers exist.</para>
+/// <para>The optimal strategies above <see cref="ZstdStrategy.BinaryTreeLazy2"/> have their own finder, <see cref="ZstdOptimalMatchFinder"/>.</para>
 /// </remarks>
 public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
 {

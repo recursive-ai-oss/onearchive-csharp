@@ -38,13 +38,15 @@ internal static class ZstdEncoderTargets
             return;
         }
 
-        int level = (input[0] % 25) - 9; // -9 to 15, so level 0, the negative levels and every strategy occur
+        int level = (input[0] % 32) - 9; // -9 to 22, so level 0, the negative levels and every strategy occur
         int flags = input[1];
         int piece = 1 << (input[2] % 19);
         ReadOnlySpan<byte> data = input[3..];
-        if (data.Length > 1 << 21)
+        // The slowest levels get smaller inputs so that a run covers many of them.
+        int cap = level >= 16 ? 1 << 18 : 1 << 21;
+        if (data.Length > cap)
         {
-            data = data[..(1 << 21)];
+            data = data[..cap];
         }
 
         ZstdCompressionDictionary? dictionary = (flags >> 4 & 3) switch { 1 => s_formatted, 2 => s_raw, _ => null };

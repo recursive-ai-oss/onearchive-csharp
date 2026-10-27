@@ -6,7 +6,7 @@ namespace RecursiveAI.OneCompress.Tests;
 /// <summary>Round trips of the Zstandard encoder through this library's decoder; the zstd tool is exercised in the interop tests.</summary>
 public class ZstdEncoderTests
 {
-    public static TheoryData<int> Levels() => new() { -131072, -50, -7, -5, -3, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+    public static TheoryData<int> Levels() => new() { -131072, -50, -7, -5, -3, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 22 };
 
     internal static byte[] Text(int length, int seed)
     {
@@ -183,6 +183,14 @@ public class ZstdEncoderTests
     [InlineData(9, 20_000_000, 22, 20, 21, 4, 5, 16, ZstdStrategy.Lazy2)]
     [InlineData(12, 20_000_000, 22, 22, 23, 6, 5, 32, ZstdStrategy.Lazy2)]
     [InlineData(15, 20_000_000, 22, 23, 23, 6, 5, 32, ZstdStrategy.BinaryTreeLazy2)]
+    [InlineData(16, 2_000_000_000, 22, 22, 22, 5, 5, 48, ZstdStrategy.BinaryTreeOptimal)]
+    [InlineData(19, 2_000_000_000, 23, 24, 22, 7, 3, 256, ZstdStrategy.BinaryTreeUltra2)]
+    [InlineData(22, 2_000_000_000, 27, 27, 25, 9, 3, 999, ZstdStrategy.BinaryTreeUltra2)]
+    [InlineData(17, 262_144, 18, 19, 19, 8, 3, 256, ZstdStrategy.BinaryTreeUltra)]
+    [InlineData(20, 131_072, 17, 18, 17, 7, 3, 512, ZstdStrategy.BinaryTreeUltra2)]
+    [InlineData(16, 16_384, 14, 15, 15, 5, 3, 48, ZstdStrategy.BinaryTreeUltra2)]
+    [InlineData(13, 16_384, 14, 15, 14, 5, 3, 32, ZstdStrategy.BinaryTreeUltra)]
+    [InlineData(13, 262_144, 18, 18, 19, 4, 4, 16, ZstdStrategy.BinaryTreeOptimal)]
     [InlineData(4, 262_144, 18, 16, 17, 3, 5, 2, ZstdStrategy.Greedy)]
     [InlineData(4, 131_072, 17, 17, 17, 2, 4, 0, ZstdStrategy.DoubleFast)]
     [InlineData(4, 4097, 13, 13, 14, 4, 4, 2, ZstdStrategy.Greedy)]
@@ -199,7 +207,7 @@ public class ZstdEncoderTests
     [Fact]
     public void LevelsAboveTheImplementedRangeAreRejectedClearly()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = 16 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = 23 }));
         Assert.Throws<ArgumentOutOfRangeException>(() => new ZstdEncoder(new ZstdCompressionOptions { Level = -131073 }));
     }
 
