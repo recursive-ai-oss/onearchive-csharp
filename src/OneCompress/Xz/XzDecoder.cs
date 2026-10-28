@@ -684,11 +684,6 @@ public sealed class XzDecoder : IStepDecoder
                     throw Bad(at + fieldAt, "a branch filter start offset that is a multiple of the instruction alignment");
                 }
 
-                if (arch == BranchArchitecture.RiscV)
-                {
-                    throw new NotSupportedException("The RISC-V filter is not available yet.");
-                }
-
                 _filters[_filterCount++] = new BranchFilter(arch, start);
             }
             else

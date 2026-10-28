@@ -162,6 +162,20 @@ internal static class OneShot
             OperationStatus status = decoder.Decompress(source[consumed..], destination[written..], out int c, out int w);
             consumed += c;
             written += w;
+            if (status == OperationStatus.DestinationTooSmall)
+            {
+                // The destination is full. A stream of unknown size may still be about to end (an end marker), which only
+                // trying one more byte shows.
+                status = decoder.Decompress(source[consumed..], probe, out c, out int w2);
+                if (w2 > 0)
+                {
+                    return false;
+                }
+
+                consumed += c;
+                w = 0;
+            }
+
             switch (status)
             {
                 case OperationStatus.Done:
@@ -177,30 +191,8 @@ internal static class OneShot
 
                     bytesWritten = written;
                     return true;
-                case OperationStatus.NeedMoreData:
+                default: // NeedMoreData
                     decoder.ThrowIfIncomplete();
-                    bytesWritten = written;
-                    return true;
-                default:
-                    // The destination is full. A stream of unknown size may still be about to end (an end marker), which only
-                    // trying one more byte shows.
-                    OperationStatus next = decoder.Decompress(source[consumed..], probe, out int c2, out int w2);
-                    if (w2 > 0)
-                    {
-                        return false;
-                    }
-
-                    consumed += c2;
-                    if (next == OperationStatus.NeedMoreData)
-                    {
-                        decoder.ThrowIfIncomplete();
-                    }
-
-                    if (failOnTrailing && consumed < source.Length)
-                    {
-                        throw new CompressionFormatException(format, consumed, "the end of the data after the " + format + " stream");
-                    }
-
                     bytesWritten = written;
                     return true;
             }

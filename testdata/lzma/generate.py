@@ -121,6 +121,33 @@ def code_like(arch, seed, size):
     return bytes(out[:size])
 
 
+def riscv_special(seed, size):
+    """RISC-V words that exercise every branch of the filter: JAL with several registers, AUIPC pairs, markers and their escapes."""
+    r = SplitMix(seed)
+    out = bytearray()
+    while len(out) < size:
+        v = r.next()
+        k = v % 9
+        rd = [1, 5, 3, 2, 0, 31][(v >> 8) % 6]
+        u = (v >> 16) & 0xFFFFF
+        w2 = (v >> 32) & 0xFFFFFFFF
+        if k == 0:
+            out += (0x6F | (rd << 7) | (u << 12)).to_bytes(4, "little")
+        elif k == 1:
+            out += (0x17 | (rd << 7) | (u << 12)).to_bytes(4, "little") + ((w2 & ~0xF8000) | (rd << 15) | 3).to_bytes(4, "little")
+        elif k == 2:
+            out += (0x17 | (2 << 7) | ((u | 0x3) & 0xFFFFF) << 12 & 0xFFFFFFFF).to_bytes(4, "little") + w2.to_bytes(4, "little")
+        elif k == 3:
+            out += (0x17 | (2 << 7) | (((u & ~0x7FFF) | 0x8003) & 0xFFFFF) << 12).to_bytes(4, "little") + w2.to_bytes(4, "little")
+        elif k == 4:
+            out += (0x17 | (rd << 7) | (u << 12)).to_bytes(4, "little") + w2.to_bytes(4, "little")
+        elif k == 5:
+            out += (w2 & 0xFFFF).to_bytes(2, "little")
+        else:
+            out += w2.to_bytes(4, "little")
+    return bytes(out[:size])
+
+
 def inputs():
     big = text(1, 150000)
     return {
@@ -187,6 +214,12 @@ def main():
         add(f"code-{fname}.xz", data, x([f"--{fname}", "--lzma2=preset=4"], data), f"xz --{fname} --lzma2=preset=4")
         add(f"code-{fname}-start.xz", data, x([f"--{fname}=start=4096", "--lzma2=preset=4"], data), f"xz --{fname}=start=4096 --lzma2=preset=4")
         add(f"code-{fname}-text.xz", sources["text20k"], x([f"--{fname}", "--lzma2=preset=4"], sources["text20k"]), f"xz --{fname} --lzma2=preset=4")
+    for fname, arch in ("x86", "x86"), ("arm", "arm"), ("armthumb", "thumb"), ("arm64", "arm64"), ("powerpc", "ppc"), ("ia64", "ia64"), ("sparc", "sparc"), ("riscv", "riscv"):
+        data = random_bytes(21, 12000)
+        add(f"random-{fname}.xz", data, x([f"--{fname}", "--lzma2=preset=1"], data), f"xz --{fname} --lzma2=preset=1")
+    data = riscv_special(22, 30000)
+    add("code-riscv-special.xz", data, x(["--riscv", "--lzma2=preset=3"], data), "xz --riscv --lzma2=preset=3")
+    add("code-riscv-special-start.xz", data, x(["--riscv=start=2", "--lzma2=preset=3"], data), "xz --riscv=start=2 --lzma2=preset=3")
     for dist in (1, 2, 4, 7, 16, 256):
         add(f"structured60k-delta{dist}.xz", sources["structured60k"], x([f"--delta=dist={dist}", "--lzma2=preset=4"], sources["structured60k"]), f"xz --delta=dist={dist} --lzma2=preset=4")
     data = code_like("x86", 12, 30000)

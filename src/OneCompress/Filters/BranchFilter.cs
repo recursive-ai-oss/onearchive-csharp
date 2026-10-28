@@ -396,5 +396,114 @@ public sealed class BranchFilter
         return i;
     }
 
-    private int RiscV(Span<byte> data) => throw new NotSupportedException("The RISC-V filter is not available yet.");
+    // RISC-V: JAL with a link register (x1 or x5), and AUIPC followed by an instruction that uses the same register (the usual
+    // way to reach a far target, with JALR, a load or an ADDI). The reference tool's encoder was observed as a black box to
+    // establish the rules below. Positions are examined every two bytes while eight bytes are available; a JAL that matches
+    // moves on by 4, a pair by 8, an AUIPC that is not a pair by 6 (or by 4 when its register is x0 or x2).
+    //
+    // A converted pair is stored as the marker "auipc x2" whose upper 20 bits carry the low 20 bits of the second instruction, followed by
+    // the absolute target as a big-endian word. An original "auipc x2" that looks like such a marker is stored escaped, as an AUIPC
+    // of another register followed by a word that looks like the second instruction of a pair, which no encoder output otherwise has.
+    private int RiscV(Span<byte> data)
+    {
+        int i = 0;
+        while (i + 8 <= data.Length)
+        {
+            uint pc = _position + (uint)i;
+            byte b0 = data[i];
+            if (b0 == 0xEF)
+            {
+                byte b1 = data[i + 1];
+                if ((b1 & 0x0D) != 0)
+                {
+                    i += 2;
+                    continue;
+                }
+
+                byte b2 = data[i + 2];
+                byte b3 = data[i + 3];
+                if (_encode)
+                {
+                    // The 21-bit JAL offset is gathered from its scattered fields, made absolute, and stored as a plain big-endian field.
+                    uint addr = (((uint)b1 & 0xF0) << 8) | (((uint)b2 & 0x0F) << 16) | (((uint)b2 & 0x10) << 7) | (((uint)b2 & 0xE0) >> 4)
+                        | (((uint)b3 & 0x7F) << 4) | (((uint)b3 & 0x80) << 13);
+                    addr += pc;
+                    data[i + 1] = (byte)(((uint)b1 & 0x0F) | ((addr >> 13) & 0xF0));
+                    data[i + 2] = (byte)(addr >> 9);
+                    data[i + 3] = (byte)(addr >> 1);
+                }
+                else
+                {
+                    uint addr = (((uint)b1 & 0xF0) << 13) | ((uint)b2 << 9) | ((uint)b3 << 1);
+                    addr -= pc;
+                    data[i + 1] = (byte)(((uint)b1 & 0x0F) | ((addr >> 8) & 0xF0));
+                    data[i + 2] = (byte)(((addr >> 16) & 0x0F) | ((addr >> 7) & 0x10) | ((addr << 4) & 0xE0));
+                    data[i + 3] = (byte)(((addr >> 4) & 0x7F) | ((addr >> 13) & 0x80));
+                }
+
+                i += 4;
+                continue;
+            }
+
+            if ((b0 & 0x7F) != 0x17)
+            {
+                i += 2;
+                continue;
+            }
+
+            uint inst = BinaryPrimitives.ReadUInt32LittleEndian(data[i..]);
+            if ((inst & 0xE80) != 0)
+            {
+                // AUIPC with a register other than x0 and x2.
+                uint inst2 = BinaryPrimitives.ReadUInt32LittleEndian(data[(i + 4)..]);
+                if ((((inst >> 7) ^ (inst2 >> 15)) & 31) != 0 || (inst2 & 3) != 3)
+                {
+                    i += 6;
+                    continue;
+                }
+
+                if (_encode)
+                {
+                    uint addr = (inst & 0xFFFFF000) + (uint)((int)inst2 >> 20) + pc;
+                    BinaryPrimitives.WriteUInt32LittleEndian(data[i..], 0x117 | (inst2 << 12));
+                    BinaryPrimitives.WriteUInt32BigEndian(data[(i + 4)..], addr);
+                }
+                else
+                {
+                    // Only an escaped marker looks like this.
+                    uint original = (inst & 0xFFFFF000) + (inst2 >> 20);
+                    BinaryPrimitives.WriteUInt32LittleEndian(data[i..], 0x117 | (inst2 << 12));
+                    BinaryPrimitives.WriteUInt32LittleEndian(data[(i + 4)..], original);
+                }
+
+                i += 8;
+                continue;
+            }
+
+            // AUIPC x0 or x2: only a word that looks like a marker (x2, bits 13:12 set, a source register other than x0 and x2) matters.
+            if ((inst & 0x3FFF) != 0x3117 || ((inst >> 27) & 0x1D) == 0)
+            {
+                i += 4;
+                continue;
+            }
+
+            uint rs = inst >> 27;
+            if (_encode)
+            {
+                uint second = BinaryPrimitives.ReadUInt32LittleEndian(data[(i + 4)..]);
+                BinaryPrimitives.WriteUInt32LittleEndian(data[i..], 0x17 | (rs << 7) | (second & 0xFFFFF000));
+                BinaryPrimitives.WriteUInt32LittleEndian(data[(i + 4)..], (inst >> 12) | (second << 20));
+            }
+            else
+            {
+                uint addr = BinaryPrimitives.ReadUInt32BigEndian(data[(i + 4)..]) - pc;
+                BinaryPrimitives.WriteUInt32LittleEndian(data[(i + 4)..], (inst >> 12) | (addr << 20));
+                BinaryPrimitives.WriteUInt32LittleEndian(data[i..], 0x17 | (rs << 7) | ((addr + 0x800) & 0xFFFFF000));
+            }
+
+            i += 8;
+        }
+
+        return i;
+    }
 }

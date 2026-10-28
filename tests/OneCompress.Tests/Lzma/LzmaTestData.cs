@@ -55,6 +55,11 @@ internal static class LzmaTestData
             OperationStatus status = step(compressed.AsSpan(pos, Math.Min(inputPiece, compressed.Length - pos)), buffer, out int c, out int w);
             pos += c;
             output.Write(buffer, 0, w);
+            if (status == OperationStatus.Done && c == 0 && w == 0)
+            {
+                break;
+            }
+
             stalls = c == 0 && w == 0 ? stalls + 1 : 0;
             Assert.True(stalls < 3 || pos + inputPiece <= compressed.Length, "no progress");
             if (pos >= compressed.Length && status != OperationStatus.DestinationTooSmall && !(status == OperationStatus.Done && pos < compressed.Length))
