@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A timing loop for the xz and lzip encoders and decoders, and the 7z writer's sizes. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>LzmaBench</AssemblyName>
+    <RootNamespace>RecursiveAI.Bench</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
+    <ProjectReference Include="../../src/OneArchive/OneArchive.csproj" />
+  </ItemGroup>
+
+</Project>

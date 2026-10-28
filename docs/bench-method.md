@@ -143,6 +143,30 @@ peak resident memory of each process, and pass or FAIL against the usual limits 
 The row header records CPU, core count, SDK and load before and after. Corpora are silesia.tar and enwik8 for the
 bar; the Canterbury and single Silesia files are used for direction.
 
+## LZMA family (xz, lzip, 7z)
+
+References: `xz` (pinned 5.8.4, `-T1`), `lzip` (pinned 1.26) and `7zz` (pinned), all run as black-box command-line programs.
+Ours: `Xz.TryCompress` at preset N, `Lzip.TryCompress` at level N, `Xz.TryDecompress`/`Lzip.TryDecompress`, and `SevenZipWriter`
+at level N, all one call in memory over a buffer provided by the caller (`tools/lzma-bench/LzmaBench`).
+
+- **Compress and decode rows** (`tools/lzma-bench/bar.sh --mode enc|dec`). The tools have no in-memory benchmark mode, so a
+  tool's time is the wall time of one run with the file on standard input and the output to a file or `/dev/null`, minus the
+  wall time of the same tool on a one-byte input (best of 20, about a millisecond), best of the repeats. Our time is the best
+  of the repeats of the in-process call. A first pass of ours longer than 8 s counts as a repeat; a shorter one is a warm-up and
+  is dropped. Rates are MB/s of uncompressed data. Peak memory comes from `/usr/bin/time -v` (`-l` on macOS) around the tool
+  and around our process; ours holds the whole input and output, as the in-memory API does, the tool streams.
+- **Levels.** xz presets 0-9 and lzip levels 0-9, the same number on both sides; the extreme variants (`-9e`) are not run. Both
+  sides use one thread (`xz -T1`; lzip has no threads).
+- **Decode rows** take the tool's own output at the level and ours at the level, and decode each with the tool (`-d -c`) and
+  with ours; the default levels are 0, 6 and 9. The compressed files are made once per job and shared between steps.
+- **Round trip.** Every compressed output of ours that is written is decoded by our decoder and compared with the input, outside
+  the timed region. The reference tool's decode of ours is covered by the interop tests.
+- **7z rows** compare sizes only: a one-file archive written by `SevenZipWriter` at level N against `7zz a -mx=N -mmt=1` (LZMA2,
+  solid, compressed header on both sides), N = 1, 5, 9.
+- **Pass rule** as for the other codecs: size at most 1.01 times the tool's, and the tool's rate at most 1.15 times ours.
+  Chunk `0.3` of `tools/bar-x64/run.sh` runs the steps in order of cost (presets 0-3, decode, lzip 0-3, 7z sizes, then presets
+  4-6, then 7-9 with a single repeat) so that a deadline drops the slowest rows first.
+
 ## Running
 
 ```

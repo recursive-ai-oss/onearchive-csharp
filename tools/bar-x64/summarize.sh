@@ -242,6 +242,70 @@ if [ -s "$dir/bzip2-dec.tsv" ]; then
     END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/bzip2-dec.tsv"
 fi
 
+# LZMA family compress rows: xz against `xz -T1`, lzip against `lzip`.
+# cols: file codec level ref_size ours_size size_ratio ref_MBps ours_MBps ours_med ours_min time_ratio ref_peak_KB ours_peak_KB verdict
+for f in "$dir"/xz-enc*.tsv "$dir"/lzip-enc*.tsv; do
+  [ -s "$f" ] || continue
+  name="$(basename "$f" .tsv)"
+  echo; echo "## $name (compress; ours/ref rate is best-of-repeats, with median and slowest of ours)"; echo
+  grep '^# \(cpu\|reference\)' "$f" | sed 's/^# */- /' | head -3
+  echo
+  echo "| file | level | ref bytes | our bytes | size | ours/ref rate best (median, min) | ref MB/s | peak MB: ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 14 { next }
+    {
+      sz = $6 + 0; rr = ($7 > 0) ? $8 / $7 : 0; rm = ($7 > 0) ? $9 / $7 : 0; rn = ($7 > 0) ? $10 / $7 : 0
+      ok = (sz <= 1.01 && rr >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s %s L%s (size %+.2f%%, rate %.2f)", $1, $2, $3, (sz - 1) * 100, rr) }
+      printf "| %s | %s %s | %s | %s | %+.2f%% | %.2f (%.2f, %.2f) | %s | %d / %d | %s |\n", $1, $2, $3, $4, $5, (sz - 1) * 100, rr, rm, rn, $7, $12 / 1024, $13 / 1024, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$f"
+done
+
+# LZMA family decode: the tool against ours, on the tool's output and on ours.
+# cols: file codec level source ref_MBps ours_MBps ours_med ours_min time_ratio ref_peak_KB ours_peak_KB verdict
+for f in "$dir/xz-dec.tsv" "$dir/lzip-dec.tsv"; do
+  [ -s "$f" ] || continue
+  name="$(basename "$f" .tsv)"
+  echo; echo "## $name (decode speed, ours/tool rate; source = whose compressed bytes are decoded)"; echo
+  echo "| file | codec | level | source | ours/ref rate best (median, min) | ref MB/s | peak MB: ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 12 { next }
+    {
+      rr = ($5 > 0) ? $6 / $5 : 0; rm = ($5 > 0) ? $7 / $5 : 0; rn = ($5 > 0) ? $8 / $5 : 0
+      ok = (rr >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s %s L%s on %s output (%.2f)", $1, $2, $3, $4, rr) }
+      printf "| %s | %s | %s | %s | %.2f (%.2f, %.2f) | %s | %d / %d | %s |\n", $1, $2, $3, $4, rr, rm, rn, $5, $10 / 1024, $11 / 1024, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$f"
+done
+
+# 7z writer sizes against 7-Zip (sizes only).
+# cols: file level ref_size ours_size size_ratio verdict
+if [ -s "$dir/sevenz.tsv" ]; then
+  echo; echo "## sevenz (size of a one-file 7z archive, ours / 7-Zip at -mx=N -mmt=1)"; echo
+  grep '^# cpu' "$dir/sevenz.tsv" | sed 's/^# */- /' | head -1
+  echo
+  echo "| file | level | 7-Zip bytes | our bytes | size | verdict |"
+  echo "|---|---|---|---|---|---|"
+  awk -F'\t' '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 6 { next }
+    {
+      sz = $5 + 0; ok = (sz <= 1.01)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s mx=%s (size %+.2f%%)", $1, $2, (sz - 1) * 100) }
+      printf "| %s | %s | %s | %s | %+.2f%% | %s |\n", $1, $2, $3, $4, (sz - 1) * 100, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/sevenz.tsv"
+fi
+
 if [ -d "$dir/bar-runner" ]; then
   echo; echo "## bar-runner"; echo; ls "$dir/bar-runner" | sed 's/^/- /'
 fi
