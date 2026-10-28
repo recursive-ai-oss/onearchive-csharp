@@ -51,6 +51,8 @@ public sealed class LzmaBinaryTreeMatchFinder : LzmaMatchFinder
         }
 
         int lenLimit = Math.Min(available, LzmaModel.MaxMatchLength);
+        CheckWindow(buffer, position, lenLimit);
+        PrefetchAhead(buffer, position, available, cp);
         int cur = UpdateHashes(buffer, position, out int c2, out int c3);
         int count = 0;
         int maxLen = AddShortMatches(buffer, position, lenLimit, c2, c3, matches, ref count);
@@ -71,9 +73,67 @@ public sealed class LzmaBinaryTreeMatchFinder : LzmaMatchFinder
         }
 
         int lenLimit = Math.Min(available, LzmaModel.MaxMatchLength);
+        CheckWindow(buffer, position, lenLimit);
+        PrefetchAhead(buffer, position, available, cp);
         int cur = UpdateHashes(buffer, position, out _, out _);
         int count = 0;
         Walk(buffer, position, cp, cur, lenLimit, int.MaxValue, default, ref count, record: false);
+    }
+
+    // Memory hints for positions the finder will reach soon: the hash buckets of a position far ahead, and, for a position a few
+    // steps ahead (whose buckets were fetched earlier), the node its bucket holds, so that the first step of its tree walk finds
+    // that node's links and data in cache. The buckets can change before the position is reached; a stale hint only wastes a fetch.
+    // Nothing here changes any table or result.
+    private void PrefetchAhead(byte[] buffer, int position, int available, int cp)
+    {
+        const int Far = 16;
+        const int Near = 6;
+        if (_hashBytes < 3 || available < Far + 4)
+        {
+            return;
+        }
+
+        uint far = Read32(buffer, position + Far);
+        uint near = Read32(buffer, position + Near);
+        uint hf;
+        uint hn;
+        if (_hashBytes == 4)
+        {
+            hf = HashOf(far, _mainBits);
+            hn = HashOf(near, _mainBits);
+        }
+        else
+        {
+            hf = HashOf(far & 0xFFFFFF, _mainBits);
+            hn = HashOf(near & 0xFFFFFF, _mainBits);
+        }
+
+        LzmaMatchRaw.PrefetchLink(_main, (int)hf);
+        int node = _main[hn];
+        if (node > 0)
+        {
+            int slot = cp + Near - (position + Near - node);
+            if (slot < 0)
+            {
+                slot += _cyclicSize;
+            }
+            else if (slot >= _cyclicSize)
+            {
+                slot -= _cyclicSize;
+            }
+
+            LzmaMatchRaw.PrefetchByte(buffer, node);
+            LzmaMatchRaw.PrefetchLink(_son, 2 * slot);
+        }
+    }
+
+    // The walk reads buffer[position .. position + lenLimit] without bounds checks.
+    private static void CheckWindow(byte[] buffer, int position, int lenLimit)
+    {
+        if (position < 0 || lenLimit < 0 || (long)position + lenLimit >= buffer.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(position), "The position and the available length must lie inside the buffer.");
+        }
     }
 
     private protected override void ResetLinks() => Array.Clear(_son);
@@ -84,6 +144,7 @@ public sealed class LzmaBinaryTreeMatchFinder : LzmaMatchFinder
     {
         int[] son = _son;
         int dict = _dictionarySize;
+        int cyclic = _cyclicSize;
         int nice = Math.Min(_niceLength, lenLimit);
         int ptr1 = 2 * cp;       // where the next node smaller than the current string attaches
         int ptr0 = (2 * cp) + 1; // where the next node greater than the current string attaches
@@ -92,22 +153,32 @@ public sealed class LzmaBinaryTreeMatchFinder : LzmaMatchFinder
         for (int steps = _depth; ; )
         {
             int delta = position - cur;
-            if (cur <= 0 || delta > dict || steps-- == 0)
+            // cur is a stored position: 1 up to position - 1, within the dictionary. (The unsigned test also stops a position that is
+            // not behind this one, which only a caller that went backwards could leave in the table.)
+            if (cur <= 0 || (uint)(delta - 1) >= (uint)dict || steps-- == 0)
             {
-                son[ptr0] = 0;
-                son[ptr1] = 0;
+                LzmaMatchRaw.L(son, ptr0) = 0;
+                LzmaMatchRaw.L(son, ptr1) = 0;
                 return;
             }
 
             int slot = cp - delta;
             if (slot < 0)
             {
-                slot += _cyclicSize;
+                slot += cyclic;
             }
 
             int pair = 2 * slot;
             int len = Math.Min(len0, len1);
-            if (buffer[cur + len] == buffer[position + len])
+
+            // Both children of this node are about to be needed one at a time; their data and their own links are fetched now,
+            // so whichever way the comparison goes, the next step does not wait for memory.
+            int smallerChild = LzmaMatchRaw.L(son, pair + 1);
+            int greaterChild = LzmaMatchRaw.L(son, pair);
+            PrefetchNode(buffer, son, position, cp, cyclic, smallerChild, len);
+            PrefetchNode(buffer, son, position, cp, cyclic, greaterChild, len);
+
+            if (LzmaMatchRaw.B(buffer, cur + len) == LzmaMatchRaw.B(buffer, position + len))
             {
                 len = CommonLength(buffer, cur, position, len + 1, lenLimit);
                 if (record && len > maxLen)
@@ -118,26 +189,43 @@ public sealed class LzmaBinaryTreeMatchFinder : LzmaMatchFinder
 
                 if (len >= nice)
                 {
-                    son[ptr1] = son[pair];
-                    son[ptr0] = son[pair + 1];
+                    LzmaMatchRaw.L(son, ptr1) = greaterChild;
+                    LzmaMatchRaw.L(son, ptr0) = smallerChild;
                     return;
                 }
             }
 
-            if (buffer[cur + len] < buffer[position + len])
+            if (LzmaMatchRaw.B(buffer, cur + len) < LzmaMatchRaw.B(buffer, position + len))
             {
-                son[ptr1] = cur;
+                LzmaMatchRaw.L(son, ptr1) = cur;
                 ptr1 = pair + 1;
-                cur = son[ptr1];
+                cur = smallerChild;
                 len1 = len;
             }
             else
             {
-                son[ptr0] = cur;
+                LzmaMatchRaw.L(son, ptr0) = cur;
                 ptr0 = pair;
-                cur = son[ptr0];
+                cur = greaterChild;
                 len0 = len;
             }
+        }
+    }
+
+    // Prefetch hints for a node the walk may visit next: the byte it will be compared at, and its pair of links.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static void PrefetchNode(byte[] buffer, int[] son, int position, int cp, int cyclic, int node, int len)
+    {
+        if (node > 0)
+        {
+            int slot = cp - (position - node);
+            if (slot < 0)
+            {
+                slot += cyclic;
+            }
+
+            LzmaMatchRaw.PrefetchByte(buffer, node + len);
+            LzmaMatchRaw.PrefetchLink(son, 2 * slot);
         }
     }
 }
