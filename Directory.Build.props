@@ -55,12 +55,12 @@
   </PropertyGroup>
 
   <!--
-    zstd (ONECOMPRESS001), LZ4 (ONECOMPRESS002), Deflate (ONECOMPRESS003), bzip2 (ONECOMPRESS004), LZMA and LZMA2 (ONECOMPRESS005), xz and the branch and delta filters (ONECOMPRESS006), lzip (ONECOMPRESS007) and the OneArchive API (ONEARCHIVE001) are marked [Experimental] while they are preview.
+    zstd (ONECOMPRESS001), LZ4 (ONECOMPRESS002), Deflate (ONECOMPRESS003), bzip2 (ONECOMPRESS004), LZMA and LZMA2 (ONECOMPRESS005), xz and the branch and delta filters (ONECOMPRESS006), lzip (ONECOMPRESS007), brotli (ONECOMPRESS008) and the OneArchive API (ONEARCHIVE001) are marked [Experimental] while they are preview.
     Every project in this repository opts in here, the packages included: the compiler reports uses of
     an experimental type from the internal code of the same assembly too.
   -->
   <PropertyGroup>
-    <NoWarn>$(NoWarn);ONECOMPRESS001;ONECOMPRESS002;ONECOMPRESS003;ONECOMPRESS004;ONECOMPRESS005;ONECOMPRESS006;ONECOMPRESS007;ONEARCHIVE001</NoWarn>
+    <NoWarn>$(NoWarn);ONECOMPRESS001;ONECOMPRESS002;ONECOMPRESS003;ONECOMPRESS004;ONECOMPRESS005;ONECOMPRESS006;ONECOMPRESS007;ONECOMPRESS008;ONEARCHIVE001</NoWarn>
   </PropertyGroup>
 
 </Project>
