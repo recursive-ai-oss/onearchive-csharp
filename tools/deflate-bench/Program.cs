@@ -9,6 +9,65 @@ using RecursiveAI.OneCompress.Deflate;
 // DeflateBench dec <file.gz-or-zlib-or-raw> [--format ...] [--reps N]
 //   Decompresses a stream written by another tool and prints the best MB/s.
 #pragma warning disable ONECOMPRESS003
+// DeflateBench ref <file> <reps> <tool> [args...]
+//   Runs a reference tool with the file on standard input and its output in a scratch file, best of N wall times with the time of an
+//   empty-ish run (process startup) subtracted, and prints the output size and MB/s of the input. The method is in docs/bench-method.md.
+static int RunReference(string[] a)
+{
+    string file = a[1];
+    int reps = int.Parse(a[2], System.Globalization.CultureInfo.InvariantCulture);
+    string scratch = Path.Combine(Environment.GetEnvironmentVariable("BENCH_TMP") ?? Path.GetTempPath(), "deflate-bench-" + Environment.ProcessId);
+    Directory.CreateDirectory(scratch);
+    string tiny = Path.Combine(scratch, "tiny");
+    File.WriteAllBytes(tiny, new byte[16]);
+    string output = Path.Combine(scratch, "out");
+    double Once(string input)
+    {
+        var info = new ProcessStartInfo(a[3]) { RedirectStandardInput = true, RedirectStandardOutput = true };
+        for (int i = 4; i < a.Length; i++)
+        {
+            info.ArgumentList.Add(a[i]);
+        }
+
+        long t = Stopwatch.GetTimestamp();
+        using Process p = Process.Start(info)!;
+        // Feed the input from another thread: the tool writes as it reads, and neither side may wait for the other's pipe to empty.
+        Task feed = Task.Run(() =>
+        {
+            using FileStream src = File.OpenRead(input);
+            src.CopyTo(p.StandardInput.BaseStream);
+            p.StandardInput.Close();
+        });
+        using (FileStream dst = File.Create(output))
+        {
+            p.StandardOutput.BaseStream.CopyTo(dst);
+        }
+
+        feed.Wait();
+        p.WaitForExit();
+        double seconds = Stopwatch.GetElapsedTime(t).TotalSeconds;
+        return p.ExitCode == 0 ? seconds : throw new InvalidOperationException("tool failed");
+    }
+
+    double startup = double.MaxValue;
+    for (int i = 0; i < 5; i++)
+    {
+        startup = Math.Min(startup, Once(tiny));
+    }
+
+    double best = double.MaxValue;
+    for (int i = 0; i < reps; i++)
+    {
+        best = Math.Min(best, Once(file));
+    }
+
+    long size = new FileInfo(output).Length;
+    long input = new FileInfo(file).Length;
+    Directory.Delete(scratch, true);
+    Console.WriteLine($"ref size={size} seconds={best:F4} startup={startup:F4} MBps={input / 1e6 / (best - startup):F1}");
+    return 0;
+}
+
 static int Usage()
 {
     Console.Error.WriteLine("usage: DeflateBench enc|dec <file> [level] [--format raw|zlib|gzip] [--stream] [--strategy name] [--reps N] [--seconds S]");
@@ -18,6 +77,11 @@ static int Usage()
 if (args.Length < 2)
 {
     return Usage();
+}
+
+if (args[0] == "ref")
+{
+    return RunReference(args);
 }
 
 string mode = args[0];
