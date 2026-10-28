@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
+using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Zip;
 using RecursiveAI.OneCompress.Deflate;
@@ -240,7 +241,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                 top.Dispose();
             }
 
-            throw new CompressionFormatException("archive", 0, "a recognised archive format (zip, tar, or a compressed single file) in the data or in the file name's extension");
+            throw new CompressionFormatException("archive", 0, "a recognised archive format (zip, 7z, tar, or a compressed single file) in the data or in the file name's extension");
         }
 
         ArchiveReader reader = CreateReader(format, top, ownsTop: top != raw, options, meter, singleName, singleTime);
@@ -294,6 +295,23 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                     ? new ZipReaderOptions { Limits = options.Limits, VerifyChecksum = z.VerifyChecksum, ForceStreaming = z.ForceStreaming, LegacyNameEncoding = z.LegacyNameEncoding, MaxCentralDirectorySize = z.MaxCentralDirectorySize }
                     : new ZipReaderOptions { Limits = options.Limits };
                 return new ZipReader(stream, zip, leaveOpen: !ownsTop);
+            case ArchiveFormat.SevenZip:
+                SevenZipReaderOptions sz = options.SevenZip is { } s7
+                    ? new SevenZipReaderOptions { Limits = options.Limits, VerifyChecksum = s7.VerifyChecksum, MaxHeaderSize = s7.MaxHeaderSize, MaxCodersPerFolder = s7.MaxCodersPerFolder }
+                    : new SevenZipReaderOptions { Limits = options.Limits };
+                if (!stream.CanSeek)
+                {
+                    // The header is at the end of a 7z file: a source that cannot seek is copied into memory first.
+                    Stream spooled = SpoolToMemory(stream, options.Limits);
+                    if (ownsTop)
+                    {
+                        stream.Dispose();
+                    }
+
+                    return new SevenZipReader(spooled, sz, leaveOpen: false);
+                }
+
+                return new SevenZipReader(stream, sz, leaveOpen: !ownsTop);
             case ArchiveFormat.SingleStream:
                 return new SingleStreamReader(stream, singleName ?? "data", singleTime, options.Limits, leaveOpen: !ownsTop);
             case ArchiveFormat.Tar:
@@ -311,6 +329,25 @@ public sealed class Archive : IDisposable, IAsyncDisposable
             default:
                 throw new ArchiveUnsupportedException("archive", $"the {format} format");
         }
+    }
+
+    private static MemoryStream SpoolToMemory(Stream source, ArchiveLimits limits)
+    {
+        var memory = new MemoryStream();
+        byte[] buffer = new byte[81920];
+        int n;
+        while ((n = source.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            if (memory.Length + n > limits.MaxTotalSize)
+            {
+                throw new CompressionLimitException("7z", nameof(ArchiveLimits.MaxTotalSize), limits.MaxTotalSize, memory.Length + n);
+            }
+
+            memory.Write(buffer, 0, n);
+        }
+
+        memory.Position = 0;
+        return memory;
     }
 
     // A reader positioned at the start of the archive. The first call hands out the reader built while detecting.

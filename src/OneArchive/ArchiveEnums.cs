@@ -17,6 +17,9 @@ public enum ArchiveFormat
 
     /// <summary>One compressed file with no container, such as <c>notes.txt.gz</c>, <c>.zst</c> or <c>.lz4</c>: an archive of one entry.</summary>
     SingleStream = 3,
+
+    /// <summary>7z (see <c>RecursiveAI.OneArchive.SevenZip</c>): read only for now.</summary>
+    SevenZip = 4,
 }
 
 /// <summary>A compression layer wrapped around a whole archive, as in <c>.tar.zst</c>.</summary>

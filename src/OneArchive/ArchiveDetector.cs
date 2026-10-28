@@ -61,6 +61,12 @@ public static class ArchiveDetector
             return ArchiveFormat.Zip;
         }
 
+        // 7zFormat.txt "SignatureHeader": '7', 'z', BC AF 27 1C.
+        if (prefix.StartsWith(new byte[] { (byte)'7', (byte)'z', 0xBC, 0xAF, 0x27, 0x1C }))
+        {
+            return ArchiveFormat.SevenZip;
+        }
+
         if (prefix.Length >= TarHeader.BlockSize && LooksLikeTar(prefix[..TarHeader.BlockSize]))
         {
             return ArchiveFormat.Tar;
@@ -112,6 +118,11 @@ public static class ArchiveDetector
     {
         ArgumentNullException.ThrowIfNull(fileName);
         string name = Path.GetFileName(fileName).ToLowerInvariant();
+        if (name.EndsWith(".7z", StringComparison.Ordinal))
+        {
+            return (ArchiveFormat.SevenZip, ArchiveCompression.None);
+        }
+
         if (name.EndsWith(".zip", StringComparison.Ordinal))
         {
             return (ArchiveFormat.Zip, ArchiveCompression.None);
