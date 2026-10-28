@@ -94,6 +94,10 @@ int main(int argc, char** argv) {
     if (dict) lcd = LZ4F_createCDict(dict, dictSize);
   }
 
+  // A pass over a small set can last microseconds, which the clock and the scheduler blur; each timed pass repeats the set
+  // until it holds about 2000 payloads.
+  int repeat = (2000 + in.count - 1) / in.count;
+  if (repeat < 1) repeat = 1;
   int maxRuns = 2000;
   double* tc = malloc(sizeof(double) * maxRuns);
   double* td = malloc(sizeof(double) * maxRuns);
@@ -103,6 +107,7 @@ int main(int argc, char** argv) {
   for (; runs < 5 || (now() - start < seconds && runs < maxRuns); runs++) {
     double t = now();
     outBytes = 0;
+    for (int rep = 0; rep < repeat; rep++)
     for (int i = 0; i < in.count; i++) {
       size_t n;
       if (isZstd) n = zc ? ZSTD_compress_usingCDict(cctx, cdata[i], ZSTD_compressBound(in.n[i]), in.p[i], in.n[i], zc)
@@ -111,15 +116,16 @@ int main(int argc, char** argv) {
                    : LZ4F_compressFrame(cdata[i], ZSTD_compressBound(in.n[i]) + 64, in.p[i], in.n[i], &prefs);
       if ((isZstd && ZSTD_isError(n)) || (!isZstd && LZ4F_isError(n))) { fprintf(stderr, "compress failed\n"); return 1; }
       csize[i] = (long)n;
-      outBytes += (long)n;
+      if (rep == 0) outBytes += (long)n;
     }
-    tc[runs] = now() - t;
+    tc[runs] = (now() - t) / repeat;
   }
   int cruns = runs;
 
   start = now();
   for (runs = 0; runs < 5 || (now() - start < seconds && runs < maxRuns); runs++) {
     double t = now();
+    for (int rep = 0; rep < repeat; rep++)
     for (int i = 0; i < in.count; i++) {
       size_t n;
       if (isZstd) {
@@ -135,7 +141,7 @@ int main(int argc, char** argv) {
       }
       if ((long)n != in.n[i] || memcmp(back, in.p[i], n) != 0) { fprintf(stderr, "round trip mismatch\n"); return 1; }
     }
-    td[runs] = now() - t;
+    td[runs] = (now() - t) / repeat;
   }
 
   FILE* f = fopen(argv[5], "wb");

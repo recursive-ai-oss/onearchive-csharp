@@ -39,6 +39,9 @@ public sealed class ZstdBlockWriter
     private const int MinimumSequencesForNewTable = 64;
     private const int MinimumLiteralsForNewTree = 64;
 
+    // Fewer literals than this make a block small for the purpose of skipping a new Huffman tree when the previous one will do.
+    private const int SmallLiteralBlock = 4096;
+
     // Blocks with at most this many sequences price each table choice by running the encoder's state machine; larger blocks
     // use the histogram estimate, which is within a fraction of a percent there and costs less.
     private const int ExactCostLimit = 1500;
@@ -335,7 +338,13 @@ public sealed class ZstdBlockWriter
         {
             int estimate = CompressedHeaderSize(n, 0, singleStream) + 8 + ((distinct * 3) / 8)
                 + StreamBytes((symbols.IsEmpty ? ZstdCost.EntropyLowerBound(histogram, maxSymbol, n) : ZstdCost.EntropyLowerBound(histogram, symbols, n)) / ZstdCost.Bit, singleStream, n);
-            tryNew = estimate < Math.Min(rawCost, previousCost);
+
+            // The fast strategies want speed on small blocks: building a tree costs several times what coding the block with
+            // the tree already in hand does, so a usable previous tree (a dictionary's, or the last block's) is kept unless a new
+            // one could save an eighth of its cost even if it reached the entropy bound. The bound is optimistic, so this skips
+            // most trees that would have saved a few percent and none that would have saved a lot.
+            int margin = _estimatedPricing && n < SmallLiteralBlock && previousCost != int.MaxValue ? previousCost >> 3 : 0;
+            tryNew = estimate + margin < Math.Min(rawCost, previousCost);
         }
 
         bool built = tryNew && candidate.Build(histogram, maxSymbol);
@@ -782,7 +791,7 @@ public sealed class ZstdBlockWriter
             // the predefined one is already cheaper than that, normalizing and building a table cannot pay; and a block of fewer
             // than 64 sequences hardly ever repays a table of its own, so it chooses between the two without trying one.
             bool tryNew = bestCost == int.MaxValue
-                || (nseq >= MinimumSequencesForNewTable
+                || (nseq >= (_estimatedPricing ? 128 : MinimumSequencesForNewTable)
                     && ZstdCost.EntropyLowerBound(histogram, maxSymbol, nseq) + (16 * ZstdCost.Bit) < bestCost);
             bestCosts[k] = bestCost;
             modes[k] = bestMode;

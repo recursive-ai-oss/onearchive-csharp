@@ -168,6 +168,10 @@ static int Run(string[] a)
         }
     }
 
+    // A pass over a small set can last microseconds, which the clock and the scheduler blur; every timed pass repeats the set
+    // until it holds about 2,000 payloads.
+    int repeat = Math.Max(1, (2000 + payloads.Count - 1) / payloads.Count);
+
     (double best, double median, double worst, double alloc) Time(Action pass)
     {
         pass();
@@ -177,13 +181,17 @@ static int Run(string[] a)
         while (times.Count < 5 || (clock.Elapsed.TotalSeconds < seconds && times.Count < 2000))
         {
             long t = Stopwatch.GetTimestamp();
-            pass();
-            times.Add(Stopwatch.GetElapsedTime(t).TotalSeconds);
+            for (int r = 0; r < repeat; r++)
+            {
+                pass();
+            }
+
+            times.Add(Stopwatch.GetElapsedTime(t).TotalSeconds / repeat);
         }
 
         // The pass times go into a list sized up front, so the delta is the codec path alone.
         long alloc = GC.GetAllocatedBytesForCurrentThread() - a0;
-        double perPass = (double)alloc / times.Count;
+        double perPass = (double)alloc / (times.Count * repeat);
         times.Sort();
         return (times[0], times[times.Count / 2], times[^1], perPass);
     }
