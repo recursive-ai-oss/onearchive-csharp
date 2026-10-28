@@ -234,3 +234,11 @@ Presets 7 to 9 give one size here because no file in the subset is larger than 8
   4 to 48 and depth 4 to 32 were compared; 0.9 to 1.04 of the tool's size across settings).
 - Fast parser: a first version that took the longest match with a preference for repeated distances was 2.5% to 5.6% larger than `xz`
   on presets 1 to 3; pricing the candidates (above) brought it to within 1%.
+
+## Speed notes (no effect on output)
+
+The match finders issue prefetch hints for the hash buckets of positions 16 ahead and for the node a bucket 6 positions ahead holds,
+and the tree walk prefetches both children of the node it is at. Hints change no table and no result. Reads in the walk, the
+hash updates and the chain steps skip bounds checks behind `LzmaMatchRaw` (bounds-checked in the `Checked` build); every entry
+point first checks that `position + min(available, 273)` lies inside the buffer, and the walk accepts a stored position only when
+it lies behind the current one and within the dictionary.

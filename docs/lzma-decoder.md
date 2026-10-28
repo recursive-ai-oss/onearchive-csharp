@@ -25,7 +25,7 @@ The filters are standalone span transforms that work in both directions, so an e
 | `VerifyChecks` (xz) / `VerifyChecksum` (lzip) | true | Verify CRC32, CRC64, SHA-256 / the lzip CRC-32. When false the check is still skipped over and the sizes in the trailer and index are still verified. |
 | `AllowUnsupportedChecks` (xz) | false | Check IDs other than 0, 1, 4 and 10 are reserved. They are rejected unless this is set; then the block checks, whose size follows from the ID (4 bytes for 1-3, 8 for 4-6, 16 for 7-9, 32 for 10-12, 64 for 13-15), are skipped unverified. |
 
-Memory is the declared dictionary at most (the window grows with the output, starting at 64 KiB and doubling), plus the
+Memory is the declared dictionary at most (the window grows with the output, starting at 64 KiB and doubling), plus 32 spare bytes behind the ring (a match copy rounds up to whole 16-byte steps; the ring is the dictionary size plus 32, so the overshoot lands on bytes too old for any match to reach), plus the
 probability tables (`0x300 << (lc + lp)` 16-bit entries plus a fixed part; at most about 6 MiB, since the `.lzma` format allows
 lc up to 8 and lp up to 4), plus 64 KiB of
 chain buffer when an xz block has filters. Steady-state decoding allocates nothing.
@@ -49,8 +49,10 @@ chain buffer when an xz block has filters. Steady-state decoding allocates nothi
 - **Fast loop.** While at least 32 bytes of input remain at the start of a symbol, `LzmaDecoderCore` decodes with the range
   coder state in locals and no undo log (`LzmaDecoderCore.Fast.cs`); literal and tree bits are decoded without a branch on the
   bit. The last few symbols of an input piece use the journalling loop. Both loops make the same decisions, so the output and
-  the errors do not depend on where the input is cut. No unchecked memory access is used: replacing the array and span reads
-  with unchecked ones was measured and made no difference.
+  the errors do not depend on where the input is cut. Probability and input reads in this loop and the wide match copy skip bounds checks behind the accessors in `LzmaRaw`
+  (bounds-checked in the `Checked` build): a symbol starts only with 32 input bytes left and consumes at most 25, and every probability
+  index is a fixed offset of the model layout plus a state or tree node inside its table. Literals are decoded in their own methods and
+  the bit trees are unrolled so that the range coder state stays in registers; none of this changes a decision.
 
 ## LZMA2
 
