@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using RecursiveAI.OneArchive;
 using RecursiveAI.OneCompress;
 using RecursiveAI.OneCompress.BZip2;
+using RecursiveAI.OneCompress.Brotli;
 using RecursiveAI.OneCompress.Deflate;
 using RecursiveAI.OneCompress.Deflate64;
 using RecursiveAI.OneCompress.Lz4;
@@ -395,6 +396,38 @@ catch (UnauthorizedAccessException)
 }
 catch (PlatformNotSupportedException)
 {
+}
+
+// Brotli: a 41-byte stream written by the brotli tool that refers to the static dictionary, through the one-liner, the stream and the span decoder.
+byte[] brotliData = Convert.FromBase64String("oTgDACtNVYaWBjbgwOFt8Il72BhbP7dgJV0il0gDpRJ/AKvlmXBJ6GI=");
+const string BrotliExpected = "The internet is where people share information about education, development and entertainment worldwide.";
+using (var brotliStream = new BrotliStream(new MemoryStream(brotliData)))
+{
+    var brotliResult = new MemoryStream();
+    brotliStream.CopyTo(brotliResult);
+    var brotliDecoder = new BrotliDecoder();
+    byte[] brotliBuffer = new byte[16];
+    var brotliPieces = new MemoryStream();
+    int brotliPos = 0;
+    while (true)
+    {
+        var brotliStatus = brotliDecoder.Decompress(brotliData.AsSpan(brotliPos, Math.Min(5, brotliData.Length - brotliPos)), brotliBuffer, out int brotliConsumed, out int brotliWritten);
+        brotliPos += brotliConsumed;
+        brotliPieces.Write(brotliBuffer, 0, brotliWritten);
+        if (brotliStatus == System.Buffers.OperationStatus.Done)
+        {
+            break;
+        }
+    }
+
+    if (System.Text.Encoding.ASCII.GetString(Brotli.Decompress(brotliData)) != BrotliExpected
+        || System.Text.Encoding.ASCII.GetString(brotliResult.ToArray()) != BrotliExpected
+        || System.Text.Encoding.ASCII.GetString(brotliPieces.ToArray()) != BrotliExpected
+        || BrotliTransforms.Count != 121 || BrotliWords.GetWord(4, 0).Length != 4)
+    {
+        Console.Error.WriteLine("brotli failed");
+        return 1;
+    }
 }
 
 // The LZMA family: each encoder at a fast and a normal preset, read back by this library's decoders (300 bytes of text, repeated).
