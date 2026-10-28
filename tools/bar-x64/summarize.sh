@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Turns the TSV files of a bar run into one markdown report with PASS or MISS per row.
+#
+#   summarize.sh <results dir>
+#
+# Rule: compressed size within 1% of the reference and our rate at least 0.87 of the reference's rate (compress and
+# decompress each). Rates are medians where the benchmark gives them. Peak memory is shown for both sides.
+set -uo pipefail
+dir="$1"
+SIZE_MAX=1.0; SPEED_MIN=0.87
+
+echo "# Bar results"
+echo
+echo '```'; cat "$dir/machine.txt" 2>/dev/null; echo '```'
+echo
+echo "Load during the run (every minute, with the busiest processes): see \`load.log\`. Steps: see \`steps.log\`."
+[ -s "$dir/skipped.txt" ] && { echo; echo "**Skipped or timed out:**"; sed 's/^/- /' "$dir/skipped.txt"; }
+
+# Whole-file zstd rows from the encoder bench (also long-distance matching and jobs).
+# cols: file level ref_bytes ours_bytes delta_pct ref_c ours_c ours_c_med ours_c_min c_time_ratio ref_d ours_d ours_d_med ours_d_min d_time_ratio ref_peak ours_peak load
+for f in "$dir"/enc-*.tsv "$dir"/ldm.tsv "$dir"/jobs.tsv; do
+  [ -s "$f" ] || continue
+  echo; echo "## $(basename "$f" .tsv)"; echo
+  grep '^#' "$f" | sed 's/^# */- /' | head -12
+  echo
+  echo "| file | level | ref bytes | our bytes | size | compress ours/ref rate, median (min-max) | decode ours/ref rate, median (min-max) | peak MB: ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smax="$SIZE_MAX" -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 17 { next }
+    {
+      cr = ($6 > 0) ? $8 / $6 : 0; dn = ($11 + 0 > 0 && $13 + 0 > 0); dr = dn ? $13 / $11 : 0
+      cb = ($6 > 0) ? $7 / $6 : 0; db = dn ? $12 / $11 : 0
+      cm = ($6 > 0) ? $9 / $6 : 0; dm = dn ? $14 / $11 : 0
+      ok = ($5 + 0 <= smax && cr >= smin && (!dn || dr >= smin)); if (!dn) nd++
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s L%s (size %+.2f%%, c %.2f, d %s)", $1, $2, $5, cr, dn ? sprintf("%.2f", dr) : "n/a") }
+      dtxt = dn ? sprintf("%.2f (%.2f-%.2f)", dr, dm, db) : "n/a (tool decode rate not captured)"
+      printf "| %s | %s | %s | %s | %+.2f%% | %.2f (%.2f-%.2f) | %s | %d / %d | %s%s |\n", $1, $2, $3, $4, $5, cr, cm, cb, dtxt, $16 / 1024, $17 / 1024, ok ? "PASS" : "MISS", dn ? "" : " (size and compress only)"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS (%d without a tool decode rate)\n", n, p, m, nd; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }
+  ' "$f"
+done
+
+# Decode of the tool's frames and of ours: three repeats per row.
+# cols: frames file level compressed rep ref_MB/s ours_oneshot ours_stream ours/ref ref_peak ours_peak load
+if [ -s "$dir/dec-tool.tsv" ]; then
+  echo; echo "## dec-tool (decode speed, ours/reference, median of repeats)"; echo
+  grep '^#' "$dir/dec-tool.tsv" | sed 's/^# */- /' | head -6
+  echo
+  echo "| frames from | file | level | frame bytes | one-shot ours/ref median (min-max) | stream ours/ref median | peak MB: ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    function med(a, n,   i, j, t, b) { for (i = 1; i <= n; i++) b[i] = a[i]
+      for (i = 2; i <= n; i++) { t = b[i]; for (j = i - 1; j >= 1 && b[j] > t; j--) b[j + 1] = b[j]; b[j + 1] = t }
+      return b[int((n + 1) / 2)] }
+    /^#/ { next }
+    $1 == "frames" { next }
+    NF < 12 { next }
+    $6 !~ /^[0-9.]+$/ { bad[$1 "\t" $2 "\t" $3] = 1; next }   # the tool line had no usable decode rate
+    {
+      key = $1 "\t" $2 "\t" $3
+      if (!(key in cnt)) { order[++k] = key; cnt[key] = 0; bytes[key] = $4 }
+      c = ++cnt[key]; one[key, c] = ($6 > 0) ? $7 / $6 : 0; st[key, c] = ($6 > 0) ? $8 / $6 : 0
+      rp[key] = $10; op[key] = $11
+    }
+    END {
+      for (i = 1; i <= k; i++) {
+        key = order[i]; n = cnt[key]
+        for (j = 1; j <= n; j++) { a[j] = one[key, j]; s[j] = st[key, j] }
+        m = med(a, n); ms = med(s, n); lo = a[1]; hi = a[1]
+        for (j = 2; j <= n; j++) { if (a[j] < lo) lo = a[j]; if (a[j] > hi) hi = a[j] }
+        split(key, kk, "\t"); ok = (m >= smin)
+        np++; if (ok) pp++; else { mm++; worst[mm] = sprintf("%s %s L%s (%.2f)", kk[1], kk[2], kk[3], m) }
+        printf "| %s | %s | %s | %s | %.2f (%.2f-%.2f) | %.2f | %d / %d | %s |\n", kk[1], kk[2], kk[3], bytes[key], m, lo, hi, ms, rp[key] / 1024, op[key] / 1024, ok ? "PASS" : "MISS"
+      }
+      printf "\n%d rows: %d PASS, %d MISS\n", np, pp, mm; for (i = 1; i <= mm; i++) printf "- MISS %s\n", worst[i]
+      for (key in bad) { split(key, kk, "\t"); printf "- no result (tool decode rate not captured): %s %s L%s\n", kk[1], kk[2], kk[3] }
+    }' "$dir/dec-tool.tsv"
+fi
+
+# Game payloads, compress with trained dictionaries.
+# cols: game kind dict level payloads bytes ref_bytes ours_bytes delta_pct ref_payloads/s ours_payloads/s
+if [ -s "$dir/game-enc.tsv" ]; then
+  echo; echo "## game-enc (small payloads with trained dictionaries, compress)"; echo
+  echo "| game | kind | dict | level | payloads | ref bytes | our bytes | size | speed ours/ref | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smax="$SIZE_MAX" -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "game" { next }
+    NF < 11 { next }
+    {
+      sp = ($10 > 0) ? $11 / $10 : 0; ok = ($9 + 0 <= smax && sp >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s/%s dict %s L%s (size %+.2f%%, speed %.2f)", $1, $2, $3, $4, $9, sp) }
+      printf "| %s | %s | %s | %s | %s | %s | %s | %+.2f%% | %.2f | %s |\n", $1, $2, $3, $4, $5, $7, $8, $9, sp, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/game-enc.tsv"
+fi
+# cols: game kind dict level files bytes ref_payloads/s ours_payloads/s ours/ref
+if [ -s "$dir/game-dec.tsv" ]; then
+  echo; echo "## game-dec (small payloads with trained dictionaries, decode)"; echo
+  echo "| game | kind | dict | level | files | ref payloads/s | our payloads/s | ours/ref | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "game" { next }
+    NF < 9 { next }
+    {
+      ok = ($9 + 0 >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s/%s dict %s L%s (%.2f)", $1, $2, $3, $4, $9) }
+      printf "| %s | %s | %s | %s | %s | %s | %s | %.2f | %s |\n", $1, $2, $3, $4, $5, $7, $8, $9, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/game-dec.tsv"
+fi
+
+# Training time and memory: reported, no gate.
+# cols: set dict files tool_s tool_mb ours1_s ours1_mb ours_s ours_mb
+if [ -s "$dir/train.tsv" ]; then
+  echo; echo "## train (time in s and peak MB; ours with one thread and with the default thread count)"; echo
+  echo "| set | dict | files | tool s / MB | ours 1 thread s / MB | ours default s / MB | time ours1/tool | time ours/tool |"
+  echo "|---|---|---|---|---|---|---|---|"
+  awk -F'\t' '/^#/ { next } $1 == "set" { next } NF < 9 { next }
+    { printf "| %s | %s | %s | %s / %s | %s / %s | %s / %s | %.2f | %.2f |\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, ($4 > 0) ? $6 / $4 : 0, ($4 > 0) ? $8 / $4 : 0 }' "$dir/train.tsv"
+fi
+
+# LZ4 whole files.
+# cols: file level ref_size ours_size size_ratio ref_comp ours_comp comp_ratio ref_dec ours_dec dec_ratio ref_peak ours_peak load
+if [ -s "$dir/lz4.tsv" ]; then
+  echo; echo "## lz4 (whole files, 4 MiB independent blocks, median of repeats)"; echo
+  echo "| file | level | ref size | our size | size ratio | compress MB/s min/med/max: ref | ours | ours/ref | decode ref | ours | ours/ref | peak KB ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 13 { next }
+    {
+      ok = ($5 + 0 <= 1.01 && $8 + 0 >= smin && $11 + 0 >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s %s (size %.4f, c %.2f, d %.2f)", $1, $2, $5, $8, $11) }
+      printf "| %s | %s | %s | %s | %.4f | %s | %s | %.2f | %s | %s | %.2f | %s / %s | %s |\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/lz4.tsv"
+fi
+# cols: set dict level payloads in ref_out ours_out size_ratio ref_ps ours_ps speed_ratio
+if [ -s "$dir/lz4-game.tsv" ]; then
+  echo; echo "## lz4-game (small payloads, dictionary '-' means none)"; echo
+  grep '^#' "$dir/lz4-game.tsv" | sed 's/^# */- /'
+  echo
+  echo "| set | dict KiB | level | payloads | ref bytes | our bytes | size ratio | speed ours/ref | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "set" { next }
+    NF < 11 { next }
+    {
+      ok = ($8 + 0 <= 1.01 && $11 + 0 >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s dict %s L%s (size %.4f, speed %.2f)", $1, $2, $3, $8, $11) }
+      printf "| %s | %s | %s | %s | %s | %s | %.4f | %.2f | %s |\n", $1, $2, $3, $4, $6, $7, $8, $11, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/lz4-game.tsv"
+fi
+
+if [ -d "$dir/bar-runner" ]; then
+  echo; echo "## bar-runner"; echo; ls "$dir/bar-runner" | sed 's/^/- /'
+fi

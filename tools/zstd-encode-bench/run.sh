@@ -50,7 +50,8 @@ for f in $files; do
   for L in $levels; do
     if [ "${L#-}" != "$L" ]; then sel="-b --fast=${L#-}"; elif [ "$L" -gt 19 ]; then sel="--ultra -b$L -e$L"; else sel="-b$L -e$L"; fi
     timev "$zstd" $sel -i"$secs" $ref_opts "$path" > "$work/ref.out" 2> "$work/ref.time" || true
-    line="$(tr '\r' '\n' < "$work/ref.out" | grep 'MB/s' | tail -1)"
+    # The last line with both the compress and the decompress rate: the tool's progress lines can end on a single-rate update.
+    line="$(tr '\r' '\n' < "$work/ref.out" | grep -E 'MB/s, *[0-9.]+ *MB/s' | tail -1)"
     rb="$(echo "$line" | awk '{for (i = 1; i <= NF; i++) if ($i == "->") print $(i + 1)}')"
     rc="$(echo "$line" | grep -o '[0-9.]* MB/s' | sed -n 1p | cut -d' ' -f1)"
     rd="$(echo "$line" | grep -o '[0-9.]* MB/s' | sed -n 2p | cut -d' ' -f1)"
