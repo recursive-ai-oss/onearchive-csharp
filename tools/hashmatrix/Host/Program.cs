@@ -109,6 +109,7 @@ internal static class Program
             .Append(Vector512.IsHardwareAccelerated).Append('\n');
 
         int failures = 0;
+        int unsupported = 0;
         int count = 0;
         StringBuilder rows = new();
         foreach (MatrixEntry entry in Select(o))
@@ -125,7 +126,15 @@ internal static class Program
             {
                 // A failing entry is a manifest row, so it shows up as a mismatch against the other columns.
                 hash = "ERROR:" + e.GetType().Name;
-                failures++;
+                if (e is PlatformNotSupportedException)
+                {
+                    // Not a failure of ours: the platform lacks an API the entry needs (AES in the browser). Compare skips these rows.
+                    unsupported++;
+                }
+                else
+                {
+                    failures++;
+                }
             }
 
             rows.Append(entry.Name).Append('\t').Append(hash).Append('\t').Append(length.ToString(CultureInfo.InvariantCulture)).Append('\n');
@@ -144,6 +153,11 @@ internal static class Program
         else
         {
             File.WriteAllText(o.Out, text.ToString());
+        }
+
+        if (unsupported > 0)
+        {
+            Console.Error.WriteLine($"{unsupported} entries need an API this platform does not support");
         }
 
         if (failures > 0)
@@ -176,6 +190,8 @@ internal static class Program
         return map;
     }
 
+    private const string PlatformNotSupported = "ERROR:PlatformNotSupportedException";
+
     private static int Compare(string[] paths)
     {
         if (paths.Length < 2)
@@ -198,11 +214,17 @@ internal static class Program
             List<string> names = reference.Keys.Union(other.Keys).OrderBy(n => n, StringComparer.Ordinal).ToList();
             string? first = null;
             int differing = 0;
+            int unsupported = 0;
             foreach (string name in names)
             {
                 reference.TryGetValue(name, out string? a);
                 other.TryGetValue(name, out string? b);
-                if (a != b)
+                if (a != b && b is not null && a is not null && b.StartsWith(PlatformNotSupported, StringComparison.Ordinal) && !a.StartsWith(PlatformNotSupported, StringComparison.Ordinal))
+                {
+                    // The platform lacks an API the entry needs (AES in the browser): reported, not compared.
+                    unsupported++;
+                }
+                else if (a != b)
                 {
                     differing++;
                     first ??= $"{name}\n    reference: {a?.Replace('\t', ' ') ?? "(missing)"}\n    this:      {b?.Replace('\t', ' ') ?? "(missing)"}";
@@ -212,7 +234,9 @@ internal static class Program
             string label = Path.GetFileName(path);
             if (differing == 0)
             {
-                Console.WriteLine($"{label}: equal ({other.Count} entries)");
+                Console.WriteLine(unsupported == 0
+                    ? $"{label}: equal ({other.Count} entries)"
+                    : $"{label}: equal ({other.Count - unsupported} entries; {unsupported} not run: the platform does not support an API they use)");
             }
             else
             {

@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- Encryption (`ONEARCHIVE001`): zip WinZip AES-128/192/256 (AE-1 and AE-2) read and write, traditional zip encryption read; 7z AES-256 read and write, with encrypted headers. `ZipReaderOptions.Password`, `ZipWriterOptions.Password`, `SevenZipReaderOptions.Password`, `SevenZipWriterOptions.Password`, and `Password` on `ArchiveOpenOptions` and `ArchiveCreateOptions`. A missing or wrong password is an `ArchivePasswordException`. AES needs `System.Security.Cryptography.Aes`, which the browser does not provide.
+
 ## [0.2.0-preview.1] - 2026-10-28
 
 Everything new here is preview and carries `[Experimental]`. Deflate, zlib and gzip meet the size target and are below the reference speed; the bzip2 decoder meets both. The README has the measurements.

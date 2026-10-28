@@ -179,9 +179,20 @@ internal sealed class ZipEntryStream : Stream
     private bool _done;
     private bool _invalid;
 
+    // Encrypted entries: the decryptor, a buffer of decrypted bytes the decoder has not consumed yet, and the ciphertext
+    // still in the input. _compRemaining counts the decrypted bytes the decoder has yet to consume plus _cipherLeft.
+    private readonly ZipDecryptor? _crypt;
+    private readonly int _overhead;         // header and authentication code bytes around the data
+    private byte[]? _plain;
+    private int _pStart;
+    private int _pEnd;
+    private long _cipherLeft;
+    private bool _cryptStarted;
+    private bool _trailerDone;
+
     public ZipEntryStream(
         ZipInputBuffer input, bool ownsInput, ZipMethod method, long compressedSize, long size, uint crc, bool verify,
-        bool descriptor, bool descriptorZip64, ExpansionMeter meter, ZipReader owner, ArchiveLimits limits)
+        bool descriptor, bool descriptorZip64, ExpansionMeter meter, ZipReader owner, ArchiveLimits limits, ZipDecryptor? crypt = null)
     {
         _input = input;
         _ownsInput = ownsInput;
@@ -194,6 +205,26 @@ internal sealed class ZipEntryStream : Stream
         _descriptorZip64 = descriptorZip64;
         _meter = meter;
         _owner = owner;
+        if (crypt is not null)
+        {
+            _crypt = crypt;
+            _overhead = crypt.HeaderLength + crypt.TrailerLength;
+            if (compressedSize < 0)
+            {
+                crypt.Dispose();
+                throw new ArchiveUnsupportedException(ZipFormat.Name, "encrypted entries whose compressed size is only in a data descriptor (open a seekable stream)");
+            }
+
+            if (compressedSize < _overhead)
+            {
+                crypt.Dispose();
+                throw ZipFormat.Bad(input.Offset, $"an encrypted entry of at least {_overhead} bytes (its header and authentication code), found {compressedSize}");
+            }
+
+            _compRemaining = _cipherLeft = compressedSize - _overhead;
+            _plain = ArrayPool<byte>.Shared.Rent(ZipInputBuffer.Size);
+        }
+
         switch (method)
         {
             case ZipMethod.Store:
@@ -313,6 +344,19 @@ internal sealed class ZipEntryStream : Stream
         while (true)
         {
             ct.ThrowIfCancellationRequested();
+            if (_crypt is not null)
+            {
+                if (!_cryptStarted)
+                {
+                    await StartCryptAsync(async, ct).ConfigureAwait(false);
+                }
+
+                if (_pStart == _pEnd && _cipherLeft > 0)
+                {
+                    await FillPlainAsync(async, ct).ConfigureAwait(false);
+                }
+            }
+
             if (_method == ZipMethod.Store)
             {
                 if (_compRemaining == 0)
@@ -321,14 +365,24 @@ internal sealed class ZipEntryStream : Stream
                     return 0;
                 }
 
-                if (_input.Available == 0 && !await _input.FillAsync(async, ct).ConfigureAwait(false))
+                if (_crypt is null && _input.Available == 0 && !await _input.FillAsync(async, ct).ConfigureAwait(false))
                 {
                     throw Truncated();
                 }
 
-                int n = (int)Math.Min(Math.Min(dest.Length, _input.Available), _compRemaining);
-                _input.Span[..n].CopyTo(dest.Span);
-                _input.Consume(n);
+                int avail = _crypt is null ? _input.Available : _pEnd - _pStart;
+                int n = (int)Math.Min(Math.Min(dest.Length, avail), _compRemaining);
+                if (_crypt is null)
+                {
+                    _input.Span[..n].CopyTo(dest.Span);
+                    _input.Consume(n);
+                }
+                else
+                {
+                    _plain.AsSpan(_pStart, n).CopyTo(dest.Span);
+                    _pStart += n;
+                }
+
                 AccountCompressed(n);
                 Account(dest.Span[..n]);
                 if (_compRemaining == 0)
@@ -345,7 +399,7 @@ internal sealed class ZipEntryStream : Stream
                 cap = (int)(_size - _produced + 1);
             }
 
-            ReadOnlySpan<byte> src = _input.Span;
+            ReadOnlySpan<byte> src = _crypt is null ? _input.Span : _plain.AsSpan(_pStart, _pEnd - _pStart);
             if (_compRemaining >= 0 && src.Length > _compRemaining)
             {
                 src = src[..(int)_compRemaining];
@@ -378,7 +432,15 @@ internal sealed class ZipEntryStream : Stream
                 status = _zstd!.Decompress(src, dest.Span[..cap], out consumed, out written);
             }
 
-            _input.Consume(consumed);
+            if (_crypt is null)
+            {
+                _input.Consume(consumed);
+            }
+            else
+            {
+                _pStart += consumed;
+            }
+
             AccountCompressed(consumed);
             Account(dest.Span[..written]);
 
@@ -421,7 +483,16 @@ internal sealed class ZipEntryStream : Stream
                     throw ZipFormat.Bad(_input.Offset, "progress in the compressed stream");
                 }
 
-                if (_input.Available == 0 && !await _input.FillAsync(async, ct).ConfigureAwait(false))
+                if (_crypt is not null)
+                {
+                    if (_cipherLeft == 0)
+                    {
+                        throw Truncated();
+                    }
+
+                    await FillPlainAsync(async, ct).ConfigureAwait(false);
+                }
+                else if (_input.Available == 0 && !await _input.FillAsync(async, ct).ConfigureAwait(false))
                 {
                     throw Truncated();
                 }
@@ -440,6 +511,12 @@ internal sealed class ZipEntryStream : Stream
             return;
         }
 
+        if (_crypt is not null)
+        {
+            await StartCryptAsync(async, ct).ConfigureAwait(false);
+            await ReadTrailerAsync(async, ct).ConfigureAwait(false);
+        }
+
         if (_size >= 0 && _produced != _size)
         {
             throw ZipFormat.Bad(_input.Offset, $"entry data of the declared {_size} bytes, but it decodes to {_produced}");
@@ -455,6 +532,7 @@ internal sealed class ZipEntryStream : Stream
         }
 
         _done = true;
+        ReleaseCrypt();
         if (_ownsInput)
         {
             _input.Dispose();
@@ -494,7 +572,7 @@ internal sealed class ZipEntryStream : Stream
             uint c = BinaryPrimitives.ReadUInt32LittleEndian(d[p..]);
             ulong comp = wide ? BinaryPrimitives.ReadUInt64LittleEndian(d[(p + 4)..]) : BinaryPrimitives.ReadUInt32LittleEndian(d[(p + 4)..]);
             ulong size = wide ? BinaryPrimitives.ReadUInt64LittleEndian(d[(p + 12)..]) : BinaryPrimitives.ReadUInt32LittleEndian(d[(p + 8)..]);
-            bool matches = comp == (ulong)_consumed && size == (ulong)_produced && (!_verify || c == crc);
+            bool matches = comp == (ulong)(_consumed + _overhead) && size == (ulong)_produced && (!_verify || c == crc);
             if (matches || (!_verify && sig))
             {
                 _input.Consume(len);
@@ -502,7 +580,7 @@ internal sealed class ZipEntryStream : Stream
             }
         }
 
-        throw ZipFormat.Bad(_input.Offset, $"a data descriptor with CRC-32 0x{crc:X8}, compressed size {_consumed} and size {_produced}");
+        throw ZipFormat.Bad(_input.Offset, $"a data descriptor with CRC-32 0x{crc:X8}, compressed size {_consumed + _overhead} and size {_produced}");
     }
 
     /// <summary>Moves the input to the end of the entry without delivering its content.</summary>
@@ -515,14 +593,18 @@ internal sealed class ZipEntryStream : Stream
 
         if (!_descriptor && _compRemaining >= 0)
         {
-            if (!await _input.SkipAsync(_compRemaining, async, ct).ConfigureAwait(false))
+            // Encrypted: skip what is still in the input, the header and authentication code included, unread.
+            long skip = _crypt is null ? _compRemaining : _cipherLeft + (_cryptStarted ? 0 : _crypt.HeaderLength) + (_trailerDone ? 0 : _crypt.TrailerLength);
+            if (!await _input.SkipAsync(skip, async, ct).ConfigureAwait(false))
             {
                 throw Truncated();
             }
 
             _meter.AddCompressed(_compRemaining);
             _compRemaining = 0;
+            _cipherLeft = 0;
             _done = true;
+            ReleaseCrypt();
             return;
         }
 
@@ -539,8 +621,100 @@ internal sealed class ZipEntryStream : Stream
         }
     }
 
+    private async ValueTask StartCryptAsync(bool async, CancellationToken ct)
+    {
+        if (_cryptStarted)
+        {
+            return;
+        }
+
+        int length = _crypt!.HeaderLength;
+        if (!await _input.EnsureAsync(length, async, ct).ConfigureAwait(false))
+        {
+            throw Truncated();
+        }
+
+        _crypt.Start(_input.Span[..length]);
+        _input.Consume(length);
+        _cryptStarted = true;
+    }
+
+    // Pulls more ciphertext from the input into the plain buffer and decrypts it there.
+    private async ValueTask FillPlainAsync(bool async, CancellationToken ct)
+    {
+        byte[] plain = _plain!;
+        if (_pStart == _pEnd)
+        {
+            _pStart = _pEnd = 0;
+        }
+        else if (_pStart > 0)
+        {
+            Buffer.BlockCopy(plain, _pStart, plain, 0, _pEnd - _pStart);
+            _pEnd -= _pStart;
+            _pStart = 0;
+        }
+
+        if (_pEnd == plain.Length || _cipherLeft == 0)
+        {
+            return;
+        }
+
+        if (_input.Available == 0 && !await _input.FillAsync(async, ct).ConfigureAwait(false))
+        {
+            throw Truncated();
+        }
+
+        int n = (int)Math.Min(Math.Min(_input.Available, plain.Length - _pEnd), _cipherLeft);
+        _input.Span[..n].CopyTo(plain.AsSpan(_pEnd));
+        _input.Consume(n);
+        _crypt!.Decrypt(plain.AsSpan(_pEnd, n));
+        _pEnd += n;
+        _cipherLeft -= n;
+    }
+
+    // The authentication code follows the last byte of data. It is checked when the data has been delivered, so a reader
+    // sees decrypted bytes before the code is known to match; an altered entry ends in a CompressionFormatException.
+    private async ValueTask ReadTrailerAsync(bool async, CancellationToken ct)
+    {
+        int length = _crypt!.TrailerLength;
+        if (_trailerDone || length == 0)
+        {
+            _trailerDone = true;
+            return;
+        }
+
+        if (!await _input.EnsureAsync(length, async, ct).ConfigureAwait(false))
+        {
+            throw Truncated();
+        }
+
+        if (!_crypt.Verify(_input.Span[..length]))
+        {
+            throw ZipFormat.Bad(_input.Offset, "an authentication code that matches the encrypted data (the data was altered or damaged)");
+        }
+
+        _input.Consume(length);
+        _trailerDone = true;
+    }
+
+    private void ReleaseCrypt()
+    {
+        _crypt?.Dispose();
+        if (_plain is { } p)
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(p);
+            ArrayPool<byte>.Shared.Return(p);
+            _plain = null;
+        }
+    }
+
     protected override void Dispose(bool disposing)
     {
+        if (disposing)
+        {
+            ReleaseCrypt();
+        }
+
         if (disposing && _ownsInput)
         {
             _input.Dispose();

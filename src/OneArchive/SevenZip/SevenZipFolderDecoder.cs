@@ -133,7 +133,7 @@ internal sealed class SevenZipLimitedStream(Stream inner, long size, long errorO
 /// <summary>Builds the decoding stream of a folder from its coder graph (7zFormat.txt "Folder").</summary>
 internal static class SevenZipFolderDecoder
 {
-    public static Stream Open(SevenZipFolder folder, Func<int, Stream> openPacked, long errorOffset, ArchiveLimits limits, SevenZipReaderOptions options)
+    public static Stream Open(SevenZipFolder folder, Func<int, Stream> openPacked, long errorOffset, ArchiveLimits limits, SevenZipReaderOptions options, SevenZipKeyCache keys)
     {
         // Check the methods first so that an unsupported one fails before any input is touched.
         foreach (SevenZipCoder c in folder.Coders)
@@ -169,7 +169,7 @@ internal static class SevenZipFolderDecoder
                     inputs[j] = In(inFirst[coder] + j);
                 }
 
-                Stream decoded = Decode(c, inputs, limits, options, folder.UnpackSizes[outFirst[coder]], errorOffset);
+                Stream decoded = Decode(c, inputs, limits, options, keys, folder.UnpackSizes[outFirst[coder]], errorOffset);
                 opened.Add(decoded);
                 return new SevenZipLimitedStream(decoded, folder.UnpackSizes[outFirst[coder]], errorOffset);
             }
@@ -229,7 +229,7 @@ internal static class SevenZipFolderDecoder
     private static bool IsSupported(SevenZipCoder c) =>
         c.NumInStreams == 1 && c.NumOutStreams == 1 &&
         (c.MethodId is SevenZipFormat.MethodCopy or SevenZipFormat.MethodDeflate or SevenZipFormat.MethodDeflate64 or SevenZipFormat.MethodBZip2 or SevenZipFormat.MethodZstd
-            or SevenZipFormat.MethodLzma or SevenZipFormat.MethodLzma2 or SevenZipFormat.MethodDelta ||
+            or SevenZipFormat.MethodLzma or SevenZipFormat.MethodLzma2 or SevenZipFormat.MethodDelta or SevenZipFormat.MethodAes ||
          BranchOf(c.MethodId) is not null);
 
     // Methods.txt: the branch filters have a short ID (04..0B) and, for the older ones, a long 03 03 xx xx ID.
@@ -252,7 +252,7 @@ internal static class SevenZipFolderDecoder
     // Methods.txt: 00 Copy, 04 01 08 Deflate, 04 02 02 BZip2, 03 01 01 LZMA, 21 LZMA2, 03 Delta, the branch filters, and
     // F7 11 01 Zstandard. A coder's output is cut to the size the header gives, so the decoders run without an output limit
     // of their own.
-    private static Stream Decode(SevenZipCoder c, Stream[] inputs, ArchiveLimits limits, SevenZipReaderOptions options, long unpackSize, long errorOffset)
+    private static Stream Decode(SevenZipCoder c, Stream[] inputs, ArchiveLimits limits, SevenZipReaderOptions options, SevenZipKeyCache keys, long unpackSize, long errorOffset)
     {
         Stream input = inputs[0];
         ReadOnlySpan<byte> props = c.Properties.Span;
@@ -280,6 +280,26 @@ internal static class SevenZipFolderDecoder
         {
             case SevenZipFormat.MethodCopy:
                 return input;
+            case SevenZipFormat.MethodAes:
+                {
+                    if (!SevenZipAes.TryParse(props, out SevenZipAes.Parameters aes, out string? problem))
+                    {
+                        throw BadProps(errorOffset, c, problem!);
+                    }
+
+                    if (options.Password.IsEmpty)
+                    {
+                        throw new ArchivePasswordException(SevenZipFormat.Name, string.Empty, ArchivePasswordProblem.Required);
+                    }
+
+                    if (aes.Power > options.MaxKeyDerivationPower)
+                    {
+                        throw new CompressionLimitException(SevenZipFormat.Name, nameof(SevenZipReaderOptions.MaxKeyDerivationPower), options.MaxKeyDerivationPower, aes.Power);
+                    }
+
+                    return new SevenZipAesDecryptStream(input, keys.Get(options.Password, aes), aes.Iv, errorOffset);
+                }
+
             case SevenZipFormat.MethodDeflate:
                 return new DeflateCodecStream(input, DeflateFormat.Raw, new DeflateDecompressionOptions { MaxOutputSize = long.MaxValue });
             case SevenZipFormat.MethodDeflate64:

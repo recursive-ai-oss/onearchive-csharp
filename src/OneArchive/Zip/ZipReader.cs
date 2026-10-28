@@ -25,7 +25,7 @@ public sealed class ZipReader : ArchiveReader
 {
     private sealed class Rec
     {
-        public ushort VersionMadeBy, VersionNeeded, Flags, Method, InternalAttributes;
+        public ushort VersionMadeBy, VersionNeeded, Flags, Method, InternalAttributes, DosTime;
         public uint Crc, ExternalAttributes;
         public long CompressedSize, Size, LocalOffset;
         public byte[] RawName = [];
@@ -640,9 +640,9 @@ public sealed class ZipReader : ArchiveReader
 
                 target = PathRules.DecodeName(data.AsSpan(0, got));
             }
-            catch (ArchiveUnsupportedException)
+            catch (Exception ex) when (ex is ArchiveUnsupportedException or ArchivePasswordException)
             {
-                // An encrypted or unsupported link is listed with an empty target, which extraction refuses.
+                // An encrypted (without or with the wrong password) or unsupported link is listed with an empty target, which extraction refuses.
             }
 
             ZipEntry linked = Make(RecFrom(e), target);
@@ -675,24 +675,44 @@ public sealed class ZipReader : ArchiveReader
         Boundary = e.Boundary,
     };
 
-    private static void CheckSupported(ZipEntry e)
+    // Returns what the headers say about the entry's encryption, after checking that this reader can open the entry.
+    private ZipEncryptionInfo CheckSupported(ZipEntry e) => CheckSupported(e.Name, e.Flags, (ushort)e.Method, e.ExtraFields, e.LocalHeaderOffset);
+
+    private ZipEncryptionInfo CheckSupported(string name, ushort flags, ushort method, IReadOnlyList<ZipExtraField> extra, long offset)
     {
-        if (e.IsEncrypted)
+        ZipEncryptionInfo info = ZipEncryptionInfo.Inspect(flags, method, extra);
+        if (info.Problem is { } problem)
         {
-            throw new ArchiveUnsupportedException(ZipFormat.Name, $"encrypted entries ('{Printable(e.Name)}')");
+            throw info.Unsupported
+                ? new ArchiveUnsupportedException(ZipFormat.Name, $"{problem} (entry '{Printable(name)}')")
+                : ZipFormat.Bad(offset, $"{problem} (entry '{Printable(name)}')");
         }
 
-        if (e.Method is not (ZipMethod.Store or ZipMethod.Deflate or ZipMethod.Deflate64 or ZipMethod.BZip2 or ZipMethod.Zstd or ZipMethod.Lzma or ZipMethod.Xz))
+        if (info.ActualMethod is not ((ushort)ZipMethod.Store or (ushort)ZipMethod.Deflate or (ushort)ZipMethod.Deflate64 or (ushort)ZipMethod.BZip2 or (ushort)ZipMethod.Zstd or (ushort)ZipMethod.Lzma or (ushort)ZipMethod.Xz))
         {
-            throw new ArchiveUnsupportedException(ZipFormat.Name, $"compression method {(int)e.Method} ({ZipFormat.MethodName((int)e.Method)}) of entry '{Printable(e.Name)}'");
+            throw new ArchiveUnsupportedException(ZipFormat.Name, $"compression method {info.ActualMethod} ({ZipFormat.MethodName(info.ActualMethod)}) of entry '{Printable(name)}'");
         }
+
+        if (info.Kind != ZipEncryption.None && _options.Password.IsEmpty)
+        {
+            throw new ArchivePasswordException(ZipFormat.Name, name, ArchivePasswordProblem.Required);
+        }
+
+        return info;
     }
+
+    private ZipDecryptor? CreateDecryptor(in ZipEncryptionInfo info, string name, uint crc, ushort dosTime, bool descriptor) => info.Kind switch
+    {
+        ZipEncryption.None => null,
+        ZipEncryption.ZipCrypto => new ZipCryptoDecryptor(_options.Password, name, crc, dosTime, descriptor),
+        _ => new ZipAesDecryptor(_options.Password, info.AesKeyBytes, name),
+    };
 
     // Opens an entry through the directory: reads its local header, checks it against the directory entry, and returns the
     // decoding stream positioned at the data.
     private async ValueTask<Stream> OpenFromDirectoryAsync(ZipEntry e, bool async, CancellationToken ct)
     {
-        CheckSupported(e);
+        ZipEncryptionInfo info = CheckSupported(e);
         if (e.CompressedSize == 0 && e.DeclaredSize == 0 && e.Method == ZipMethod.Store)
         {
             return new MemoryReadStream(ReadOnlyMemory<byte>.Empty);
@@ -715,6 +735,7 @@ public sealed class ZipReader : ArchiveReader
 
             ushort flags = BinaryPrimitives.ReadUInt16LittleEndian(h[6..]);
             ushort method = BinaryPrimitives.ReadUInt16LittleEndian(h[8..]);
+            ushort dosTime = BinaryPrimitives.ReadUInt16LittleEndian(h[10..]);
             uint crc = BinaryPrimitives.ReadUInt32LittleEndian(h[14..]);
             uint comp32 = BinaryPrimitives.ReadUInt32LittleEndian(h[18..]);
             uint size32 = BinaryPrimitives.ReadUInt32LittleEndian(h[22..]);
@@ -769,12 +790,18 @@ public sealed class ZipReader : ArchiveReader
                 throw ZipFormat.Bad(at, $"the data of entry '{Printable(e.Name)}' to end before the next entry or the central directory (the local header's extra field or the compressed size overlaps it)");
             }
 
-            if (e.Method == ZipMethod.Store && e.CompressedSize != e.DeclaredSize)
+            ZipDecryptor? crypt = CreateDecryptor(info, e.Name, e.Crc32, dosTime, e.HasDataDescriptor);
+            long overhead = crypt is null ? 0 : crypt.HeaderLength + crypt.TrailerLength;
+            if (info.ActualMethod == (ushort)ZipMethod.Store && e.CompressedSize - overhead != e.DeclaredSize)
             {
-                throw ZipFormat.Bad(at, $"a stored entry whose compressed size equals its size ({e.DeclaredSize}), found {e.CompressedSize}");
+                crypt?.Dispose();
+                throw ZipFormat.Bad(at, $"a stored entry whose compressed size equals its size ({e.DeclaredSize}), found {e.CompressedSize - overhead}");
             }
 
-            return new ZipEntryStream(buf, true, e.Method, e.CompressedSize, e.DeclaredSize, e.Crc32, _options.VerifyChecksum, false, false, _meter, this, Limits);
+            // AE-2 stores no CRC-32; the authentication code replaces it.
+            return new ZipEntryStream(
+                buf, true, (ZipMethod)info.ActualMethod, e.CompressedSize, e.DeclaredSize, e.Crc32, _options.VerifyChecksum && info.AesVersion != 2,
+                false, false, _meter, this, Limits, crypt);
         }
         catch
         {
@@ -895,6 +922,7 @@ public sealed class ZipReader : ArchiveReader
         r.Zip64 = ZipFormat.Has(r.Extra, ZipFormat.ExtraZip64);
         r.Name = ZipFormat.DecodeName(name, r.Flags, ZipFormat.Find(r.Extra, ZipFormat.ExtraUnicodePath), _options.LegacyNameEncoding);
         r.Modified = ZipFormat.FromDos(dosDate, dosTime);
+        r.DosTime = dosTime;
         ZipFormat.ReadTimes(r.Extra, ref r.Modified, ref r.Accessed, ref r.Changed);
         _currentZip64Descriptor = r.Zip64;
 
@@ -918,10 +946,19 @@ public sealed class ZipReader : ArchiveReader
             r.Size = (long)size;
             r.CompressedSize = (long)comp;
         }
-        else if (r.Method == (ushort)ZipMethod.Store && comp != 0)
+        else if (ZipEncryptionInfo.Inspect(r.Flags, r.Method, r.Extra).ActualMethod == (ushort)ZipMethod.Store && comp != 0)
         {
             // A stored entry cannot find its own end; a writer that sets bit 3 and still fills in the size is believed.
-            r.Size = r.CompressedSize = (long)comp;
+            // Encrypted, the size covers the encryption header (and authentication code) too.
+            ZipEncryptionInfo enc = ZipEncryptionInfo.Inspect(r.Flags, r.Method, r.Extra);
+            long overhead = enc.Kind switch { ZipEncryption.ZipCrypto => 12, ZipEncryption.None => 0, ZipEncryption.Other => 0, _ => (enc.AesKeyBytes / 2) + 2 + ZipAesCore.TagLength };
+            if (overhead > (long)comp)
+            {
+                throw ZipFormat.Bad(at, "a stored encrypted entry large enough for its encryption header");
+            }
+
+            r.CompressedSize = (long)comp;
+            r.Size = (long)comp - overhead;
             r.Crc = 0;
         }
         else
@@ -954,20 +991,12 @@ public sealed class ZipReader : ArchiveReader
     private ZipEntryStream BuildForwardStream(ZipEntry? skippedEntry, Rec r)
     {
         _ = skippedEntry;
-        if ((r.Flags & 0x41) != 0 || r.Method == (ushort)ZipMethod.Aes)
-        {
-            throw new ArchiveUnsupportedException(ZipFormat.Name, $"encrypted entries ('{Printable(r.Name)}')");
-        }
-
-        if (r.Method is not ((ushort)ZipMethod.Store or (ushort)ZipMethod.Deflate or (ushort)ZipMethod.Deflate64 or (ushort)ZipMethod.BZip2 or (ushort)ZipMethod.Zstd or (ushort)ZipMethod.Lzma or (ushort)ZipMethod.Xz))
-        {
-            throw new ArchiveUnsupportedException(ZipFormat.Name, $"compression method {r.Method} ({ZipFormat.MethodName(r.Method)}) of entry '{Printable(r.Name)}'");
-        }
-
+        ZipEncryptionInfo info = CheckSupported(r.Name, r.Flags, r.Method, r.Extra, r.LocalOffset);
         CheckForwardStreamable(r);
         bool descriptor = (r.Flags & ZipFormat.FlagDescriptor) != 0;
+        ZipDecryptor? crypt = CreateDecryptor(info, r.Name, r.Crc, r.DosTime, descriptor);
         return new ZipEntryStream(
-            _buf!, false, (ZipMethod)r.Method, r.SizeKnown ? r.CompressedSize : -1, r.SizeKnown ? r.Size : -1, r.Crc, _options.VerifyChecksum,
-            descriptor, _currentZip64Descriptor, _meter, this, Limits);
+            _buf!, false, (ZipMethod)info.ActualMethod, r.SizeKnown ? r.CompressedSize : -1, r.SizeKnown ? r.Size : -1, r.Crc, _options.VerifyChecksum && info.AesVersion != 2,
+            descriptor, _currentZip64Descriptor, _meter, this, Limits, crypt);
     }
 }

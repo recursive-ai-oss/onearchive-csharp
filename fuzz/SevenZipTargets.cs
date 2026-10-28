@@ -14,6 +14,8 @@ namespace RecursiveAI.Fuzz;
 /// otherwise always stop at its checksum), reading every entry in order and then again by random access, last to first; each
 /// must end normally or in one of the library's exceptions, every entry read must have the length it declares, and the
 /// sequential and random-access reads of one entry must agree.</item>
+/// <item><c>sevenzip-read-encrypted</c>: the same with a password and the key-derivation cost capped low, so that AES properties,
+/// encrypted headers and wrong-password paths are parsed and mutated at speed.</item>
 /// </list>
 /// </summary>
 internal static class SevenZipTargets
@@ -28,7 +30,12 @@ internal static class SevenZipTargets
         MaxWindowSize = 1 << 22,
     };
 
-    public static FuzzTarget Read { get; } = new("sevenzip-read", static data => CheckRead(data.ToArray()), static ex => ex is CompressionException);
+    public static FuzzTarget Read { get; } = new("sevenzip-read", static data => CheckRead(data.ToArray(), null), static ex => ex is CompressionException);
+
+    public static FuzzTarget ReadEncrypted { get; } = new("sevenzip-read-encrypted", static data => CheckRead(data.ToArray(), Password), static ex => ex is CompressionException);
+
+    // The seeds are made with this password (see the seeds-encrypted command).
+    public const string Password = "fuzz-password";
 
     // 7zFormat.txt "SignatureHeader": bytes 12..31 are the start header, covered by the CRC at 8; the next header's CRC is at 28.
     private static void RepairCrcs(byte[] data)
@@ -68,12 +75,12 @@ internal static class SevenZipTargets
         return Convert.ToHexString(hash.GetHashAndReset());
     }
 
-    private static void CheckRead(byte[] data)
+    private static void CheckRead(byte[] data, string? password)
     {
         RepairCrcs(data);
         try
         {
-            using var reader = new SevenZipReader(new MemoryStream(data), new SevenZipReaderOptions { Limits = s_limits, MaxHeaderSize = 1 << 20 });
+            using var reader = new SevenZipReader(new MemoryStream(data), new SevenZipReaderOptions { Limits = s_limits, MaxHeaderSize = 1 << 20, Password = password, MaxKeyDerivationPower = 8 });
             var seen = new List<(SevenZipEntry Entry, string Hash)>();
             while (reader.GetNextEntry() is { } e)
             {

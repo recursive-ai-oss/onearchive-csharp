@@ -10,7 +10,9 @@ namespace RecursiveAI.Fuzz;
 /// </summary>
 internal static class SevenZipWriterTargets
 {
-    public static FuzzTarget RoundTrip { get; } = new("sevenzip-roundtrip", static data => Check(data), static _ => false);
+    public static FuzzTarget RoundTrip { get; } = new("sevenzip-roundtrip", static data => Check(data, null), static _ => false);
+
+    public static FuzzTarget RoundTripEncrypted { get; } = new("sevenzip-roundtrip-encrypted", static data => Check(data, SevenZipTargets.Password), static _ => false);
 
     private sealed class NoSeekWrite(Stream inner) : Stream
     {
@@ -35,7 +37,7 @@ internal static class SevenZipWriterTargets
         public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
     }
 
-    private static void Check(ReadOnlySpan<byte> input)
+    private static void Check(ReadOnlySpan<byte> input, string? password)
     {
         if (input.Length < 4)
         {
@@ -53,6 +55,10 @@ internal static class SevenZipWriterTargets
             EncodeHeader = (o & 64) == 0,
             Filter = (SevenZipFilter)(input[2] % 11),
             DeltaDistance = 1 + (input[2] % 7),
+            Password = password,
+            EncryptHeader = (input[0] & 0x40) != 0,
+            KeyDerivationPower = 4,
+            RandomBytes = static span => span.Fill(0xA5),
         };
         bool seekable = (o & 128) == 0;
         int count = 1 + (input[3] % 6);
@@ -64,7 +70,7 @@ internal static class SevenZipWriterTargets
             throw new InvalidOperationException("two writes of the same entries differ");
         }
 
-        using var reader = new SevenZipReader(new MemoryStream(first));
+        using var reader = new SevenZipReader(new MemoryStream(first), new SevenZipReaderOptions { Password = password });
         if (reader.Items.Count != expected.Count)
         {
             throw new InvalidOperationException($"{reader.Items.Count} entries read, {expected.Count} written");

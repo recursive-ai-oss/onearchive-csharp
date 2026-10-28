@@ -165,4 +165,22 @@ public sealed class SevenZipReaderOptions
 
     /// <summary>Gets the most coders a folder may have; a longer graph is refused. Default 32.</summary>
     public int MaxCodersPerFolder { get; init; } = DefaultMaxCodersPerFolder;
+
+    /// <summary>The default for <see cref="MaxKeyDerivationPower"/>: 24.</summary>
+    public const int DefaultMaxKeyDerivationPower = 24;
+
+    /// <summary>
+    /// Gets the password for encrypted folders and headers (7z AES-256); passwords are encoded as UTF-16 little-endian
+    /// before key derivation, as 7-Zip does. Default empty: an encrypted header makes opening the archive raise
+    /// <see cref="ArchivePasswordException"/>, and an encrypted file can be listed but not read. 7z stores no password check,
+    /// so a wrong password is reported when the decrypted data fails its CRC or does not decode.
+    /// </summary>
+    public ArchivePassword Password { get; init; }
+
+    /// <summary>
+    /// Gets the largest key-derivation cost an archive may declare, as a power of two of SHA-256 rounds. The key is derived
+    /// with 2^power rounds (7-Zip writes 19, about 0.1 s), so this bounds the time a hostile archive can spend. A larger
+    /// value raises <see cref="RecursiveAI.OneCompress.CompressionLimitException"/>. Default 24.
+    /// </summary>
+    public int MaxKeyDerivationPower { get; init; } = DefaultMaxKeyDerivationPower;
 }

@@ -309,6 +309,11 @@ public sealed class ArchiveBuilder
     private async ValueTask SaveCoreAsync(bool async, CancellationToken ct)
     {
         ThrowIfSaved();
+        if (!_options.Password.IsEmpty && _format is not (ArchiveFormat.Zip or ArchiveFormat.SevenZip))
+        {
+            throw new ArgumentException($"A password was given, but {_format} archives cannot be encrypted; only zip and 7z can.");
+        }
+
         _saved = true;
         bool leaveSink = _stream is not null && _options.LeaveOpen;
         Stream sink = _stream ?? new FileStream(_path!, new FileStreamOptions
@@ -416,22 +421,26 @@ public sealed class ArchiveBuilder
     private SevenZipWriterOptions SevenZipOptions()
     {
         SevenZipWriterOptions z = _options.SevenZip ?? new SevenZipWriterOptions();
-        if (_options.CompressionLevel is not { } level)
+        if (_options.CompressionLevel is null && _options.Password.IsEmpty)
         {
             return z;
         }
 
         return new SevenZipWriterOptions
         {
-            Method = z.Method, Level = level, DictionarySize = z.DictionarySize, Lzma = z.Lzma, Solid = z.Solid, SolidBlockSize = z.SolidBlockSize,
+            Method = z.Method, Level = _options.CompressionLevel ?? z.Level, DictionarySize = z.DictionarySize, Lzma = z.Lzma, Solid = z.Solid, SolidBlockSize = z.SolidBlockSize,
             SolidFileCount = z.SolidFileCount, Filter = z.Filter, DeltaDistance = z.DeltaDistance, EncodeHeader = z.EncodeHeader,
+            Password = _options.Password.IsEmpty ? z.Password : _options.Password, EncryptHeader = z.EncryptHeader,
+            KeyDerivationPower = z.KeyDerivationPower, RandomBytes = z.RandomBytes,
         };
     }
 
     private ZipWriterOptions ZipOptions()
     {
         ZipWriterOptions z = _options.Zip ?? new ZipWriterOptions();
-        return new ZipWriterOptions { Method = z.Method, Level = _options.CompressionLevel ?? z.Level, Zip64 = z.Zip64, DataDescriptors = z.DataDescriptors, Comment = z.Comment };
+        return new ZipWriterOptions { Method = z.Method, Level = _options.CompressionLevel ?? z.Level, Zip64 = z.Zip64, DataDescriptors = z.DataDescriptors, Comment = z.Comment,
+            Password = _options.Password.IsEmpty ? z.Password : _options.Password, AesStrength = z.AesStrength, AesVersion = z.AesVersion, RandomBytes = z.RandomBytes,
+        };
     }
 
     private static async ValueTask WriteItemAsync(ArchiveWriter writer, Item item, bool async, CancellationToken ct)

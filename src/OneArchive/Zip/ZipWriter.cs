@@ -158,6 +158,10 @@ public sealed class ZipWriter : ArchiveWriter
         public bool Zip64Local;
         public bool Descriptor;
         public ArchiveEntryKind Kind;
+        public bool Encrypted;
+
+        // The method field of the headers: 99 wraps the real method for WinZip AES entries.
+        public ZipMethod HeaderMethod => Encrypted ? ZipMethod.Aes : Method;
     }
 
     private Prepared Prepare(ArchiveEntry entry)
@@ -228,6 +232,13 @@ public sealed class ZipWriter : ArchiveWriter
                 }
 
                 break;
+        }
+
+        // Directories are not encrypted (WinZip AES document, "Non-files and zero-length files"); everything with content, and empty files, is.
+        p.Encrypted = !_options.Password.IsEmpty && entry.Kind is (ArchiveEntryKind.File or ArchiveEntryKind.Symlink);
+        if (p.Encrypted)
+        {
+            p.Flags |= 1;
         }
 
         uint perms = (uint)((entry.Mode ?? defaultMode) & (UnixFileMode)0xFFF);
@@ -357,7 +368,7 @@ public sealed class ZipWriter : ArchiveWriter
         var ms = new MemoryStream();
         foreach (ZipExtraField f in z.ExtraFields)
         {
-            if (f.Id is ZipFormat.ExtraZip64 or ZipFormat.ExtraExtendedTime or ZipFormat.ExtraNtfs or ZipFormat.ExtraUnicodePath)
+            if (f.Id is ZipFormat.ExtraZip64 or ZipFormat.ExtraExtendedTime or ZipFormat.ExtraNtfs or ZipFormat.ExtraUnicodePath or ZipEncryptionInfo.ExtraAes)
             {
                 continue;
             }
@@ -377,6 +388,22 @@ public sealed class ZipWriter : ArchiveWriter
 
         BuildTimes(entry, out byte[] utLocal, out byte[] utCentral, out byte[] ntfs);
         byte[] user = UserExtras(entry);
+        int keyBytes = (int)_options.AesStrength switch { 1 => 16, 2 => 24, _ => 32 };
+        bool ae2 = _options.AesVersion == ZipAesVersion.Ae2;
+        long overhead = 0;
+        if (p.Encrypted)
+        {
+            // WinZip AES document, "AES extra data field": version, "AE", strength, the real method.
+            byte[] aes = new byte[7];
+            BinaryPrimitives.WriteUInt16LittleEndian(aes, (ushort)_options.AesVersion);
+            aes[2] = (byte)'A';
+            aes[3] = (byte)'E';
+            aes[4] = (byte)_options.AesStrength;
+            BinaryPrimitives.WriteUInt16LittleEndian(aes.AsSpan(5), (ushort)p.Method);
+            user = [.. Field(ZipEncryptionInfo.ExtraAes, aes), .. user];
+            overhead = ZipAesEncryptStream.Overhead(keyBytes);
+        }
+
         long headerOffset = _pos;
         (ushort date, ushort time) = ZipFormat.ToDos(entry.ModifiedTime);
 
@@ -385,6 +412,10 @@ public sealed class ZipWriter : ArchiveWriter
         if (p.InMemory is not null)
         {
             crc = Crc32.Compute(p.InMemory);
+            if (p.Encrypted && ae2)
+            {
+                crc = 0; // AE-2 stores no CRC-32
+            }
         }
 
         bool known = p.InMemory is not null || p.Size == 0;
@@ -401,7 +432,7 @@ public sealed class ZipWriter : ArchiveWriter
         if (sizesInHeader && p.Zip64Local)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(zip64Local.AsSpan(4), (ulong)p.Size);
-            BinaryPrimitives.WriteUInt64LittleEndian(zip64Local.AsSpan(12), (ulong)p.Size);
+            BinaryPrimitives.WriteUInt64LittleEndian(zip64Local.AsSpan(12), (ulong)(p.Size + overhead));
         }
 
         int extraLength = zip64Local.Length + utLocal.Length + ntfs.Length + user.Length;
@@ -427,7 +458,7 @@ public sealed class ZipWriter : ArchiveWriter
         BinaryPrimitives.WriteUInt32LittleEndian(h, ZipFormat.LocalSignature);
         BinaryPrimitives.WriteUInt16LittleEndian(h[4..], needed);
         BinaryPrimitives.WriteUInt16LittleEndian(h[6..], flags);
-        BinaryPrimitives.WriteUInt16LittleEndian(h[8..], (ushort)p.Method);
+        BinaryPrimitives.WriteUInt16LittleEndian(h[8..], (ushort)p.HeaderMethod);
         BinaryPrimitives.WriteUInt16LittleEndian(h[10..], time);
         BinaryPrimitives.WriteUInt16LittleEndian(h[12..], date);
         if (known || !p.Descriptor)
@@ -437,7 +468,7 @@ public sealed class ZipWriter : ArchiveWriter
         }
 
         uint size32 = p.Zip64Local ? ZipFormat.Max32 : (sizesInHeader ? (uint)p.Size : 0);
-        BinaryPrimitives.WriteUInt32LittleEndian(h[18..], size32);
+        BinaryPrimitives.WriteUInt32LittleEndian(h[18..], p.Zip64Local ? ZipFormat.Max32 : (sizesInHeader ? (uint)(p.Size + overhead) : 0));
         BinaryPrimitives.WriteUInt32LittleEndian(h[22..], size32);
         BinaryPrimitives.WriteUInt16LittleEndian(h[26..], (ushort)p.Name.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(h[28..], (ushort)extraLength);
@@ -454,7 +485,37 @@ public sealed class ZipWriter : ArchiveWriter
         await WriteBytesAsync(header, async, ct).ConfigureAwait(false);
 
         long compressed = 0;
-        if (p.InMemory is not null)
+        ZipAesEncryptStream? enc = null;
+        if (p.Encrypted && (p.InMemory is not null || p.Size == 0))
+        {
+            // Links and empty files: salt, verifier and authentication code around (possibly) a few bytes.
+            var memSink = new CountingSink(_stream);
+            using (enc = new ZipAesEncryptStream(memSink, _options.Password, keyBytes, _options.RandomBytes))
+            {
+                if (async)
+                {
+                    if (p.InMemory is not null)
+                    {
+                        await enc.WriteAsync(p.InMemory, ct).ConfigureAwait(false);
+                    }
+
+                    await enc.CompleteAsync(ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    if (p.InMemory is not null)
+                    {
+                        enc.Write(p.InMemory);
+                    }
+
+                    enc.Complete();
+                }
+            }
+
+            compressed = memSink.Count;
+            _pos += compressed;
+        }
+        else if (p.InMemory is not null)
         {
             await WriteBytesAsync(p.InMemory, async, ct).ConfigureAwait(false);
             compressed = p.InMemory.Length;
@@ -462,7 +523,13 @@ public sealed class ZipWriter : ArchiveWriter
         else if (p.Size > 0)
         {
             var sink = new CountingSink(_stream);
-            Stream target = p.Method == ZipMethod.Store ? sink : OpenCompress(p.Method, sink, _options.Level, p.Size);
+            Stream inner = sink;
+            if (p.Encrypted)
+            {
+                inner = enc = new ZipAesEncryptStream(sink, _options.Password, keyBytes, _options.RandomBytes);
+            }
+
+            Stream target = p.Method == ZipMethod.Store ? inner : OpenCompress(p.Method, inner, _options.Level, p.Size);
             var running = new Crc32();
             long total = 0;
             byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
@@ -500,7 +567,7 @@ public sealed class ZipWriter : ArchiveWriter
                     throw new ArgumentException($"The content of '{entry.Name}' is {total} bytes but the entry's size is {p.Size}.", nameof(content));
                 }
 
-                if (!ReferenceEquals(target, sink))
+                if (!ReferenceEquals(target, inner))
                 {
                     if (async)
                     {
@@ -511,13 +578,26 @@ public sealed class ZipWriter : ArchiveWriter
                         target.Dispose();
                     }
                 }
+
+                if (enc is not null)
+                {
+                    if (async)
+                    {
+                        await enc.CompleteAsync(ct).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        enc.Complete();
+                    }
+                }
             }
             finally
             {
+                enc?.Dispose();
                 ArrayPool<byte>.Shared.Return(buffer);
             }
 
-            crc = running.GetCurrentValue();
+            crc = p.Encrypted && ae2 ? 0 : running.GetCurrentValue();
             compressed = sink.Count;
             _pos += compressed;
         }
@@ -646,7 +726,7 @@ public sealed class ZipWriter : ArchiveWriter
         BinaryPrimitives.WriteUInt16LittleEndian(h[4..], VersionMadeBy);
         BinaryPrimitives.WriteUInt16LittleEndian(h[6..], needed);
         BinaryPrimitives.WriteUInt16LittleEndian(h[8..], flags);
-        BinaryPrimitives.WriteUInt16LittleEndian(h[10..], (ushort)p.Method);
+        BinaryPrimitives.WriteUInt16LittleEndian(h[10..], (ushort)p.HeaderMethod);
         BinaryPrimitives.WriteUInt16LittleEndian(h[12..], time);
         BinaryPrimitives.WriteUInt16LittleEndian(h[14..], date);
         BinaryPrimitives.WriteUInt32LittleEndian(h[16..], crc);

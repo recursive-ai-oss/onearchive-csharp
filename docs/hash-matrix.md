@@ -99,3 +99,10 @@ fails when output depends on the machine. Registering the same name twice is an 
 
 Option sets that the codec's options object can express belong in the matrix: every level, and every
 option that changes the stream (dictionary, window size, checksum, block size, filters, job size).
+
+## Entries a platform cannot run
+
+An entry that throws `PlatformNotSupportedException` gets the digest `ERROR:PlatformNotSupportedException`. The run does not count
+it as a failure, and the compare step reports it as "not run" instead of a mismatch when the reference column produced a digest. Today
+this is the encrypted zip and 7z entries (`zip-encrypt`, `sevenzip-encrypt`) in the `wasm` column, because the browser has no AES;
+the `encrypt-primitive` entries show which primitive each platform lacks. Encrypted entries pass `RandomBytes` to fix the salt or IV.

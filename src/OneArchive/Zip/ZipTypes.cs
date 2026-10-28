@@ -31,7 +31,7 @@ public enum ZipMethod : ushort
     /// <summary>PPMd. Listed, not yet supported.</summary>
     Ppmd = 98,
 
-    /// <summary>WinZip AES encryption wrapper (the real method is inside the AES extra field). Listed, not yet supported.</summary>
+    /// <summary>WinZip AES encryption wrapper (the real method is inside the AES extra field). Read and written with a password.</summary>
     Aes = 99,
 }
 
@@ -52,7 +52,7 @@ public sealed class ZipEntry : ArchiveEntry
 {
     private static readonly IReadOnlyList<ZipExtraField> s_noFields = [];
 
-    /// <summary>Gets the compression method.</summary>
+    /// <summary>Gets the compression method as the headers state it. For a WinZip AES entry this is <see cref="ZipMethod.Aes"/>; see <see cref="CompressionMethod"/>.</summary>
     public ZipMethod Method { get; init; }
 
     /// <summary>Gets the general purpose bit flag (APPNOTE 4.4.4).</summary>
@@ -100,6 +100,15 @@ public sealed class ZipEntry : ArchiveEntry
     /// <summary>Gets a value indicating whether the entry is encrypted (bit 0, strong encryption, or the AES wrapper method).</summary>
     public bool IsEncrypted => (Flags & 0x41) != 0 || Method == ZipMethod.Aes;
 
+    /// <summary>Gets how the entry's data is encrypted. Listing an encrypted archive needs no password; reading the data does.</summary>
+    public ZipEncryption Encryption => ZipEncryptionInfo.Inspect(Flags, (ushort)Method, ExtraFields).Kind;
+
+    /// <summary>Gets the WinZip AES version (1 for AE-1, 2 for AE-2) of an AES-encrypted entry, otherwise 0.</summary>
+    public int AesVersion => ZipEncryptionInfo.Inspect(Flags, (ushort)Method, ExtraFields).AesVersion;
+
+    /// <summary>Gets the compression method of the data inside the encryption. For an AES entry <see cref="Method"/> is <see cref="ZipMethod.Aes"/> and this is the real method; otherwise it equals <see cref="Method"/>.</summary>
+    public ZipMethod CompressionMethod => (ZipMethod)ZipEncryptionInfo.Inspect(Flags, (ushort)Method, ExtraFields).ActualMethod;
+
     /// <summary>Gets a value indicating whether the entry has a zip64 extended information field.</summary>
     public bool UsesZip64 { get; init; }
 
@@ -123,6 +132,13 @@ public sealed class ZipReaderOptions
 
     /// <summary>Gets the limits applied while reading. Default: <see cref="ArchiveLimits.Default"/>.</summary>
     public ArchiveLimits Limits { get; init; } = ArchiveLimits.Default;
+
+    /// <summary>
+    /// Gets the password for encrypted entries (WinZip AES and traditional zip encryption); passwords are encoded as UTF-8.
+    /// Default empty: encrypted entries can be listed but opening one raises <see cref="ArchivePasswordException"/>.
+    /// A string or a char array converts to it.
+    /// </summary>
+    public ArchivePassword Password { get; init; }
 
     /// <summary>Gets a value indicating whether entry data is checked against the CRC-32 and sizes in the headers. Default true. A mismatch raises <see cref="RecursiveAI.OneCompress.CompressionFormatException"/> when the last byte is read.</summary>
     public bool VerifyChecksum { get; init; } = true;
@@ -189,4 +205,23 @@ public sealed class ZipWriterOptions
 
     /// <summary>Gets the archive comment, written UTF-8 encoded; at most 65535 bytes. Default none.</summary>
     public string? Comment { get; init; }
+
+    /// <summary>
+    /// Gets the password. When it is not empty, every file and symbolic link entry is encrypted with WinZip AES (directories
+    /// are not). Passwords are encoded as UTF-8. Traditional zip encryption is never written. Default empty: no encryption.
+    /// </summary>
+    public ArchivePassword Password { get; init; }
+
+    /// <summary>Gets the AES key size used with <see cref="Password"/>. Default <see cref="ZipAesStrength.Aes256"/>.</summary>
+    public ZipAesStrength AesStrength { get; init; } = ZipAesStrength.Aes256;
+
+    /// <summary>Gets the AES format version used with <see cref="Password"/>. Default <see cref="ZipAesVersion.Ae2"/>.</summary>
+    public ZipAesVersion AesVersion { get; init; } = ZipAesVersion.Ae2;
+
+    /// <summary>
+    /// Gets a function that fills the span it is given with the salt of one entry's encryption. Default <see langword="null"/>:
+    /// cryptographically random bytes. This exists so tests and cross-platform comparisons can make encrypted output
+    /// reproducible; a fixed or repeated salt weakens the encryption and must not be used for real archives.
+    /// </summary>
+    public Action<Span<byte>>? RandomBytes { get; init; }
 }
