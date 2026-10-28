@@ -713,9 +713,17 @@ public sealed partial class DeflateDecoder
                     if (br.Remaining >= DeflateFastLoop.InputMargin && dst.Length - dp >= DeflateFastLoop.OutputMargin)
                     {
                         ReadOnlySpan<byte> history = _window is null ? default : _window.AsSpan(0, _windowLen);
-                        FastResult result = DeflateFastLoop.Run(ref br, dst, ref dp, literal, _distanceTable!, history);
+                        FastResult result = DeflateFastLoop.Run(ref br, dst, ref dp, literal, _distanceTable!, out int matchLength, out int matchDistance);
                         switch (result)
                         {
+                            case FastResult.HistoryMatch:
+                                if (!DeflateFastLoop.CopyFromHistory(dst, dp, matchLength, matchDistance, history))
+                                {
+                                    throw Bad(br, "a match distance within the output so far");
+                                }
+
+                                dp += matchLength;
+                                continue;
                             case FastResult.EndOfBlock:
                                 if (EndBlock(ref br))
                                 {
