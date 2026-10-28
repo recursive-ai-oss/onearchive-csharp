@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Tar;
+using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Zip;
 
 namespace RecursiveAI.OneArchive;
@@ -31,6 +32,9 @@ public class ArchiveOpenOptions
 
     /// <summary>Gets the zip reading options (the limits above override <see cref="ZipReaderOptions.Limits"/>). Default: the zip defaults.</summary>
     public ZipReaderOptions? Zip { get; init; }
+
+    /// <summary>Gets the 7z reading options (the limits above override <see cref="SevenZipReaderOptions.Limits"/>). Default: the 7z defaults.</summary>
+    public SevenZipReaderOptions? SevenZip { get; init; }
 }
 
 /// <summary>What to do with an entry whose path is absolute, contains <c>..</c>, a drive letter or other unsafe parts.</summary>
