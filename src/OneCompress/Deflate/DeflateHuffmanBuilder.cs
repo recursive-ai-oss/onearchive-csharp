@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RecursiveAI.OneCompress.Deflate;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// and then shortening the most frequent ones to use up the freed space. The result depends only on the frequencies.
 /// </summary>
 /// <remarks>An instance owns scratch arrays and is reused without allocating; it is not thread-safe.</remarks>
+[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateHuffmanBuilder
 {
     private const int MaxSymbols = 288;

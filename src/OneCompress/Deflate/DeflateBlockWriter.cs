@@ -1,9 +1,12 @@
+using System.Diagnostics.CodeAnalysis;
+
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
 /// <summary>Which of the three Deflate block types (RFC 1951 section 3.2.3) <see cref="DeflateBlockWriter"/> writes.</summary>
+[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum DeflateBlockKind
 {
     /// <summary>Whichever of the three is smallest for the block.</summary>
@@ -30,6 +33,7 @@ public enum DeflateBlockKind
 /// The writer is the bit-level end of an encoder. It allocates while its buffer grows to fit the largest block it has seen, and
 /// not afterwards. It is not thread-safe.
 /// </remarks>
+[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateBlockWriter
 {
     private const int Slack = 64;

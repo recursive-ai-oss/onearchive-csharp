@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace RecursiveAI.OneCompress.Deflate;
 
 /// <summary>
@@ -11,6 +13,7 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// Positions are indices into a buffer the caller owns and slides (see <see cref="Slide"/>). The hashes are fixed
 /// multiplicative hashes, so the candidates visited depend only on the data. Not thread-safe.
 /// </remarks>
+[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateHashChainMatchFinder
 {
     /// <summary>The position value that means "none"; far enough back that no distance check accepts it.</summary>
