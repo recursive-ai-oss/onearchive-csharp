@@ -41,5 +41,8 @@ internal static class FuzzTargets
         ArchiveTargets.TarRead,
         ArchiveTargets.Open,
         ArchiveTargets.TarRoundTrip,
+        ZipTargets.Read,
+        ZipTargets.RoundTrip,
+        ZipTargets.Single,
     ];
 }

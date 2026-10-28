@@ -1,4 +1,4 @@
-# Archives: the shared layer, and tar
+# Archives: the shared layer, tar, zip and single compressed files
 
 How OneArchive models an archive, what extraction refuses by default, and what the tar reader and writer do. This
 is normative: a port must reproduce the writer's bytes and the defaults below from this text.
@@ -44,22 +44,28 @@ Archive.Extract("data.tar.zst", "out");                       // safe defaults
 Archive.Create("backup.tar.zst").Add("assets/").Add("notes.txt", "docs/notes.txt").Save();
 ```
 
-`Archive.Create(path)` chooses the format and compression from the extension (`.tar`, `.tar.zst`/`.tzst`, `.tar.lz4`/`.tlz4`)
-unless `ArchiveCreateOptions.Format`/`Compression` say otherwise. An extension that names no writable format and no
-`Format` option is an `ArgumentException`. `Archive.Create(Stream)` defaults to uncompressed tar.
+`Archive.Create(path)` chooses the format and compression from the extension (`.tar`, `.tar.zst`/`.tzst`, `.tar.lz4`/`.tlz4`,
+`.tar.gz`/`.tgz`, `.zip`, and `.gz`/`.zst`/`.lz4` for one compressed file) unless `ArchiveCreateOptions.Format`/`Compression` say otherwise. An extension
+that names no writable format and no `Format` option is an `ArgumentException`. `Archive.Create(Stream)` defaults to
+uncompressed tar. `.tar.bz2` and `.bz2` can be read, not written.
 
 ### Detection
 
 1. Compression from the first bytes: Zstandard `28 B5 2F FD`, LZ4 frame `04 22 4D 18`, gzip `1F 8B`, bzip2 `BZh`,
    xz `FD 37 7A 58 5A 00`. Magic bytes win over the file name.
 2. If compressed, the first 512 bytes of the decompressed stream are examined; otherwise the first 512 bytes.
-3. Container from those bytes: `ustar` at offset 257 is tar; a block with no magic but a valid header checksum, numeric
-   mode and size fields and a non-empty name is a version 7 tar; 512 zero bytes inside a compressed stream are an empty tar.
+3. Container from those bytes: `PK\3\4` (also `PK\5\6`, the whole of an empty zip, and the span markers `PK\7\8` and `PK00`) is
+   zip; `ustar` at offset 257 is tar; a block with no magic but a valid header checksum, numeric mode and size fields and a
+   non-empty name is a version 7 tar; 512 zero bytes inside a compressed stream are an empty tar, unless a name is known and
+   does not say tar (a disk image starts with zeros too).
 4. If nothing matched, the file name's extension decides (this is how an empty uncompressed `.tar` is recognised).
-5. Otherwise `CompressionFormatException` (`archive`, offset 0).
+5. A compressed stream that is still unrecognised is a single compressed file (below).
+6. Otherwise `CompressionFormatException` (`archive`, offset 0).
 
-gzip, bzip2 and xz are recognised but their codecs are not wired in yet: opening or creating raises
-`ArchiveUnsupportedException`. The place to add them is `Internal/CompressionFilters.cs`; nothing else changes.
+gzip (RFC 1952, all members in a row) and bzip2 are read; zstd, LZ4 and gzip are written (gzip at `CompressionLevel`, default 6,
+through the Deflate encoder; MTIME is the entry's modification time or 0, OS byte 255). xz is recognised but its codec is not wired in
+yet: opening or creating raises `ArchiveUnsupportedException`. The place to add them is
+`Internal/CompressionFilters.cs` (`OpenDecompress`, `OpenCompress`, `CanCompress`); nothing else changes.
 
 ## Entry model
 
@@ -191,6 +197,100 @@ name (stable, ordinal), sets the time to `NormalizedTime` (default the epoch), o
 change times, and sets modes to 0755 (directories, and files with any execute bit) or 0644 (symbolic links 0777), so equal
 trees give equal bytes. Compression: Zstandard level 3 with a content checksum, LZ4 level 1; `CompressionLevel` overrides.
 Single-threaded, so the bytes do not depend on the machine.
+
+## Single compressed files
+
+A `.gz`, `.bz2`, `.zst` or `.lz4` file (any compressed stream the detector finds no container in) is an archive of one regular file,
+`ArchiveFormat.SingleStream`, with `Archive.Compression` saying which codec. The entry's name is the gzip header's FNAME when it
+has one (ISO 8859-1, as RFC 1952 2.3.1 says), otherwise the archive's file name without its `.gz`/`.bz2`/`.zst`/`.zstd`/`.lz4`
+extension, otherwise `data`. The gzip MTIME, when not zero, is the entry's modification time. `Size` is 0: the content's length
+is not known before it has been read (it is limited and metered like every compressed archive). Writing takes exactly one file
+entry (`ArchiveUnsupportedException` for a second entry or for anything but a regular file); gzip stores the entry's base name as FNAME (ISO 8859-1; left out when it has characters above U+00FF) and its modification time
+as MTIME, the other formats store no name. `Archive.Create("a.txt.zst")` and `ArchiveCreateOptions { Format = SingleStream, Compression = ... }`
+produce them. `.tar.gz`/`.tgz` is a tar inside gzip, like `.tar.zst`.
+
+## Zip
+
+`ZipReader`/`ZipWriter` (namespace `RecursiveAI.OneArchive.Zip`), with `ZipEntry` carrying every header field. Section numbers
+are those of PKWARE's APPNOTE 6.3.10; its text is not reproduced here.
+
+### Reading
+
+- **Two modes.** A stream that can seek is read through the central directory (4.3.12), which is authoritative; any other stream
+  (or `ZipReaderOptions.ForceStreaming`) is read forward through the local headers (4.3.7), and the central directory is never
+  read. Entries read forward have no comment, no Unix mode and no link kind (those live in the central directory), so a symbolic
+  link arrives as a regular file holding its target and permissions are the extractor's defaults. `ArchiveComment` is only
+  known in directory mode.
+- **Finding the directory.** The end record (4.3.16) is searched in the last 22 + 65535 bytes, from the end; a candidate whose
+  comment length ends exactly at the end of the data wins, else the nearest candidate whose comment fits. The zip64 locator
+  (4.3.15) right before it and the zip64 end record (4.3.14) it points to (or the one just before the locator) replace the
+  end record's values; a `0xFFFF`/`0xFFFFFFFF` marker without them is an error. Disk numbers other than 0 are
+  `ArchiveUnsupportedException` (spanned archives). Data before the archive (a self-extractor stub) is allowed: when the
+  directory is not at the stored offset but is at the offset shifted by the difference to the end record, every offset is shifted.
+- **Checks before any entry is handed out** (all `CompressionFormatException` unless noted): the entry count is at most
+  `ArchiveLimits.MaxEntryCount` (`CompressionLimitException`) and at most directory size / 46; the directory is at most
+  `ZipReaderOptions.MaxCentralDirectorySize` (default 128 MiB, `CompressionLimitException`); every entry's local header lies
+  before the directory; no two entries share a local header offset; the entry's compressed size fits between its local header
+  and the next entry (or the directory). Together these make overlapping entries - one stored blob claimed by many names,
+  data running into the next entry - impossible, so the total compressed bytes read never exceed the file's size.
+- **Opening an entry** reads its local header and requires it to agree with the directory: same method, same name bytes, same
+  encryption flag, and (when bit 3 is clear) the same sizes and CRC-32 where the local header states them. The data must end
+  before the entry's boundary. A stored entry's compressed size must equal its size.
+- **Content** is delivered through a stream that decodes on the fly and checks, at the last byte: the decoder consumed exactly the
+  compressed size (deflate: the stream ends there; zstd: one or more frames fill it), the output is exactly the declared size
+  (more output is detected one byte past it, never buffered), and the CRC-32 matches (`ZipReaderOptions.VerifyChecksum`, default on).
+  Every byte is metered against `MaxExpansionRatio` (compressed bytes read versus bytes produced, whole archive, checked after
+  32 MiB) and `MaxTotalSize`. Entry streams are forward-only.
+- **Forward-only and data descriptors.** With bit 3 set, deflate and zstd entries are self-terminating, so the decoder finds the
+  end and the descriptor (4.3.9) follows; the reader tries the four layouts (with or without the signature, 4- or 8-byte sizes, the
+  one implied by a zip64 field in the local header first) and accepts the one whose CRC-32 and sizes equal what it decoded.
+  `ZipEntry.IsSizeKnown` is false for such entries and `Size` is 0; the declared total limit cannot see them, so produced bytes are
+  counted against `MaxTotalSize` as they are read. A stored entry with bit 3 is read only if its local header carries the size
+  (our writer does this); otherwise it is `ArchiveUnsupportedException` (open a seekable stream instead). An entry the reader
+  cannot decode but whose compressed size is known is skipped.
+- **Names.** Bit 11 set: UTF-8. Otherwise the Info-ZIP Unicode Path field (0x7075, version 1) when its CRC-32 equals the CRC-32 of the
+  stored name, otherwise IBM code page 437 (4.4.17), or `ZipReaderOptions.LegacyNameEncoding`. Names are returned as stored apart
+  from a trailing `/` or `\`, which makes the entry a directory and is removed; `\` separates components for the extractor's safety
+  rules (zip written on Windows). The archive comment and entry comments follow the same rules (the archive comment takes UTF-8 when valid).
+- **Kind and mode.** Host system 3 (Unix) or 19: the high 16 bits of the external attributes are `st_mode`; the type bits give symlink,
+  directory, device or FIFO (a socket is reported as FIFO), the low 12 bits the mode. Other hosts: DOS directory bit 0x10, no mode.
+  A symbolic link's target is its data (UTF-8 when valid, else Latin-1), read when the directory is loaded, at most `4 * MaxPathLength` bytes.
+- **Times.** NTFS field 0x000a (100 ns) wins over the extended timestamp 0x5455 (Unix seconds; modification, access, creation), which wins
+  over the DOS date and time, read as UTC (the fields carry no zone); an impossible DOS value is no time.
+- **Methods.** 0 store, 8 deflate, 12 bzip2, 93 zstd (4.4.5). Anything else, and encrypted entries (bit 0, bit 6 or method 99), are listed and raise
+  `ArchiveUnsupportedException` naming the method when opened. Zip64 extra fields (0x0001) hold exactly the values whose header field is
+  saturated, in the order size, compressed size, offset, disk; a short field is an error.
+
+### Writing (byte-exact)
+
+Everything not listed is as APPNOTE says. The same entries and options give the same bytes on every platform; the clock is never read.
+
+- **Layout**: for each entry a local header, the data, and for descriptor entries the descriptor; then the central directory, the zip64
+  end record and locator if needed, and the end record. "Version made by" is `0x033F` (Unix, 6.3); "version needed" is 10 (store), 20
+  (deflate, directories and descriptor entries), 63 (zstd), at least 45 with zip64. Compression method per entry: `ZipWriterOptions.Method`
+  (default deflate); directories, symbolic links and empty files are stored. Hard links, devices and FIFOs are
+  `ArchiveUnsupportedException`. Deflate entries are raw Deflate at `Level` (default 6, 0-12, through `DeflateEncoderStream`); zstd entries are one frame at `Level` (default 3) with the content size and no frame checksum (the zip CRC-32
+  covers the data).
+- **Names**: UTF-8, bit 11 set when any byte is not ASCII (name or comment); directories get a trailing `/`. An empty name or NUL is an
+  `ArgumentException`; names and comments are at most 65535 bytes.
+- **Attributes**: external attributes = `(file type | mode) << 16 | (0x10 for directories)`; type is `0x8000` file, `0x4000` directory,
+  `0xA000` symbolic link (whose data is its target, UTF-8); mode is the entry's, else 0644 (0755 directories, 0777 links).
+- **Times**: DOS date and time are the entry's UTC time, `1980-01-01 00:00` when there is none or it is earlier, clamped to 2107-12-31 23:59:58.
+  The extended timestamp field (0x5455) is written when the modification time fits 32 bits: flags then modification, access, change times
+  (those that exist and fit) in the local header, modification time alone in the central directory. The NTFS field (0x000a, tag 1: modified,
+  accessed, changed, missing ones taking the modification time) is written in both places when any time has a fractional second or does not fit 32 bits.
+- **Extra field order**: zip64 (local header only when needed, see below), 0x5455, 0x000a, then the `ZipEntry.ExtraFields` the caller passed
+  (except 0x0001, 0x5455, 0x000a and 0x7075, which the writer owns). The central directory repeats them, with its own zip64 field first.
+- **Local headers and descriptors**: `DataDescriptors.Auto` patches the local header with CRC-32 and sizes when the output can seek and uses
+  descriptors (bit 3, signature, 4-byte sizes, or 8-byte with a zip64 field) when it cannot; `Always` and `Never` force it. Entries whose data is
+  known up front (directories, links, empty files) never have descriptors. A stored entry with a descriptor still states its sizes in the local
+  header so that forward-only readers can find its end; other methods write zero there. The output of `Always` is the same on every stream.
+- **Zip64**: an entry with a declared size of 3.75 GiB (`0xF0000000`) or more, or any entry with `Zip64 = Always`, gets a 16-byte zip64 field in
+  its local header (`0xFFFFFFFF` in the 32-bit size fields; the values in the field). The central directory gets a zip64 field only for the values that
+  reach `0xFFFFFFFF` (size, compressed size, offset, in that order). The zip64 end record and locator are written when the count reaches 65535, the
+  directory's size or offset reaches `0xFFFFFFFF`, or `Always`; the end record then holds `0xFFFF`/`0xFFFFFFFF` for values that do not fit and the real
+  values otherwise. `Never` turns each of these into an `ArgumentException`. An entry that compresses to 4 GiB or more without a zip64 local field fails the same way.
+- **Checks**: content must be exactly `Size` bytes (`ArgumentException`); a failed write marks the writer failed and `Dispose` does not finish it.
 
 ## Platforms
 

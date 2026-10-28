@@ -1,6 +1,8 @@
+using RecursiveAI.OneCompress.Deflate;
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Tar;
+using RecursiveAI.OneArchive.Zip;
 
 namespace RecursiveAI.OneArchive;
 
@@ -58,22 +60,39 @@ public sealed class ArchiveBuilder
 
         if (format == ArchiveFormat.Unknown)
         {
-            if (path is not null)
+            if (path is not null && compression != ArchiveCompression.None)
             {
-                throw new ArgumentException($"The extension of '{Path.GetFileName(path)}' names no archive format that can be written; use .tar, .tar.zst or .tar.lz4, or set ArchiveCreateOptions.Format.", nameof(path));
+                // "notes.txt.zst": one compressed file.
+                format = ArchiveFormat.SingleStream;
             }
-
-            format = ArchiveFormat.Tar;
+            else if (path is not null)
+            {
+                throw new ArgumentException($"The extension of '{Path.GetFileName(path)}' names no archive format that can be written; use .tar, .tar.zst, .tar.lz4, .zip, .zst or .lz4, or set ArchiveCreateOptions.Format.", nameof(path));
+            }
+            else
+            {
+                format = ArchiveFormat.Tar;
+            }
         }
 
-        if (format != ArchiveFormat.Tar)
+        if (format is not (ArchiveFormat.Tar or ArchiveFormat.Zip or ArchiveFormat.SingleStream))
         {
             throw new ArchiveUnsupportedException("archive", $"writing the {format} format");
         }
 
-        if (compression is not (ArchiveCompression.None or ArchiveCompression.Zstd or ArchiveCompression.Lz4))
+        if (format == ArchiveFormat.Zip && compression != ArchiveCompression.None)
         {
-            throw new ArchiveUnsupportedException("archive", $"{compression} compression (not yet available; use zstd or lz4)");
+            throw new ArgumentException("A zip archive compresses its entries itself; leave ArchiveCreateOptions.Compression unset.", nameof(options));
+        }
+
+        if (format == ArchiveFormat.SingleStream && compression == ArchiveCompression.None)
+        {
+            throw new ArgumentException("A single-stream archive needs a compression (gzip, zstd or lz4).", nameof(options));
+        }
+
+        if (!CompressionFilters.CanCompress(compression))
+        {
+            throw new ArchiveUnsupportedException("archive", $"{compression} compression (not yet available for writing; use zstd or lz4)");
         }
 
         _format = format;
@@ -300,10 +319,17 @@ public sealed class ArchiveBuilder
         bool ok = false;
         try
         {
-            Stream top = _compression == ArchiveCompression.None
+            bool lazyGzip = _format == ArchiveFormat.SingleStream && _compression == ArchiveCompression.Gzip;
+            Stream top = _compression == ArchiveCompression.None || lazyGzip
                 ? sink
                 : CompressionFilters.OpenCompress(_compression, sink, _options.CompressionLevel, leaveSink);
-            var writer = new TarWriter(top, _options.Tar, leaveOpen: top == sink && leaveSink);
+            ArchiveWriter writer = _format switch
+            {
+                ArchiveFormat.Zip => new ZipWriter(sink, ZipOptions(), leaveOpen: leaveSink),
+                ArchiveFormat.SingleStream when lazyGzip => new SingleStreamWriter(e => OpenGzip(sink, e, leaveSink)),
+                ArchiveFormat.SingleStream => new SingleStreamWriter(top),
+                _ => new TarWriter(top, _options.Tar, leaveOpen: top == sink && leaveSink),
+            };
             try
             {
                 foreach (Item item in Ordered())
@@ -357,7 +383,31 @@ public sealed class ArchiveBuilder
         }
     }
 
-    private static async ValueTask WriteItemAsync(TarWriter writer, Item item, bool async, CancellationToken ct)
+    private DeflateEncoderStream OpenGzip(Stream sink, ArchiveEntry? entry, bool leaveOpen)
+    {
+        // FNAME is the file's base name in ISO 8859-1 (RFC 1952 2.3.1); a name that does not fit is left out rather than mangled.
+        string? name = entry?.Name is { } n ? n[(n.LastIndexOf('/') + 1)..] : null;
+        if (name is not null && (name.Length == 0 || name.Any(c => c == '\0' || c > '\u00ff')))
+        {
+            name = null;
+        }
+
+        long unix = entry?.ModifiedTime?.ToUnixTimeSeconds() ?? 0;
+        return new DeflateEncoderStream(sink, DeflateFormat.GZip, new DeflateOptions
+        {
+            Level = _options.CompressionLevel ?? DeflateOptions.DefaultLevel,
+            GZipFileName = name,
+            GZipModificationTime = unix is > 0 and <= uint.MaxValue ? (uint)unix : 0,
+        }, leaveOpen);
+    }
+
+    private ZipWriterOptions ZipOptions()
+    {
+        ZipWriterOptions z = _options.Zip ?? new ZipWriterOptions();
+        return new ZipWriterOptions { Method = z.Method, Level = _options.CompressionLevel ?? z.Level, Zip64 = z.Zip64, DataDescriptors = z.DataDescriptors, Comment = z.Comment };
+    }
+
+    private static async ValueTask WriteItemAsync(ArchiveWriter writer, Item item, bool async, CancellationToken ct)
     {
         if (item.FilePath is { } file)
         {
@@ -388,7 +438,7 @@ public sealed class ArchiveBuilder
         }
     }
 
-    private static ValueTask WriteAsync(TarWriter writer, ArchiveEntry entry, Stream? content, bool async, CancellationToken ct)
+    private static ValueTask WriteAsync(ArchiveWriter writer, ArchiveEntry entry, Stream? content, bool async, CancellationToken ct)
     {
         if (async)
         {

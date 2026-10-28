@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Tar;
+using RecursiveAI.OneArchive.Zip;
 
 namespace RecursiveAI.OneArchive;
 
@@ -27,6 +28,9 @@ public class ArchiveOpenOptions
 
     /// <summary>Gets the tar reading options (the limits above override <see cref="TarReaderOptions.Limits"/>). Default: the tar defaults.</summary>
     public TarReaderOptions? Tar { get; init; }
+
+    /// <summary>Gets the zip reading options (the limits above override <see cref="ZipReaderOptions.Limits"/>). Default: the zip defaults.</summary>
+    public ZipReaderOptions? Zip { get; init; }
 }
 
 /// <summary>What to do with an entry whose path is absolute, contains <c>..</c>, a drive letter or other unsafe parts.</summary>
@@ -166,4 +170,7 @@ public sealed class ArchiveCreateOptions
 
     /// <summary>Gets the tar writing options. Default: the tar defaults (pax).</summary>
     public TarWriterOptions? Tar { get; init; }
+
+    /// <summary>Gets the zip writing options (<see cref="CompressionLevel"/>, when set, overrides <see cref="ZipWriterOptions.Level"/>). Default: the zip defaults (Deflate).</summary>
+    public ZipWriterOptions? Zip { get; init; }
 }

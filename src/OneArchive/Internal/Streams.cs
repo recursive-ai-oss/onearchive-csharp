@@ -92,6 +92,8 @@ internal sealed class CountingStream(Stream inner, ExpansionMeter meter, bool le
 /// <summary>Reports every byte read from the (decompressed) archive stream to the meter.</summary>
 internal sealed class ProducedStream(Stream inner, ExpansionMeter meter) : Stream
 {
+    public Stream Inner => inner;
+
     public override bool CanRead => true;
 
     public override bool CanSeek => false;

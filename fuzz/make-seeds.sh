@@ -14,7 +14,7 @@ out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
          zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
-         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode tar-read archive-open tar-roundtrip; do
+         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read; do
   mkdir -p "$out/$t"
 done
 
@@ -109,5 +109,6 @@ done
 bash "$here/seeds-long.sh" "$out/zstd-encode-long-roundtrip" >/dev/null
 bash "$here/seeds-seekable.sh" "$out/zstd-seekable-read" >/dev/null
 bash "$here/seeds-tar.sh" "$out" "$payloads" >/dev/null
+bash "$here/seeds-zip.sh" "$out" "$payloads" >/dev/null
 rm -rf "$out/.lz4" "$payloads"
 for d in "$out"/*/; do printf '%s: %s seeds\n' "$(basename "$d")" "$(ls "$d" | wc -l)"; done

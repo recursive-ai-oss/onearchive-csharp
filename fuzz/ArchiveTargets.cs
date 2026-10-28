@@ -187,7 +187,7 @@ internal static class ArchiveTargets
         }
     }
 
-    private static void ForceDelete(string path)
+    internal static void ForceDelete(string path)
     {
         try
         {

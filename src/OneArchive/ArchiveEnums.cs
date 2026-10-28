@@ -11,6 +11,12 @@ public enum ArchiveFormat
 
     /// <summary>tar: ustar, pax and GNU variants (see <c>RecursiveAI.OneArchive.Tar</c>).</summary>
     Tar = 1,
+
+    /// <summary>zip (see <c>RecursiveAI.OneArchive.Zip</c>): zip64, data descriptors, store, deflate and zstd entries.</summary>
+    Zip = 2,
+
+    /// <summary>One compressed file with no container, such as <c>notes.txt.gz</c>, <c>.zst</c> or <c>.lz4</c>: an archive of one entry.</summary>
+    SingleStream = 3,
 }
 
 /// <summary>A compression layer wrapped around a whole archive, as in <c>.tar.zst</c>.</summary>
@@ -26,10 +32,10 @@ public enum ArchiveCompression
     /// <summary>LZ4 frame format (<c>.lz4</c>).</summary>
     Lz4 = 2,
 
-    /// <summary>gzip (<c>.gz</c>). Detected, but not yet supported: opening raises <see cref="ArchiveUnsupportedException"/>.</summary>
+    /// <summary>gzip (<c>.gz</c>). Read and written.</summary>
     Gzip = 3,
 
-    /// <summary>bzip2 (<c>.bz2</c>). Detected, but not yet supported.</summary>
+    /// <summary>bzip2 (<c>.bz2</c>). Read; writing is not available yet.</summary>
     Bzip2 = 4,
 
     /// <summary>xz (<c>.xz</c>). Detected, but not yet supported.</summary>
