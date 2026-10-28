@@ -165,14 +165,29 @@ public class BZip2HostileInputTests
         }
     }
 
+    [Fact]
+    public void SelectorCountZeroIsRejected()
+    {
+        byte[] stream = BZip2TestBuilder.Stream(s_sample, tamper: (m, _) => m.SelectorCountField = 0);
+        AssertBad(stream, "table selector");
+    }
+
     [Theory]
-    [InlineData(0)]
+    [InlineData(18002)]
     [InlineData(18003)]
     [InlineData(32767)]
-    public void BadSelectorCount(int count)
+    public void SelectorsPastTheLimitAreReadAndIgnored(int count)
     {
-        byte[] stream = BZip2TestBuilder.Stream(s_sample, tamper: (m, _) => m.SelectorCountField = count);
-        AssertBad(stream, "table selectors");
+        // bzip2 1.0.8 decodes these to the original; extra selectors must be consumed so the symbols stay aligned.
+        byte[] stream = BZip2TestBuilder.Stream(s_sample, tamper: (m, _) =>
+        {
+            while (m.Selectors.Count < count)
+            {
+                m.Selectors.Add(1);
+            }
+        });
+        Assert.Equal(s_sample, BZ.Decompress(stream));
+        Assert.Equal(s_sample, BZip2TestData.DecodeInPieces(stream, 7, 1000));
     }
 
     [Theory]

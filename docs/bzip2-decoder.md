@@ -28,7 +28,7 @@ end      = 0x177245385090 (48 bits)  combined-crc (32)  zero padding to a byte b
 
 - **Symbol map:** 16 bits, one per group of 16 byte values, then 16 bits for each group present. The set bits, in order, are
   the bytes used in the block (`used`, 1 to 256).
-- **Table count** 2 to 6. **Selector count** 1 to 18002. Each selector is a unary number (that many 1 bits, then a 0 bit)
+- **Table count** 2 to 6. **Selector count** 1 to 32767; a block uses at most 18002, and bzip2 1.0.8 reads the rest and ignores them (checked at 18003 and 32767), so the decoder does too. Each selector is a unary number (that many 1 bits, then a 0 bit)
   below the table count, undone with move-to-front over the table numbers `0..tables-1`. Selector `i` names the table for
   symbols `50 i` to `50 i + 49`.
 - **Tables:** per table, a 5-bit start length, then for each of the `used + 2` symbols: while the next bit is 1, one more bit
@@ -67,7 +67,7 @@ end      = 0x177245385090 (48 bits)  combined-crc (32)  zero padding to a byte b
 | more than `level × 100000` symbols in a block, or a run that would pass it (exactly that many is accepted) | the tool rejects 100 001 symbols at level 1 and accepts 100 000 |
 | a block with no symbols; an original row at or above the block length | the tool rejects both |
 | a block ending right after four equal bytes (no count byte) | the tool rejects it |
-| more than 18002 selectors | **choice, stricter than the tool**: 1.0.8 accepts any count up to 32767 and ignores those past 18002, and its own encoder never writes more than 18000 |
+| 0 selectors | the tool rejects it |
 | a block or combined CRC mismatch | format (off with `VerifyChecksum = false`, and then the stored values are still folded into the combined CRC) |
 
 A block with more selectors than it needs is fine. A block that needs more selectors than it has is an error.

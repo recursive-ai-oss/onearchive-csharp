@@ -11,7 +11,7 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// <remarks>
 /// <para>The format has no official specification; this decoder follows the public descriptions of the format and the
 /// behaviour of the bzip2 tool. What it checks: the signatures, the block size level (1 to 9), each block's original row,
-/// the symbol map, 2 to 6 tables, 1 to 18002 selectors each below the table count, code lengths from 1 to 20 that do not
+/// the symbol map, 2 to 6 tables, 1 to 32767 selectors (those past 18002 are read and ignored, as bzip2 1.0.8 does) each below the table count, code lengths from 1 to 20 that do not
 /// oversubscribe the code space and change by at most 40 steps per symbol, that symbols never overflow the level's block size,
 /// that runs of zeros fit the block, the block CRC, and the combined CRC of the stream.</para>
 /// <para>Memory: one transformation vector of 4 bytes per byte of the block size level (at most 3.6 MB), a 64 KiB staging
@@ -431,9 +431,9 @@ public sealed partial class BZip2Decoder
             throw Bad(_stageOrigin + (c.BitPosition >> 3), "2 to 6 Huffman tables");
         }
 
-        if (selectorCount is < 1 or > MaxSelectors)
+        if (selectorCount < 1)
         {
-            throw Bad(_stageOrigin + (c.BitPosition >> 3), "1 to 18002 table selectors");
+            throw Bad(_stageOrigin + (c.BitPosition >> 3), "at least 1 table selector");
         }
 
         // Selectors: each a unary count of 1 bits (ended by a 0 bit), then undone by move-to-front.
@@ -461,7 +461,12 @@ public sealed partial class BZip2Decoder
                 return Parse.NeedMore;
             }
 
-            selectors[i] = selMtf.Decode(j);
+            // Like bzip2 1.0.8, read selectors past the 18002 a block can use (to stay aligned) and ignore them.
+            byte selector = selMtf.Decode(j);
+            if (i < MaxSelectors)
+            {
+                selectors[i] = selector;
+            }
         }
 
         // Code lengths: a 5-bit start, then per symbol a walk of +1 / -1 steps (bits 10 / 11), ended by a 0 bit.
@@ -522,7 +527,7 @@ public sealed partial class BZip2Decoder
         _origPtr = origPtr;
         _usedCount = used;
         _tableCount = tableCount;
-        _selectorCount = selectorCount;
+        _selectorCount = Math.Min(selectorCount, MaxSelectors);
         _alphabetSize = alphabetSize;
         bitEnd = c.BitPosition;
         return Parse.Block;
