@@ -43,6 +43,9 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
     // After this many bytes of a block are parsed the prices are rebuilt from the counts so far.
     private const int RefreshBytes = 4096;
 
+    // The dictionary's hash chain is walked for this many times the level's attempts per position.
+    private const int DictionaryAttemptsFactor = 16;
+
     // Matches of length 3 cost a little more than their symbols suggest: their far offsets evict useful repeat offsets and,
     // coded rarely, their symbols cost more than the counts predict. Two bits keeps them to the cases where they clearly pay.
     private const int ShortMatchPenalty = 2 * ZstdCost.Bit;
@@ -298,6 +301,32 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
         FromDistribution(ZstdFormat.LiteralLengthDefaultDistribution, _llStat);
         FromDistribution(ZstdFormat.MatchLengthDefaultDistribution, _mlStat);
         FromDistribution(ZstdFormat.OffsetDefaultDistribution, _ofStat);
+
+        // A dictionary in the Zstandard format starts the frame with its own tables, and the first block can code with them as
+        // they stand, so they are what the symbols will cost.
+        if (_dictionary is { HasEntropyTables: true } d)
+        {
+            ReadOnlySpan<byte> lengths = d.HuffmanTable!.CodeLengths;
+            int maxBits = d.HuffmanTable.MaxCodeLength;
+            for (int i = 0; i < 256; i++)
+            {
+                int len = i < lengths.Length ? lengths[i] : 0;
+                _litStat[i] = len == 0 ? 1 : 1 << (maxBits - len);
+            }
+
+            FromCounts(d.LiteralLengthTable!.NormalizedCounts, _llStat);
+            FromCounts(d.MatchLengthTable!.NormalizedCounts, _mlStat);
+            FromCounts(d.OffsetTable!.NormalizedCounts, _ofStat);
+        }
+    }
+
+    private static void FromCounts(ReadOnlySpan<short> normalized, int[] stat)
+    {
+        Array.Clear(stat);
+        for (int i = 0; i < stat.Length; i++)
+        {
+            stat[i] = i < normalized.Length ? Math.Max((int)normalized[i], 1) : 1;
+        }
     }
 
     private static void FromDistribution(short[] distribution, int[] stat)
@@ -669,8 +698,11 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
         TreeWalk(window, p, end, true, ref budget, ref bestTree);
         _next = p + 1;
         longest = Math.Max(longest, bestTree);
-        if (_dictionaryIndex is not null && budget > 0 && windowStartPosition == 0 && p <= _windowSize)
+        if (_dictionaryIndex is not null && windowStartPosition == 0 && p <= _windowSize)
         {
+            // The dictionary is a chain, not a tree, and its best match is often far down it: the frame's own tree takes nothing from
+            // this budget, and the walk gets a multiple of the level's attempts. On a payload of a few KB this costs next to nothing.
+            budget = _attempts * DictionaryAttemptsFactor;
             longest = Math.Max(longest, SearchDictionary(window, p, end, ref budget, bestTree));
         }
 
