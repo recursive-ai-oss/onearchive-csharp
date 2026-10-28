@@ -50,5 +50,6 @@ internal static class FuzzTargets
         ZipTargets.RoundTrip,
         ZipTargets.Single,
         SevenZipTargets.Read,
+        SevenZipWriterTargets.RoundTrip,
     ];
 }

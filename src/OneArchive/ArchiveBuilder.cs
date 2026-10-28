@@ -1,6 +1,7 @@
 using RecursiveAI.OneCompress.Deflate;
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
+using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Zip;
 
@@ -67,7 +68,7 @@ public sealed class ArchiveBuilder
             }
             else if (path is not null)
             {
-                throw new ArgumentException($"The extension of '{Path.GetFileName(path)}' names no archive format that can be written; use .tar, .tar.zst, .tar.lz4, .zip, .zst or .lz4, or set ArchiveCreateOptions.Format.", nameof(path));
+                throw new ArgumentException($"The extension of '{Path.GetFileName(path)}' names no archive format that can be written; use .tar, .tar.zst, .tar.lz4, .zip, .7z, .zst or .lz4, or set ArchiveCreateOptions.Format.", nameof(path));
             }
             else
             {
@@ -75,14 +76,14 @@ public sealed class ArchiveBuilder
             }
         }
 
-        if (format is not (ArchiveFormat.Tar or ArchiveFormat.Zip or ArchiveFormat.SingleStream))
+        if (format is not (ArchiveFormat.Tar or ArchiveFormat.Zip or ArchiveFormat.SevenZip or ArchiveFormat.SingleStream))
         {
             throw new ArchiveUnsupportedException("archive", $"writing the {format} format");
         }
 
-        if (format == ArchiveFormat.Zip && compression != ArchiveCompression.None)
+        if (format is ArchiveFormat.Zip or ArchiveFormat.SevenZip && compression != ArchiveCompression.None)
         {
-            throw new ArgumentException("A zip archive compresses its entries itself; leave ArchiveCreateOptions.Compression unset.", nameof(options));
+            throw new ArgumentException("A zip or 7z archive compresses its entries itself; leave ArchiveCreateOptions.Compression unset.", nameof(options));
         }
 
         if (format == ArchiveFormat.SingleStream && compression == ArchiveCompression.None)
@@ -326,6 +327,7 @@ public sealed class ArchiveBuilder
             ArchiveWriter writer = _format switch
             {
                 ArchiveFormat.Zip => new ZipWriter(sink, ZipOptions(), leaveOpen: leaveSink),
+                ArchiveFormat.SevenZip => new SevenZipWriter(sink, SevenZipOptions(), leaveOpen: leaveSink),
                 ArchiveFormat.SingleStream when lazyGzip => new SingleStreamWriter(e => OpenGzip(sink, e, leaveSink)),
                 ArchiveFormat.SingleStream => new SingleStreamWriter(top),
                 _ => new TarWriter(top, _options.Tar, leaveOpen: top == sink && leaveSink),
@@ -399,6 +401,21 @@ public sealed class ArchiveBuilder
             GZipFileName = name,
             GZipModificationTime = unix is > 0 and <= uint.MaxValue ? (uint)unix : 0,
         }, leaveOpen);
+    }
+
+    private SevenZipWriterOptions SevenZipOptions()
+    {
+        SevenZipWriterOptions z = _options.SevenZip ?? new SevenZipWriterOptions();
+        if (_options.CompressionLevel is not { } level)
+        {
+            return z;
+        }
+
+        return new SevenZipWriterOptions
+        {
+            Method = z.Method, Level = level, DictionarySize = z.DictionarySize, Lzma = z.Lzma, Solid = z.Solid, SolidBlockSize = z.SolidBlockSize,
+            SolidFileCount = z.SolidFileCount, Filter = z.Filter, DeltaDistance = z.DeltaDistance, EncodeHeader = z.EncodeHeader,
+        };
     }
 
     private ZipWriterOptions ZipOptions()
