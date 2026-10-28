@@ -452,8 +452,10 @@ public sealed class SevenZipWriter : ArchiveWriter
         return folder;
     }
 
-    // A non-solid folder's size is the file's; a solid folder's is unknown until it closes, so its first 4 MiB are held back.
-    private static int DeferThreshold(long knownLength) => knownLength >= 0 ? 0 : 4 << 20;
+    // A non-solid folder's size is the file's; a solid folder's is unknown until it closes, so its first 16 MiB are held back:
+    // a folder that ends inside them gets tables sized to its content instead of to a dictionary of up to 64 MiB, which in a
+    // 32-bit WebAssembly heap is the difference between finishing and running out of memory.
+    private static int DeferThreshold(long knownLength) => knownLength >= 0 ? 0 : 16 << 20;
 
     private static ReadOnlySpan<int> ZstdLevels => [0, 1, 2, 3, 5, 7, 9, 12, 16, 19];
 

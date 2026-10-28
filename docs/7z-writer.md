@@ -83,7 +83,7 @@ executables) and by listing 7-Zip's dictionary choices (LZMA2 at 256 KiB, 4 MiB 
 Zstandard maps 1–9 to levels 1, 2, 3, 5, 7, 9, 12, 16, 19.
 
 **Dictionary and memory.** The LZMA family sizes its tables from the folder's size when it is known. A non-solid folder knows
-it (the file's size). A solid folder's first 4 MiB are held back: if the folder ends within them the compressor is created
+it (the file's size). A solid folder's first 16 MiB are held back: if the folder ends within them the compressor is created
 knowing the size, otherwise without; the output is a function of the data either way.
 
 ## Streaming
@@ -91,7 +91,7 @@ knowing the size, otherwise without; the output is a function of the data either
 File content is read sequentially from the caller's stream (any `Stream`, seekable or not) in 64 KiB pieces and must be
 exactly `Size` bytes; a shorter or longer stream raises `ArgumentException` and the writer refuses further writes. Each piece
 goes through the CRC, the filter and the compressor straight to the output, so memory is bounded by the compressor's tables
-(plus the first 4 MiB of a solid folder and the entry names and CRCs until `Finish`).
+(plus the first 16 MiB of a solid folder and the entry names and CRCs until `Finish`).
 
 ## Not written
 

@@ -512,6 +512,12 @@ internal sealed class SevenZipHeaderParser(SevenZipReaderOptions options)
             {
                 numIn = r.ReadCount("coder input stream count", 32);
                 numOut = r.ReadCount("coder output stream count", 32);
+                if (numIn == 0 || numOut == 0)
+                {
+                    // 7zFormat.txt: NumInStreams and NumOutStreams are counts of streams a coder reads and writes; a coder
+                    // with none cannot take part in a bond, and the bond indices below are bounded by the totals.
+                    throw r.Bad("a coder with at least one input and one output stream");
+                }
             }
 
             byte[] props = [];
@@ -803,6 +809,11 @@ internal sealed class SevenZipHeaderParser(SevenZipReaderOptions options)
             {
                 case SevenZipFormat.EmptyStream:
                     emptyStream = sub.ReadBitVector(n);
+                    if (emptyFile is not null || anti is not null)
+                    {
+                        throw r.Bad("a single empty-stream vector (property 0x0E) ahead of the vectors that depend on it");
+                    }
+
                     numEmpty = 0;
                     foreach (bool e in emptyStream)
                     {
@@ -814,9 +825,20 @@ internal sealed class SevenZipHeaderParser(SevenZipReaderOptions options)
 
                     break;
                 case SevenZipFormat.EmptyFile:
+                    // 7zFormat.txt: EmptyFile and Anti have one bit per empty stream, so the EmptyStream vector (0x0E) comes first.
+                    if (emptyStream is null)
+                    {
+                        throw r.Bad("the empty-stream vector (property 0x0E) before the empty-file vector (0x0F)");
+                    }
+
                     emptyFile = sub.ReadBitVector(numEmpty);
                     break;
                 case SevenZipFormat.Anti:
+                    if (emptyStream is null)
+                    {
+                        throw r.Bad("the empty-stream vector (property 0x0E) before the anti-item vector (0x10)");
+                    }
+
                     anti = sub.ReadBitVector(numEmpty);
                     break;
                 case SevenZipFormat.Names:
