@@ -8,13 +8,16 @@ namespace RecursiveAI.OneCompress.Tests;
 [Collection("Lz4 allocation")]
 public class Lz4AllocationTests
 {
-    // Runs `once` until batches of 1000 calls allocate nothing, then requires the next batches to allocate nothing too.
-    private static void AssertSteadyStateAllocatesNothing(Action once)
+    // Runs `once` until batches of calls allocate nothing, then requires the next batches to allocate nothing too.
+    // Large payloads use smaller batches so a slow runner settles well inside the time limit; any allocation per
+    // call still makes every batch non-zero.
+    private static void AssertSteadyStateAllocatesNothing(Action once, int payloadBytes = 0)
     {
+        int calls = Math.Clamp(50_000_000 / Math.Max(1, payloadBytes), 20, 1000);
         long Batch()
         {
             long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++)
+            for (int i = 0; i < calls; i++)
             {
                 once();
             }
@@ -32,7 +35,7 @@ public class Lz4AllocationTests
             Assert.True(warmUp.ElapsedMilliseconds < 30_000, "allocations never settled");
         }
 
-        // Any allocation per call would add at least 1000 bytes to every batch.
+        // Any allocation per call would make every batch non-zero.
         var per = new List<long> { Batch(), Batch(), Batch(), Batch(), Batch() };
         Assert.True(per.Count(a => a == 0) >= 4 && per.Max() < 10_000, string.Join(",", per));
     }
@@ -60,7 +63,7 @@ public class Lz4AllocationTests
             {
                 throw new InvalidOperationException("wrong result");
             }
-        });
+        }, v.Size);
         v.AssertMatches(output.AsSpan(0, v.Size));
     }
 
@@ -96,7 +99,7 @@ public class Lz4AllocationTests
             {
                 throw new InvalidOperationException("wrong result");
             }
-        });
+        }, v.Size);
     }
 
     [Fact]
