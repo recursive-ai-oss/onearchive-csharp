@@ -50,3 +50,12 @@ A target added as one line in `FuzzTargets.All` is picked up by both drivers, th
 listing, random access and extraction into a scratch directory, then a check that nothing was created outside it) and
 `tar-roundtrip` (entries built from the input are written and read back). Seeds come from `seeds-tar.sh`: GNU tar and bsdtar
 archives over a tree with long names, links and sparse files, and the hostile set from `testdata/tar/make-hostile.py`.
+
+## Zip and single-stream targets
+
+`zip-read` (the zip reader through the central directory, with entries re-opened out of order, and forward-only in odd pieces;
+every entry read must have the length it declares), `zip-roundtrip` (entries built from the input are written with an option
+mix - store or zstd, zip64, data descriptors, seekable or not - and read back both ways) and `single-stream-read`
+(`Archive.Extract` over compressed single files and everything else, then the same nothing-outside check). Seeds come from
+`seeds-zip.sh`: Info-ZIP, bsdtar and 7-Zip archives (streamed and zip64 variants too), gzip, zstd and lz4 files, and the hostile
+set from `testdata/zip/make-hostile.py`.

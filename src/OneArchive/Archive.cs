@@ -205,8 +205,12 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                 format = ArchiveDetector.DetectFormat(inner.AsSpan(0, innerGot));
                 if (format == ArchiveFormat.Unknown && innerGot == inner.Length && !inner.AsSpan().ContainsAnyExcept((byte)0))
                 {
-                    // A compressed stream that starts with a zero block is a tar with no entries.
-                    format = ArchiveFormat.Tar;
+                    // A compressed stream that starts with a zero block is a tar with no entries, unless the name says it is
+                    // some other compressed file (a disk image starts with zeros too).
+                    if (nameFormat == ArchiveFormat.Tar || name is null)
+                    {
+                        format = ArchiveFormat.Tar;
+                    }
                 }
             }
         }
