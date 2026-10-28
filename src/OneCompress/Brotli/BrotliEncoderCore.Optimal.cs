@@ -4,7 +4,9 @@ internal sealed partial class BrotliEncoderCore
 {
     // Costs in the shortest-path parse are in 1/256 bit.
     private const int CostBit = 256;
-    private const int Infinite = int.MaxValue / 2;
+    
+    // Path costs are 64-bit: a block of a million literals at 8 bits is 2^31 in these units, which does not fit in an int.
+    private const long Infinite = long.MaxValue / 4;
 
     private bool _collecting;
 
@@ -18,7 +20,7 @@ internal sealed partial class BrotliEncoderCore
 
     // The best path to every position: its cost, the position it came from, the match that led here (length 0 for a literal), the literals
     // since the last match, and the four last distances.
-    private int[] _nodeCost = [];
+    private long[] _nodeCost = [];
     private int[] _nodePrevious = [];
     private int[] _nodeLength = [];
     private int[] _nodeDistance = [];
@@ -181,7 +183,7 @@ internal sealed partial class BrotliEncoderCore
         }
 
         int size = n + 1;
-        _nodeCost = new int[size];
+        _nodeCost = new long[size];
         _nodePrevious = new int[size];
         _nodeLength = new int[size];
         _nodeDistance = new int[size];
@@ -259,7 +261,7 @@ internal sealed partial class BrotliEncoderCore
         Span<int> ring = stackalloc int[4];
         for (int i = 0; i < n; i++)
         {
-            int cost = _nodeCost[i];
+            long cost = _nodeCost[i];
             if (cost >= Infinite)
             {
                 continue;
@@ -290,7 +292,7 @@ internal sealed partial class BrotliEncoderCore
             }
 
             // A literal.
-            int literalCost = cost + _literalCost[buffer[pos]];
+            long literalCost = cost + _literalCost[buffer[pos]];
             if (literalCost < _nodeCost[i + 1])
             {
                 _nodeCost[i + 1] = literalCost;
@@ -347,14 +349,14 @@ internal sealed partial class BrotliEncoderCore
         }
     }
 
-    private void Relax(int from, int to, int cost, int insert, int length, int distance, int covered, bool dictionary, ReadOnlySpan<int> ring)
+    private void Relax(int from, int to, long cost, int insert, int length, int distance, int covered, bool dictionary, ReadOnlySpan<int> ring)
     {
         if (to > _nodeCost.Length - 1 || to <= from)
         {
             return;
         }
 
-        int total = cost + CommandPrice(insert, length, distance, dictionary, ring);
+        long total = cost + CommandPrice(insert, length, distance, dictionary, ring);
         if (total >= _nodeCost[to])
         {
             return;
