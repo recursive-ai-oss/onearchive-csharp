@@ -58,7 +58,11 @@ export DOTNET="${DOTNET:-dotnet}"
 out="${BAR_OUT:-$home/bar-x64/chunk$chunk}"
 budget="${BAR_BUDGET_MIN:-115}"
 # BAR_DEADLINE=HH:MM (today, local time) replaces the budget: steps stop at the deadline minus 5 minutes.
-if [ -n "${BAR_DEADLINE:-}" ]; then budget=$(( ( $(date -d "$BAR_DEADLINE" +%s) - $(date +%s) ) / 60 - 5 )); fi
+if [ -n "${BAR_DEADLINE:-}" ]; then
+  # GNU date takes -d; BSD date (macOS) parses with -j -f.
+  deadline=$(date -d "$BAR_DEADLINE" +%s 2>/dev/null || date -j -f '%H:%M' "$BAR_DEADLINE" +%s) || { echo "cannot parse BAR_DEADLINE=$BAR_DEADLINE" >&2; exit 2; }
+  budget=$(( ( deadline - $(date +%s) ) / 60 - 5 ))
+fi
 scale="${BAR_SCALE:-1}"
 files="${BAR_FILES:-silesia.tar enwik8}"
 if [ "$(uname)" = Darwin ]; then lock="${BAR_LOCK_FILE:-$HOME/onearchive/BENCH.lock}"; else lock="${BAR_LOCK_FILE:-$HOME/WORKER-BENCH.lock}"; fi
