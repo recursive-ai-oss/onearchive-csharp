@@ -14,7 +14,7 @@ out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
          zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
-         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip tar-read archive-open tar-roundtrip; do
+         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode tar-read archive-open tar-roundtrip; do
   mkdir -p "$out/$t"
 done
 
@@ -81,6 +81,15 @@ for tool in gzip pigz; do
 done
 if command -v pigz >/dev/null; then
   for p in "$payloads"/*; do { printf '\x00'; pigz -q -z -6 -c "$p"; } > "$out/zlib-decode/ref-pigz-$(basename "$p")" || true; done
+fi
+
+# bzip2: the vectors, and the tool's own output over the payloads at three levels. The first
+# byte is the option byte of the target (0: verify checksums, no trailing data).
+for f in $(small "$root"/testdata/bzip2/vectors/*); do { printf '\x00'; cat "$f"; } > "$out/bzip2-decode/$(basename "$f")"; done
+if command -v bzip2 >/dev/null; then
+  for p in "$payloads"/*; do
+    for l in 1 5 9; do { printf '\x00'; bzip2 -$l -c "$p"; } > "$out/bzip2-decode/ref-bzip2-$(basename "$p")-$l" || true; done
+  done
 fi
 
 # Round-trip targets: option bytes followed by a payload (see the target sources for what the bytes mean).

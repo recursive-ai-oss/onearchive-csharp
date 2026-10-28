@@ -34,7 +34,7 @@ for example one directory per git worktree.
 
 Zstandard and LZ4 are preview while their speed is below the reference tools'. Their compression ratio and
 byte-identical output are already at the target; speed is what is still being tuned. The Deflate, zlib and gzip
-decoder is preview until it has been measured against the reference tools; its encoder is not written yet.
+decoder is preview until it has been measured against the reference tools; its encoder is not written yet. The same holds for the bzip2 decoder.
 The archive layer (`Archive`, the tar reader and writer) is preview while the containers are being added and the
 formats' interop and fuzz coverage grows. Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
 
@@ -43,6 +43,7 @@ formats' interop and fuzz coverage grows. Their public types carry `[Experimenta
 | Zstandard (including dictionary training and the seekable format) | `ONECOMPRESS001` |
 | LZ4 | `ONECOMPRESS002` |
 | Deflate, zlib and gzip (decoder) | `ONECOMPRESS003` |
+| bzip2 (decoder) | `ONECOMPRESS004` |
 | OneArchive: `Archive`, the entry model, readers and writers, tar | `ONEARCHIVE001` |
 
 ```xml

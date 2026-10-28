@@ -10,6 +10,7 @@ public class PreviewMarkerTests
     [InlineData("RecursiveAI.OneCompress.Zstd", "ONECOMPRESS001")]
     [InlineData("RecursiveAI.OneCompress.Lz4", "ONECOMPRESS002")]
     [InlineData("RecursiveAI.OneCompress.Deflate", "ONECOMPRESS003")]
+    [InlineData("RecursiveAI.OneCompress.BZip2", "ONECOMPRESS004")]
     public void EveryPublicTypeIsExperimental(string ns, string id)
     {
         var assembly = typeof(OneCompressInfo).Assembly;
@@ -36,7 +37,8 @@ public class PreviewMarkerTests
             if (!type.IsPublic) continue;
             if (type.Namespace is { } ns && (ns.EndsWith(".Zstd", StringComparison.Ordinal) || ns.Contains(".Zstd.", StringComparison.Ordinal)
                 || ns.EndsWith(".Lz4", StringComparison.Ordinal) || ns.Contains(".Lz4.", StringComparison.Ordinal)
-                || ns.EndsWith(".Deflate", StringComparison.Ordinal) || ns.Contains(".Deflate.", StringComparison.Ordinal))) continue;
+                || ns.EndsWith(".Deflate", StringComparison.Ordinal) || ns.Contains(".Deflate.", StringComparison.Ordinal)
+                || ns.EndsWith(".BZip2", StringComparison.Ordinal) || ns.Contains(".BZip2.", StringComparison.Ordinal))) continue;
             Assert.Null(type.GetCustomAttribute<ExperimentalAttribute>());
         }
     }
