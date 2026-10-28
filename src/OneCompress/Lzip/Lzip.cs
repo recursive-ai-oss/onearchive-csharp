@@ -5,7 +5,7 @@ namespace RecursiveAI.OneCompress.Lzip;
 
 /// <summary>One-call decompression of lzip data. Everything here is built on <see cref="LzipDecoder"/>. A buffer may hold several members one after the other; their outputs are joined.</summary>
 [Experimental("ONECOMPRESS007", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
-public static class Lzip
+public static partial class Lzip
 {
     /// <summary>Decompresses a buffer holding one or more lzip members.</summary>
     /// <param name="source">The compressed data.</param>
