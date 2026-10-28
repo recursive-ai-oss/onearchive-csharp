@@ -70,12 +70,14 @@ x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0
 | Zstandard compress, levels 20 and 22 | 0.86-1.07; enwik8 level 22 size +1.17% | 0.90-1.02; enwik8 level 22 size +1.17% |
 | Zstandard decompress | 12 of 16 rows at the target; the rest 0.86-0.87 | 5 of 8 at the target; the rest 0.86-0.87 |
 | Zstandard long-distance matching | 0.60-0.75; Silesia level 3 size +1.04% | 0.66-0.78 |
-| Zstandard multithreaded jobs | not yet measured | 0.68-0.85 |
-| Game payloads with dictionaries, compress | per-tick frames 1.0-1.4x faster; snapshots and saves 0.26-0.58 | 10 of 48 rows at the target |
+| Zstandard multithreaded jobs (levels 1 and 3, 4 to 16 workers) | 0.62-0.86; size within +0.82% | 0.68-0.85 |
+| Game payloads with dictionaries, compress | per-tick frames 1.0-1.4x faster; snapshots and saves 0.26-0.58 at level 3, 0.06-0.39 at level 19 (size -4.8% to +0.44%) | 10 of 48 rows at the target |
 | Game payloads with dictionaries, decompress | 29 of 48 rows at the target; frames 1.02-1.44x faster; the rest 0.83-0.86 | not yet measured |
 | LZ4 compress | 0.58-0.82; level 2 size +2.2% (Silesia) | 0.54-0.83 |
 | LZ4 decompress | 0.80-0.90 | 0.82-0.89 |
-| Dictionary training | not yet measured | 3-35x the tool's time, 20-40x its memory; output with our dictionaries within 1% of the tool's overall, up to 2.6% larger on tiny training sets and 1.1-2.1% larger with 64 KiB and larger dictionaries on Silesia |
+| Small payloads (256 B to 16 KiB) with a dictionary, reused encoder and decoder, Zstandard levels 1 and 3 | compress 0.26-0.74, decompress 0.68-1.06; size 0.73-1.01; no allocation per payload | not yet measured |
+| Small payloads with a dictionary, LZ4 | compress 0.27-0.86, decompress 0.45-1.31; size within +2.9% (level 3), +2.5% (fast levels) | not yet measured |
+| Dictionary training | 2.9-73x the tool's time on one thread, 1.4-26x with the default thread count; 4-30x its memory | 3-35x the tool's time, 20-40x its memory; output with our dictionaries within 1% of the tool's overall, up to 2.6% larger on tiny training sets and 1.1-2.1% larger with 64 KiB and larger dictionaries on Silesia |
 
 Output is byte-identical across x64 and arm64, the JIT and NativeAOT, with and without hardware
 intrinsics, at any thread count, and in the browser (WebAssembly).
