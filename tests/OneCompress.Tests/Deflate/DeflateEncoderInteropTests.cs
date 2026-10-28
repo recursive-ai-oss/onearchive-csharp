@@ -18,7 +18,8 @@ namespace RecursiveAI.OneCompress.Tests;
 public class DeflateEncoderInteropTests
 {
     private static readonly string[] DefaultFiles =
-        ["alice29.txt", "kennedy.xls", "ptt5", "E.coli", "random.txt", "aaa.txt", "dickens", "mozilla", "mr", "nci", "ooffice", "osdb", "reymont", "samba", "sao", "webster", "x-ray", "xml", "enwik8"];
+        ["a.txt", "aaa.txt", "alphabet.txt", "random.txt", "alice29.txt", "asyoulik.txt", "cp.html", "fields.c", "grammar.lsp", "kennedy.xls", "lcet10.txt", "plrabn12.txt", "ptt5", "sum", "xargs.1",
+        "E.coli", "bible.txt", "world192.txt", "dickens", "mozilla", "mr", "nci", "ooffice", "osdb", "reymont", "samba", "sao", "webster", "x-ray", "xml", "enwik8"];
 
     private static readonly (string Tool, string[] Args)[] GZipDecoders =
     [
