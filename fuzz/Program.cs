@@ -11,6 +11,13 @@ if (args.Length < 1)
     return 2;
 }
 
+// `fuzz seeds-encrypted DIR` writes the seed archives of the password-carrying targets.
+if (args.Length == 2 && args[0] == "seeds-encrypted")
+{
+    EncryptedSeeds.Write(args[1]);
+    return 0;
+}
+
 // Coverage-guided mode: `fuzz afl <target>` reads each input from stdin under afl-fuzz. The library assembly
 // must be instrumented first (see README.md). Expected rejections return quietly; anything else is left
 // unhandled so the process aborts and the fuzzer records the input as a crash.

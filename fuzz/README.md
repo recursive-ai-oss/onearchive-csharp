@@ -59,3 +59,11 @@ mix - store or zstd, zip64, data descriptors, seekable or not - and read back bo
 (`Archive.Extract` over compressed single files and everything else, then the same nothing-outside check). Seeds come from
 `seeds-zip.sh`: Info-ZIP, bsdtar and 7-Zip archives (streamed and zip64 variants too), gzip, zstd and lz4 files, and the hostile
 set from `testdata/zip/make-hostile.py`.
+
+## Encrypted archives
+
+`zip-read-encrypted`, `zip-roundtrip-encrypted`, `sevenzip-read-encrypted` and `sevenzip-roundtrip-encrypted` are the zip and 7z
+targets run with the password `fuzz-password`: WinZip AES and traditional headers, verifiers and authentication codes, 7z AES
+properties, encrypted headers and the wrong-password paths. The 7z read target caps the key-derivation power at 8 so that a
+mutated power is a limit error instead of a stall. Round trips write with the salt and IV hooks fixed, so two writes agree.
+Seeds come from `seeds-encrypted.sh` (`fuzz seeds-encrypted DIR` writes the library's own encrypted archives).

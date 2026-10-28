@@ -42,6 +42,7 @@ public sealed class SevenZipReader : ArchiveReader
     private readonly List<(int Folder, SevenZipFolderCursor Cursor)> _cache = [];
     private SevenZipFolderCursor? _linkCursor;
     private int _linkFolder = -1;
+    private readonly SevenZipKeyCache _keys = new();
 
     /// <summary>Creates a reader over <paramref name="stream"/>, whose current position is the start of the archive.</summary>
     /// <param name="stream">A readable, seekable stream of 7z data.</param>
@@ -156,6 +157,7 @@ public sealed class SevenZipReader : ArchiveReader
             return new MemoryReadStream(ReadOnlyMemory<byte>.Empty);
         }
 
+        bool encrypted = RequirePassword(entry);
         if (_seq is null || _seqFolder != entry.FolderIndex)
         {
             _seq?.Dispose();
@@ -163,7 +165,7 @@ public sealed class SevenZipReader : ArchiveReader
             _seqFolder = entry.FolderIndex;
         }
 
-        return new SevenZipEntryStream(_seq, null, entry, _options.VerifyChecksum);
+        return new SevenZipEntryStream(_seq, null, entry, _options.VerifyChecksum, encrypted);
     }
 
     /// <inheritdoc />
@@ -184,6 +186,7 @@ public sealed class SevenZipReader : ArchiveReader
         // Random access: lease a decoder for the folder (a recently used one when there is one, so that reading a solid
         // folder's entries one after another does not decode it from the start each time) and hand it back on dispose.
         int folder = e.FolderIndex;
+        bool encrypted = RequirePassword(e);
         SevenZipFolderCursor? cursor = null;
         for (int i = 0; i < _cache.Count; i++)
         {
@@ -196,7 +199,7 @@ public sealed class SevenZipReader : ArchiveReader
         }
 
         cursor ??= NewCursor(folder);
-        return new SevenZipEntryStream(cursor, c => ReturnCursor(folder, c), e, _options.VerifyChecksum);
+        return new SevenZipEntryStream(cursor, c => ReturnCursor(folder, c), e, _options.VerifyChecksum, encrypted);
     }
 
     /// <inheritdoc />
@@ -206,6 +209,7 @@ public sealed class SevenZipReader : ArchiveReader
         {
             _seq?.Dispose();
             _linkCursor?.Dispose();
+            _keys.Dispose();
             foreach ((_, SevenZipFolderCursor c) in _cache)
             {
                 c.Dispose();
@@ -219,6 +223,35 @@ public sealed class SevenZipReader : ArchiveReader
         }
 
         base.Dispose(disposing);
+    }
+
+    private static bool IsEncrypted(SevenZipFolder folder)
+    {
+        foreach (SevenZipCoder c in folder.Coders)
+        {
+            if (c.MethodId == SevenZipFormat.MethodAes)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Returns whether the entry's folder is encrypted; throws, naming the entry, when it is and there is no password.
+    private bool RequirePassword(SevenZipEntry entry)
+    {
+        if (!IsEncrypted(_streams.Folders[entry.FolderIndex]))
+        {
+            return false;
+        }
+
+        if (_options.Password.IsEmpty)
+        {
+            throw new ArchivePasswordException(SevenZipFormat.Name, entry.Name, ArchivePasswordProblem.Required);
+        }
+
+        return true;
     }
 
     // At most two idle decoders are kept: each holds a dictionary's worth of memory.
@@ -249,7 +282,8 @@ public sealed class SevenZipReader : ArchiveReader
             k => new SevenZipPackStream(_stream, _packOffsets[folder.FirstPackStream + k], _streams.PackSizes[folder.FirstPackStream + k], errorOffset, _meter),
             errorOffset,
             Limits,
-            _options), _meter);
+            _options,
+            _keys), _meter);
     }
 
     private void EnsureLoaded()
@@ -361,24 +395,38 @@ public sealed class SevenZipReader : ArchiveReader
             _streams = info; // The cursor reads packed streams through the current layout.
             _packOffsets = ComputePackOffsets(info);
             byte[] plain = new byte[folder.UnpackSize];
-            using (SevenZipFolderCursor cursor = NewCursor(0))
+            bool encrypted = IsEncrypted(folder);
+            if (encrypted && _options.Password.IsEmpty)
             {
-                int filled = 0;
-                while (filled < plain.Length)
-                {
-                    int n = cursor.Read(plain.AsSpan(filled));
-                    if (n == 0)
-                    {
-                        throw Bad(_packOffsets[0], "the whole encoded header", true);
-                    }
-
-                    filled += n;
-                }
+                throw new ArchivePasswordException(SevenZipFormat.Name, string.Empty, ArchivePasswordProblem.Required);
             }
 
-            if (folder.Crc is { } crc && Crc32.Compute(plain) != crc)
+            try
             {
-                throw Bad(_packOffsets.Length > 0 ? _packOffsets[0] : 0, "an encoded header whose CRC matches the folder's");
+                using (SevenZipFolderCursor cursor = NewCursor(0))
+                {
+                    int filled = 0;
+                    while (filled < plain.Length)
+                    {
+                        int n = cursor.Read(plain.AsSpan(filled));
+                        if (n == 0)
+                        {
+                            throw Bad(_packOffsets[0], "the whole encoded header", true);
+                        }
+
+                        filled += n;
+                    }
+                }
+
+                if (folder.Crc is { } crc && Crc32.Compute(plain) != crc)
+                {
+                    throw Bad(_packOffsets.Length > 0 ? _packOffsets[0] : 0, "an encoded header whose CRC matches the folder's");
+                }
+            }
+            catch (CompressionFormatException ex) when (encrypted)
+            {
+                // 7z stores no password check: a wrong password decrypts to noise that fails the header's CRC or decoder.
+                throw new ArchivePasswordException(SevenZipFormat.Name, string.Empty, ArchivePasswordProblem.Incorrect, ex, "7z cannot tell a wrong password from a damaged header");
             }
 
             if (plain.Length == 0)
@@ -551,6 +599,31 @@ public sealed class SevenZipReader : ArchiveReader
             throw new CompressionLimitException(SevenZipFormat.Name, nameof(ArchiveLimits.MaxPathLength), Limits.MaxPathLength, size);
         }
 
+        // An encrypted link is listed with an empty target when there is no password or it is wrong; extraction refuses it.
+        if (IsEncrypted(_streams.Folders[folderIndex]))
+        {
+            if (_options.Password.IsEmpty)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                return ReadLinkTargetCore(folderIndex, offset, size);
+            }
+            catch (CompressionFormatException)
+            {
+                _linkCursor?.Dispose();
+                _linkCursor = null;
+                return string.Empty;
+            }
+        }
+
+        return ReadLinkTargetCore(folderIndex, offset, size);
+    }
+
+    private string? ReadLinkTargetCore(int folderIndex, long offset, long size)
+    {
         if (_linkCursor is null || _linkFolder != folderIndex || _linkCursor.Position > offset)
         {
             _linkCursor?.Dispose();
@@ -643,7 +716,7 @@ internal sealed class SevenZipFolderCursor(Func<Stream> open, ExpansionMeter met
 }
 
 /// <summary>The content of one entry: a window of its folder's unpacked stream, with the entry's CRC-32 checked at the end.</summary>
-internal sealed class SevenZipEntryStream(SevenZipFolderCursor cursor, Action<SevenZipFolderCursor>? release, SevenZipEntry entry, bool verify) : Stream
+internal sealed class SevenZipEntryStream(SevenZipFolderCursor cursor, Action<SevenZipFolderCursor>? release, SevenZipEntry entry, bool verify, bool encrypted = false) : Stream
 {
     private long _pos;
     private uint _crc;
@@ -671,6 +744,24 @@ internal sealed class SevenZipEntryStream(SevenZipFolderCursor cursor, Action<Se
     public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
 
     public override int Read(Span<byte> buffer)
+    {
+        if (!encrypted)
+        {
+            return ReadCore(buffer);
+        }
+
+        try
+        {
+            return ReadCore(buffer);
+        }
+        catch (CompressionFormatException ex)
+        {
+            // 7z stores no password check: a wrong password decrypts to noise that fails the CRC or the decoder.
+            throw new ArchivePasswordException(SevenZipFormat.Name, entry.Name, ArchivePasswordProblem.Incorrect, ex, "7z cannot tell a wrong password from damaged data");
+        }
+    }
+
+    private int ReadCore(Span<byte> buffer)
     {
         long left = entry.Size - _pos;
         if (left <= 0 || buffer.IsEmpty)

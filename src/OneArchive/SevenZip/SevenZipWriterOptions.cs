@@ -103,4 +103,26 @@ public sealed class SevenZipWriterOptions
 
     /// <summary>Gets whether the header is compressed with LZMA. Default <see langword="true"/>.</summary>
     public bool EncodeHeader { get; init; } = true;
+
+    /// <summary>
+    /// Gets the password. When it is not empty, every folder is encrypted with AES-256 (7z method 06 F1 07 01); the key is
+    /// derived from the password as UTF-16 with <see cref="KeyDerivationPower"/>. Default empty: no encryption.
+    /// </summary>
+    public ArchivePassword Password { get; init; }
+
+    /// <summary>
+    /// Gets whether the header (file names, sizes, times) is encrypted too when a <see cref="Password"/> is set. This forces
+    /// the header to be stored encoded, whatever <see cref="EncodeHeader"/> says. Default <see langword="true"/>.
+    /// </summary>
+    public bool EncryptHeader { get; init; } = true;
+
+    /// <summary>Gets the key-derivation cost as a power of two of SHA-256 rounds, 0 to 24. Default 19, what 7-Zip writes.</summary>
+    public int KeyDerivationPower { get; init; } = 19;
+
+    /// <summary>
+    /// Gets a function that fills the span it is given with the 16-byte initialisation vector of one encrypted folder (or the
+    /// header). Default <see langword="null"/>: cryptographically random bytes. This exists so tests and cross-platform
+    /// comparisons can make encrypted output reproducible; a repeated IV weakens the encryption and must not be used for real archives.
+    /// </summary>
+    public Action<Span<byte>>? RandomBytes { get; init; }
 }

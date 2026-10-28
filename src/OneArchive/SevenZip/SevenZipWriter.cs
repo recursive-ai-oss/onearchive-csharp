@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
+using System.Security.Cryptography;
 using System.Text;
 using RecursiveAI.OneCompress.Checksums;
 using RecursiveAI.OneCompress.Deflate;
@@ -39,6 +40,8 @@ public sealed class SevenZipWriter : ArchiveWriter
     private readonly bool _buffered;
     private readonly List<FileRecord> _files = [];
     private readonly List<FolderRecord> _folders = [];
+    private readonly bool _encrypt;
+    private byte[]? _key;
     private FolderRecord? _cur;
     private bool _disposed;
     private bool _finished;
@@ -61,6 +64,9 @@ public sealed class SevenZipWriter : ArchiveWriter
         public byte[] CompressorProperties = [];
         public Stream Top = null!;
         public CountingSink Sink = null!;
+        public SevenZipAesEncryptStream? Aes;
+        public byte[] AesProperties = [];
+        public long AesUnpack;
         public long Unpack;
         public long Pack;
         public List<long> Sizes = [];
@@ -88,6 +94,9 @@ public sealed class SevenZipWriter : ArchiveWriter
         ArgumentOutOfRangeException.ThrowIfGreaterThan(_options.DeltaDistance, 256);
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.SolidBlockSize, 1);
         ArgumentOutOfRangeException.ThrowIfNegative(_options.SolidFileCount);
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.KeyDerivationPower, 0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(_options.KeyDerivationPower, 24);
+        _encrypt = !_options.Password.IsEmpty;
         _method = _options.Level == 0 ? SevenZipMethod.Copy : _options.Method;
         _target = stream;
         _leaveOpen = leaveOpen;
@@ -403,6 +412,17 @@ public sealed class SevenZipWriter : ArchiveWriter
     {
         var sink = new CountingSink(_out);
         var folder = new FolderRecord { Filter = filter, Sink = sink };
+
+        // With a password the coders write into the AES stream, which pads and writes to the counted sink.
+        Stream codecSink = sink;
+        if (_encrypt)
+        {
+            byte[] iv = NewIv();
+            folder.Aes = new SevenZipAesEncryptStream(sink, Key(), iv);
+            folder.AesProperties = SevenZipAes.BuildProperties(_options.KeyDerivationPower, iv);
+            codecSink = folder.Aes;
+        }
+
         Stream top;
         switch (_method)
         {
@@ -411,7 +431,7 @@ public sealed class SevenZipWriter : ArchiveWriter
                 {
                     var enc = new Lzma2Encoder(LzmaFor(), knownLength >= 0 ? knownLength : length);
                     folder.CompressorProperties = [enc.DictionaryProperty];
-                    return new EncodeStepStream(sink, enc.Compress, 0);
+                    return new EncodeStepStream(codecSink, enc.Compress, 0);
                 }, DeferThreshold(knownLength));
                 break;
 
@@ -424,24 +444,24 @@ public sealed class SevenZipWriter : ArchiveWriter
                     props[0] = p.PropertiesByte;
                     BinaryPrimitives.WriteUInt32LittleEndian(props.AsSpan(1), p.DictionarySize);
                     folder.CompressorProperties = props;
-                    return new EncodeStepStream(sink, enc.Compress, 13);
+                    return new EncodeStepStream(codecSink, enc.Compress, 13);
                 }, DeferThreshold(knownLength));
                 break;
 
             case SevenZipMethod.Deflate:
-                top = new DeflateEncoderStream(sink, DeflateFormat.Raw, new DeflateOptions { Level = _options.Level }, leaveOpen: true);
+                top = new DeflateEncoderStream(codecSink, DeflateFormat.Raw, new DeflateOptions { Level = _options.Level }, leaveOpen: true);
                 break;
 
             case SevenZipMethod.Deflate64:
-                top = new RecursiveAI.OneCompress.Deflate64.Deflate64Stream(sink, new RecursiveAI.OneCompress.Deflate64.Deflate64Options { Level = _options.Level }, leaveOpen: true);
+                top = new RecursiveAI.OneCompress.Deflate64.Deflate64Stream(codecSink, new RecursiveAI.OneCompress.Deflate64.Deflate64Options { Level = _options.Level }, leaveOpen: true);
                 break;
 
             case SevenZipMethod.Zstd:
-                top = new ZstdStream(sink, new ZstdCompressionOptions { Level = ZstdLevels[_options.Level] }, leaveOpen: true);
+                top = new ZstdStream(codecSink, new ZstdCompressionOptions { Level = ZstdLevels[_options.Level] }, leaveOpen: true);
                 break;
 
             default:
-                top = sink;
+                top = codecSink;
                 break;
         }
 
@@ -492,6 +512,13 @@ public sealed class SevenZipWriter : ArchiveWriter
             folder.Top.Dispose();
         }
 
+        if (folder.Aes is { } aes)
+        {
+            aes.Complete();
+            folder.AesUnpack = aes.InputCount;
+            aes.Dispose();
+        }
+
         folder.Pack = folder.Sink.Count;
         _folders.Add(folder);
         _ = ct;
@@ -521,13 +548,29 @@ public sealed class SevenZipWriter : ArchiveWriter
             {
                 byte[] header = BuildHeader();
                 long dataEnd = _out.Position - _origin - StartHeaderSize;
-                if (_options.EncodeHeader)
+                if (_options.EncodeHeader || (_encrypt && _options.EncryptHeader))
                 {
                     byte[] packed = LzmaRaw(header, out byte[] props);
                     long packPos = dataEnd;
-                    _out.Write(packed);
-                    header = BuildEncodedHeaderRecord(packPos, packed.Length, header.Length, Crc32.Compute(header), props);
-                    dataEnd += packed.Length;
+                    long packedSize = packed.Length;
+                    byte[] aesProps = [];
+                    if (_encrypt && _options.EncryptHeader)
+                    {
+                        byte[] iv = NewIv();
+                        aesProps = SevenZipAes.BuildProperties(_options.KeyDerivationPower, iv);
+                        using var counted = new CountingSink(_out);
+                        using var aes = new SevenZipAesEncryptStream(counted, Key(), iv);
+                        aes.Write(packed);
+                        aes.Complete();
+                        packedSize = counted.Count;
+                    }
+                    else
+                    {
+                        _out.Write(packed);
+                    }
+
+                    header = BuildEncodedHeaderRecord(packPos, packedSize, header.Length, Crc32.Compute(header), props, aesProps, packed.Length);
+                    dataEnd += packedSize;
                 }
 
                 nextOffset = dataEnd;
@@ -583,6 +626,24 @@ public sealed class SevenZipWriter : ArchiveWriter
     }
 
     // The header is small and its size is known, so the encoder is told the length and writes no end marker.
+    // The key does not depend on the IV (7z AES has no salt by default), so one derivation serves every folder and the header.
+    private byte[] Key() => _key ??= SevenZipAes.DeriveKey(_options.Password, [], _options.KeyDerivationPower);
+
+    private byte[] NewIv()
+    {
+        byte[] iv = new byte[SevenZipAes.BlockLength];
+        if (_options.RandomBytes is { } fill)
+        {
+            fill(iv);
+        }
+        else
+        {
+            RandomNumberGenerator.Fill(iv);
+        }
+
+        return iv;
+    }
+
     private static byte[] LzmaRaw(byte[] data, out byte[] props)
     {
         var enc = new LzmaEncoder(new LzmaOptions { Preset = 5, DictionarySize = Math.Max(LzmaProperties.MinimumDictionarySize, (uint)Math.Min(data.Length, 1 << 24)) }, data.Length);
@@ -599,7 +660,7 @@ public sealed class SevenZipWriter : ArchiveWriter
         return ms.ToArray();
     }
 
-    private static byte[] BuildEncodedHeaderRecord(long packPos, long packSize, long unpackSize, uint crc, byte[] props)
+    private static byte[] BuildEncodedHeaderRecord(long packPos, long packSize, long unpackSize, uint crc, byte[] props, byte[] aesProps, long aesUnpack)
     {
         var w = new HeaderBuffer();
         w.Byte(0x17); // EncodedHeader
@@ -613,12 +674,29 @@ public sealed class SevenZipWriter : ArchiveWriter
         w.Byte(0x0B);
         w.Number(1);
         w.Byte(0);
-        w.Number(1); // coders
+        bool encrypted = aesProps.Length > 0;
+        w.Number(encrypted ? 2UL : 1UL); // coders: the AES decryptor first, then LZMA reading its output
+        if (encrypted)
+        {
+            WriteAesCoder(w, aesProps);
+        }
+
         w.Byte(0x23);
         w.Bytes([0x03, 0x01, 0x01]);
         w.Number(5);
         w.Bytes(props);
+        if (encrypted)
+        {
+            w.Number(1); // LZMA's input is fed by the AES output
+            w.Number(0);
+        }
+
         w.Byte(0x0C);
+        if (encrypted)
+        {
+            w.Number((ulong)aesUnpack);
+        }
+
         w.Number((ulong)unpackSize);
         w.Byte(0x0A);
         w.Byte(1);
@@ -626,6 +704,15 @@ public sealed class SevenZipWriter : ArchiveWriter
         w.Byte(0x00);
         w.Byte(0x00);
         return w.ToArray();
+    }
+
+    // 7zFormat.txt "Coders Info": flag byte (4-byte ID, has properties), the method ID 06 F1 07 01, the properties.
+    private static void WriteAesCoder(HeaderBuffer w, byte[] props)
+    {
+        w.Byte(0x24);
+        w.Bytes([0x06, 0xF1, 0x07, 0x01]);
+        w.Number((ulong)props.Length);
+        w.Bytes(props);
     }
 
     private byte[] BuildHeader()
@@ -657,6 +744,11 @@ public sealed class SevenZipWriter : ArchiveWriter
             w.Byte(0x0C);
             foreach (FolderRecord f in _folders)
             {
+                if (f.Aes is not null)
+                {
+                    w.Number((ulong)f.AesUnpack);
+                }
+
                 w.Number((ulong)f.Unpack);
                 if (f.Filter != SevenZipFilter.None)
                 {
@@ -797,7 +889,13 @@ public sealed class SevenZipWriter : ArchiveWriter
     private void WriteFolder(HeaderBuffer w, FolderRecord f)
     {
         bool filtered = f.Filter != SevenZipFilter.None;
-        w.Number(filtered ? 2UL : 1UL);
+        bool aes = f.Aes is not null;
+        w.Number((ulong)(1 + (filtered ? 1 : 0) + (aes ? 1 : 0)));
+        if (aes)
+        {
+            WriteAesCoder(w, f.AesProperties);
+        }
+
         switch (_method)
         {
             case SevenZipMethod.Lzma2:
@@ -874,9 +972,14 @@ public sealed class SevenZipWriter : ArchiveWriter
                     break;
             }
 
-            // Bond pair: the filter's input (stream 1) is fed by the compressor's output (stream 0).
-            w.Number(1);
-            w.Number(0);
+        }
+
+        // Bond pairs: each coder's input is fed by the output of the coder before it (the AES decryptor, then the
+        // compressor, then the filter, when present).
+        for (int i = 1; i < 1 + (filtered ? 1 : 0) + (aes ? 1 : 0); i++)
+        {
+            w.Number((ulong)i);
+            w.Number((ulong)(i - 1));
         }
     }
 

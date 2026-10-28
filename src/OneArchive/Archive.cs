@@ -294,13 +294,13 @@ public sealed class Archive : IDisposable, IAsyncDisposable
         {
             case ArchiveFormat.Zip:
                 ZipReaderOptions zip = options.Zip is { } z
-                    ? new ZipReaderOptions { Limits = options.Limits, VerifyChecksum = z.VerifyChecksum, ForceStreaming = z.ForceStreaming, LegacyNameEncoding = z.LegacyNameEncoding, MaxCentralDirectorySize = z.MaxCentralDirectorySize }
-                    : new ZipReaderOptions { Limits = options.Limits };
+                    ? new ZipReaderOptions { Limits = options.Limits, VerifyChecksum = z.VerifyChecksum, ForceStreaming = z.ForceStreaming, LegacyNameEncoding = z.LegacyNameEncoding, MaxCentralDirectorySize = z.MaxCentralDirectorySize, Password = options.Password.IsEmpty ? z.Password : options.Password }
+                    : new ZipReaderOptions { Limits = options.Limits, Password = options.Password };
                 return new ZipReader(stream, zip, leaveOpen: !ownsTop);
             case ArchiveFormat.SevenZip:
                 SevenZipReaderOptions sz = options.SevenZip is { } s7
-                    ? new SevenZipReaderOptions { Limits = options.Limits, VerifyChecksum = s7.VerifyChecksum, MaxHeaderSize = s7.MaxHeaderSize, MaxDictionarySize = s7.MaxDictionarySize, MaxCodersPerFolder = s7.MaxCodersPerFolder }
-                    : new SevenZipReaderOptions { Limits = options.Limits };
+                    ? new SevenZipReaderOptions { Limits = options.Limits, VerifyChecksum = s7.VerifyChecksum, MaxHeaderSize = s7.MaxHeaderSize, MaxDictionarySize = s7.MaxDictionarySize, MaxCodersPerFolder = s7.MaxCodersPerFolder, MaxKeyDerivationPower = s7.MaxKeyDerivationPower, Password = options.Password.IsEmpty ? s7.Password : options.Password }
+                    : new SevenZipReaderOptions { Limits = options.Limits, Password = options.Password };
                 if (!stream.CanSeek)
                 {
                     // The header is at the end of a 7z file: a source that cannot seek is copied into memory first.

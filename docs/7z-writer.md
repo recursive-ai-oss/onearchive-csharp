@@ -96,5 +96,16 @@ goes through the CRC, the filter and the compressor straight to the output, so m
 
 ## Not written
 
-AES encryption, PPMd, BCJ2 and BZip2 coders, archive properties, additional streams, start-position and
+PPMd, BCJ2 and BZip2 coders, archive properties, additional streams, start-position and
 comment properties.
+
+## Encryption
+
+With `SevenZipWriterOptions.Password` set, every folder gets a 7zAES coder (method ID `06 F1 07 01`) as its first coder, ahead of
+the compression method and filter, which are bound to it one after another (`7z-aes-derivation.md` has the layout and key derivation).
+The AES stream sits between the compressor and the file: the coder's unpack size is the compressed size, the packed size is that
+rounded up to 16, and the pad bytes are zero. With `EncryptHeader` (default on) the header is always stored as an encoded
+header whose folder is `[AES, LZMA]`, so names and sizes are hidden too; without it the header stays readable and only file
+content is encrypted. The IV (16 bytes) comes from `RandomNumberGenerator`, or from `SevenZipWriterOptions.RandomBytes`, which
+exists for tests and the hash matrix and makes the output reproducible. The key is derived once per writer with
+`KeyDerivationPower` (default 19, the cost 7-Zip uses; 0 to 24 accepted).

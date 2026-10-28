@@ -14,6 +14,8 @@ namespace RecursiveAI.Fuzz;
 /// the length it declares, and sequential and random-access reads of one entry must agree.</item>
 /// <item><c>zip-roundtrip</c>: entries made from the input are written with an option mix (method, zip64, descriptors, seekable or
 /// not) and read back both ways unchanged.</item>
+/// <item><c>zip-read-encrypted</c> and <c>zip-roundtrip-encrypted</c>: the same two targets with a password, so that WinZip AES and
+/// traditional encryption headers, verifiers and authentication codes are parsed and mutated; the round trip writes with AES.</item>
 /// <item><c>single-stream-read</c>: <c>Archive.Open</c> over compressed single files and everything else, extracting into a
 /// scratch directory.</item>
 /// </list>
@@ -30,9 +32,16 @@ internal static class ZipTargets
         MaxWindowSize = 1 << 22,
     };
 
-    public static FuzzTarget Read { get; } = new("zip-read", static data => CheckRead(data.ToArray()), static ex => ex is CompressionException);
+    public static FuzzTarget Read { get; } = new("zip-read", static data => CheckRead(data.ToArray(), null), static ex => ex is CompressionException);
 
-    public static FuzzTarget RoundTrip { get; } = new("zip-roundtrip", static data => CheckRoundTrip(data), static _ => false);
+    public static FuzzTarget ReadEncrypted { get; } = new("zip-read-encrypted", static data => CheckRead(data.ToArray(), Password), static ex => ex is CompressionException);
+
+    public static FuzzTarget RoundTrip { get; } = new("zip-roundtrip", static data => CheckRoundTrip(data, null), static _ => false);
+
+    public static FuzzTarget RoundTripEncrypted { get; } = new("zip-roundtrip-encrypted", static data => CheckRoundTrip(data, Password), static _ => false);
+
+    // The seeds are made with this password (see the seeds-encrypted command).
+    public const string Password = "fuzz-password";
 
     public static FuzzTarget Single { get; } = new("single-stream-read", static data => CheckSingle(data.ToArray()), static ex => ex is CompressionException);
 
@@ -112,12 +121,12 @@ internal static class ZipTargets
         return Convert.ToHexString(hash.GetHashAndReset());
     }
 
-    private static void CheckRead(byte[] data)
+    private static void CheckRead(byte[] data, string? password)
     {
         // Through the central directory, then each entry again by random access, last to first.
         try
         {
-            using var reader = new ZipReader(new MemoryStream(data), new ZipReaderOptions { Limits = s_limits });
+            using var reader = new ZipReader(new MemoryStream(data), new ZipReaderOptions { Limits = s_limits, Password = password });
             var seen = new List<(ZipEntry Entry, string Hash)>();
             while (reader.GetNextEntry() is { } e)
             {
@@ -146,7 +155,7 @@ internal static class ZipTargets
         // Forward-only.
         try
         {
-            using var reader = new ZipReader(new Pieces(data), new ZipReaderOptions { Limits = s_limits });
+            using var reader = new ZipReader(new Pieces(data), new ZipReaderOptions { Limits = s_limits, Password = password });
             int count = 0;
             while (reader.GetNextEntry() is { } e && count++ < 40)
             {
@@ -164,7 +173,7 @@ internal static class ZipTargets
         }
     }
 
-    private static void CheckRoundTrip(ReadOnlySpan<byte> input)
+    private static void CheckRoundTrip(ReadOnlySpan<byte> input, string? password)
     {
         if (input.Length < 3)
         {
@@ -179,6 +188,10 @@ internal static class ZipTargets
             Zip64 = (o & 2) != 0 ? ZipZip64Mode.Always : ZipZip64Mode.Auto,
             DataDescriptors = ((o >> 2) & 3) switch { 1 => ZipDataDescriptorMode.Always, _ => ZipDataDescriptorMode.Auto },
             Comment = (o & 16) != 0 ? "fuzz" : null,
+            Password = password,
+            AesStrength = (ZipAesStrength)(1 + (input[1] % 3)),
+            AesVersion = (o & 128) != 0 ? ZipAesVersion.Ae1 : ZipAesVersion.Ae2,
+            RandomBytes = static span => span.Fill(0x5A),
         };
         bool seekable = (o & 32) == 0;
         int count = 1 + (input[1] % 6);
@@ -215,9 +228,11 @@ internal static class ZipTargets
         }
 
         byte[] zip = ms.ToArray();
-        foreach (Stream source in new Stream[] { new MemoryStream(zip), new Pieces(zip) })
+        // An encrypted entry whose sizes follow its data cannot be read forward-only (its end is not known), so those archives are read through the directory only.
+        bool forwardReadable = password is null || (seekable && options.DataDescriptors != ZipDataDescriptorMode.Always);
+        foreach (Stream source in forwardReadable ? new Stream[] { new MemoryStream(zip), new Pieces(zip) } : [new MemoryStream(zip)])
         {
-            using var reader = new ZipReader(source, new ZipReaderOptions { Limits = s_limits });
+            using var reader = new ZipReader(source, new ZipReaderOptions { Limits = s_limits, Password = password });
             bool directory = source is MemoryStream;
             int index = 0;
             while (reader.GetNextEntry() is { } e)

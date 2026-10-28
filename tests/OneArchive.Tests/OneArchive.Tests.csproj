@@ -11,6 +11,9 @@
     <Content Include="../../testdata/7z/vectors/**/*;../../testdata/zip/*.py"
              Link="testdata/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../testdata/encryption/vectors/*.zip;../../testdata/encryption/vectors/*.7z"
+             Link="testdata/encryption/%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../testdata/cpio/*.cpio"
              Link="testdata/cpio/%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />

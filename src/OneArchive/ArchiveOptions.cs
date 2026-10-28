@@ -38,6 +38,12 @@ public class ArchiveOpenOptions
     /// <summary>Gets the ar reading options (the limits above override <see cref="ArReaderOptions.Limits"/>). Default: the ar defaults.</summary>
     public ArReaderOptions? Ar { get; init; }
 
+    /// <summary>
+    /// Gets the password for encrypted zip and 7z archives; it overrides the one in <see cref="Zip"/> and <see cref="SevenZip"/> when set.
+    /// Default empty. A missing or wrong password raises <see cref="ArchivePasswordException"/>.
+    /// </summary>
+    public ArchivePassword Password { get; init; }
+
     /// <summary>Gets the zip reading options (the limits above override <see cref="ZipReaderOptions.Limits"/>). Default: the zip defaults.</summary>
     public ZipReaderOptions? Zip { get; init; }
 
@@ -179,6 +185,13 @@ public sealed class ArchiveCreateOptions
 
     /// <summary>Gets a value indicating whether a stream passed to <c>Archive.Create</c> stays open after <c>Save</c>. Default false.</summary>
     public bool LeaveOpen { get; init; }
+
+    /// <summary>
+    /// Gets the password for zip and 7z output; it overrides the one in <see cref="Zip"/> and <see cref="SevenZip"/> when set.
+    /// Zip entries are encrypted with WinZip AES-256, 7z folders and header with AES-256. Other formats cannot be encrypted
+    /// and raise <see cref="ArgumentException"/> when a password is given. Default empty.
+    /// </summary>
+    public ArchivePassword Password { get; init; }
 
     /// <summary>Gets the tar writing options. Default: the tar defaults (pax).</summary>
     public TarWriterOptions? Tar { get; init; }

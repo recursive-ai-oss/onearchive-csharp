@@ -258,8 +258,8 @@ are those of PKWARE's APPNOTE 6.3.10; its text is not reproduced here.
   A symbolic link's target is its data (UTF-8 when valid, else Latin-1), read when the directory is loaded, at most `4 * MaxPathLength` bytes.
 - **Times.** NTFS field 0x000a (100 ns) wins over the extended timestamp 0x5455 (Unix seconds; modification, access, creation), which wins
   over the DOS date and time, read as UTC (the fields carry no zone); an impossible DOS value is no time.
-- **Methods.** 0 store, 8 deflate, 9 deflate64 (raw stream, `Deflate64Decoder`, see `deflate64-decoder.md`), 12 bzip2 (read and written), 93 zstd (4.4.5). Anything else, and encrypted entries (bit 0, bit 6 or method 99), are listed and raise
-  `ArchiveUnsupportedException` naming the method when opened. Zip64 extra fields (0x0001) hold exactly the values whose header field is
+- **Methods.** 0 store, 8 deflate, 9 deflate64 (raw stream, `Deflate64Decoder`, see `deflate64-decoder.md`), 12 bzip2 (read and written), 93 zstd (4.4.5). Anything else, and PKWARE strong encryption (bit 6), are listed and raise
+  `ArchiveUnsupportedException` naming the method when opened. Encrypted entries (bit 0 or method 99) are described in `zip-encryption.md`. Zip64 extra fields (0x0001) hold exactly the values whose header field is
   saturated, in the order size, compressed size, offset, disk; a short field is an error.
 
 ### Writing (byte-exact)
