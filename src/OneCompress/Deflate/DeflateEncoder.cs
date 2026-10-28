@@ -92,6 +92,11 @@ public sealed partial class DeflateEncoder
             _chain = new DeflateHashChainMatchFinder(_parameters.HashBits, _parameters.HashBytes);
         }
 
+        if (_parameters.Mode == ParseMode.Optimal)
+        {
+            _optimal = new OptimalState();
+        }
+
         Reset();
     }
 
@@ -145,6 +150,7 @@ public sealed partial class DeflateEncoder
         _sequences.Clear();
         _splitter.Reset();
         _chain?.Reset();
+        _optimal?.Reset();
         _position = 0;
         _fill = 0;
         _blockStart = 0;
@@ -167,12 +173,10 @@ public sealed partial class DeflateEncoder
             _fill = _dictionary.Length;
             _position = _fill;
             _blockStart = _fill;
-            if (_chain is not null)
+            for (int p = 0; p + DeflateHashChainMatchFinder.RequiredLookahead <= _fill; p++)
             {
-                for (int p = 0; p + DeflateHashChainMatchFinder.RequiredLookahead <= _fill; p++)
-                {
-                    _chain.InsertUnchecked(_window, p);
-                }
+                _chain?.InsertUnchecked(_window, p);
+                _optimal?.Finder.Search(_window, p, Math.Min(DeflateTables.MaxMatchLength, _fill - p), _parameters.Chain, _parameters.Nice, 0, null, null);
             }
         }
     }
@@ -446,7 +450,9 @@ public sealed partial class DeflateEncoder
             CloseBlock(isFinal: false);
         }
 
-        int delta = _position - DeflateTables.WindowSize;
+        // The match finders index their link tables by position modulo the window size, so the window may only slide by a
+        // multiple of that size: every stored position then keeps its slot.
+        int delta = (_position - DeflateTables.WindowSize) & ~(DeflateTables.WindowSize - 1);
         if (delta <= 0)
         {
             return;
@@ -458,6 +464,7 @@ public sealed partial class DeflateEncoder
         _blockStart = _position;
         _oldest = Math.Max(0, _oldest - delta);
         _chain?.Slide(delta);
+        _optimal?.Finder.Slide(delta);
     }
 
     private void CloseBlock(bool isFinal)

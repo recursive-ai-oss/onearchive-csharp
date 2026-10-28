@@ -26,6 +26,9 @@ internal readonly struct LevelParameters
     /// <summary>Greedy: matches longer than this skip hashing their interior. Lazy: a match this long is taken without looking one byte further.</summary>
     public int MaxLazy { get; init; }
 
+    /// <summary>Optimal parsing: how many times a run is parsed, re-pricing from the previous pass.</summary>
+    public int Passes { get; init; }
+
     /// <summary>A previous match at least this long cuts the next search's chain to a quarter.</summary>
     public int Good { get; init; }
 
@@ -41,7 +44,9 @@ internal readonly struct LevelParameters
         7 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 256, Nice = 160, MaxLazy = 128, Good = 32 },
         8 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 1024, Nice = 258, MaxLazy = 258, Good = 32 },
         9 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 4096, Nice = 258, MaxLazy = 258, Good = 32 },
-        _ => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 4096, Nice = 258, MaxLazy = 258, Good = 32 },
+        10 => new() { Mode = ParseMode.Optimal, Chain = 24, Nice = 64, Passes = 1 },
+        11 => new() { Mode = ParseMode.Optimal, Chain = 64, Nice = 128, Passes = 2 },
+        _ => new() { Mode = ParseMode.Optimal, Chain = 256, Nice = 258, Passes = 3 },
     };
 }
 
@@ -241,7 +246,4 @@ public sealed partial class DeflateEncoder
 
         _position = position;
     }
-
-    // Replaced by the optimal parser in the next step; until then the deepest lazy search stands in.
-    private void ParseOptimal(int limit) => ParseLazy(limit);
 }
