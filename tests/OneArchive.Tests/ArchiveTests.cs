@@ -186,15 +186,15 @@ public class ArchiveTests
             Assert.Empty(empty.Entries);
         }
 
-        // gzip is read; a truncated stream is a typed format error. xz is recognised and refused with a clear error.
+        // gzip is read; a truncated stream is a typed format error, and a truncated xz stream is the same.
         byte[] gzip = [0x1F, 0x8B, 8, 0, 0, 0, 0, 0, 0, 3, 0, 0];
         Assert.True(Assert.Throws<CompressionFormatException>(() => Archive.Open(new MemoryStream(gzip))).IsTruncated);
         byte[] xz = [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00, 0, 4];
-        var unsupported = Assert.Throws<ArchiveUnsupportedException>(() => Archive.Open(new MemoryStream(xz)));
-        Assert.Contains("Xz", unsupported.Message, StringComparison.Ordinal);
-        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create(new MemoryStream(), new ArchiveCreateOptions { Compression = ArchiveCompression.Xz }));
+        var truncated = Assert.Throws<CompressionFormatException>(() => Archive.Open(new MemoryStream(xz)));
+        Assert.Contains("xz", truncated.Message, StringComparison.Ordinal);
+        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create(new MemoryStream(), new ArchiveCreateOptions { Compression = ArchiveCompression.Bzip2 }));
         Assert.Throws<ArgumentException>(() => Archive.Create("/nonexistent/x.unknown"));
-        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create("x.tar.xz"));
+        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create("x.tar.bz2"));
     }
 
     [Fact]

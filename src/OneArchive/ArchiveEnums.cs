@@ -47,8 +47,11 @@ public enum ArchiveCompression
     /// <summary>bzip2 (<c>.bz2</c>). Read; writing is not available yet.</summary>
     Bzip2 = 4,
 
-    /// <summary>xz (<c>.xz</c>). Detected, but not yet supported.</summary>
+    /// <summary>xz (<c>.xz</c>). Read and written; a read is limited by <see cref="ArchiveLimits.MaxWindowSize"/> (the xz dictionary size).</summary>
     Xz = 5,
+
+    /// <summary>lzip (<c>.lz</c>). Read and written; a read is limited by <see cref="ArchiveLimits.MaxWindowSize"/> (the lzip dictionary size).</summary>
+    Lzip = 6,
 }
 
 /// <summary>What kind of filesystem object an archive entry describes.</summary>

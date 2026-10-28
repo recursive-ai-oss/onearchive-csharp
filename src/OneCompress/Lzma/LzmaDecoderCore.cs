@@ -44,6 +44,11 @@ public sealed partial class LzmaDecoderCore
     private const int JournalCapacity = 128;
     private const int InitialWindow = 1 << 16;
 
+    // Spare bytes behind the ring (the ring is the dictionary size plus this much, so bytes a wide copy overshoots onto were
+    // already too old for any match to reach) and behind the array (so the overshoot of a copy that ends at the ring's end
+    // stays inside it).
+    internal const int WindowSlack = 32;
+
     private ushort[] _probs = [];
     private int _lc;
     private int _lp;
@@ -118,9 +123,9 @@ public sealed partial class LzmaDecoderCore
     public void SetDictionary(uint size)
     {
         size = Math.Max(size, LzmaProperties.MinimumDictionarySize);
-        if (size > Array.MaxLength)
+        if (size > Array.MaxLength - 2 * WindowSlack)
         {
-            throw new CompressionLimitException("lzma", "MaxDictionarySize", Array.MaxLength, size);
+            throw new CompressionLimitException("lzma", "MaxDictionarySize", Array.MaxLength - 2 * WindowSlack, size);
         }
 
         _dictionarySize = size;
@@ -135,10 +140,10 @@ public sealed partial class LzmaDecoderCore
         _total = 0;
         _matchLeft = 0;
         long start = expectedOutput > 0 ? Math.Clamp(expectedOutput, LzmaProperties.MinimumDictionarySize, 1 << 22) : InitialWindow;
-        _capacity = (int)Math.Min(_dictionarySize, start);
-        if (_window.Length < _capacity)
+        _capacity = (int)Math.Min(_dictionarySize + (long)WindowSlack, start);
+        if (_window.Length < _capacity + WindowSlack)
         {
-            _window = new byte[_capacity];
+            _window = new byte[_capacity + WindowSlack];
         }
     }
 
@@ -349,13 +354,13 @@ public sealed partial class LzmaDecoderCore
 
     private void AdvanceWindow()
     {
-        if (_capacity < _dictionarySize)
+        if (_capacity < _dictionarySize + (long)WindowSlack)
         {
             // Still filling the dictionary: grow instead of wrapping.
-            long target = Math.Min(_dictionarySize, (long)_capacity * 2);
-            if (_window.Length < target)
+            long target = Math.Min(_dictionarySize + (long)WindowSlack, (long)_capacity * 2);
+            if (_window.Length < target + WindowSlack)
             {
-                byte[] bigger = new byte[target];
+                byte[] bigger = new byte[target + WindowSlack];
                 _window.AsSpan(0, _pos).CopyTo(bigger);
                 _window = bigger;
             }
@@ -480,10 +485,17 @@ public sealed partial class LzmaDecoderCore
             src += capacity;
         }
 
+        if (dist >= 8 && src + length <= capacity && pos + length <= capacity)
+        {
+            // The common case: a block move in eight-byte steps. Distances below eight overlap their own step and fall through.
+            LzmaRaw.CopyWide(w, pos, src, length);
+            return;
+        }
+
         if (length <= 24 && src + length <= capacity && pos + length <= capacity)
         {
-            // Short matches are the common case, and a memmove call costs more than a few byte moves. Copying forward byte by
-            // byte is also right when the source overlaps the destination (distance below length), as the format requires.
+            // Copying forward byte by byte is right when the source overlaps the destination (distance below length), as the
+            // format requires.
             for (int i = 0; i < length; i++)
             {
                 w[pos + i] = w[src + i];

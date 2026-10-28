@@ -45,8 +45,9 @@ public sealed class LzmaHashChainMatchFinder : LzmaMatchFinder
         }
 
         int lenLimit = Math.Min(available, LzmaModel.MaxMatchLength);
+        CheckWindow(buffer, position, lenLimit);
         int cur = UpdateHashes(buffer, position, out int c2, out int c3);
-        _chain[cp] = cur;
+        LzmaMatchRaw.L(_chain, cp) = cur;
         int count = 0;
         int maxLen = AddShortMatches(buffer, position, lenLimit, c2, c3, matches, ref count);
         int nice = Math.Min(_niceLength, lenLimit);
@@ -59,12 +60,13 @@ public sealed class LzmaHashChainMatchFinder : LzmaMatchFinder
         for (int steps = _depth; cur > 0 && steps > 0; steps--)
         {
             int delta = position - cur;
-            if (delta > dict)
+            // cur is a stored position: behind this one and within the dictionary.
+            if ((uint)(delta - 1) >= (uint)dict)
             {
                 break;
             }
 
-            if (buffer[cur + maxLen] == buffer[position + maxLen] && buffer[cur] == buffer[position])
+            if (LzmaMatchRaw.B(buffer, cur + maxLen) == LzmaMatchRaw.B(buffer, position + maxLen) && LzmaMatchRaw.B(buffer, cur) == LzmaMatchRaw.B(buffer, position))
             {
                 int len = CommonLength(buffer, cur, position, 1, lenLimit);
                 if (len > maxLen)
@@ -84,7 +86,7 @@ public sealed class LzmaHashChainMatchFinder : LzmaMatchFinder
                 slot += _cyclicSize;
             }
 
-            cur = _chain[slot];
+            cur = LzmaMatchRaw.L(_chain, slot);
         }
 
         return count;
@@ -101,7 +103,8 @@ public sealed class LzmaHashChainMatchFinder : LzmaMatchFinder
             return;
         }
 
-        _chain[cp] = UpdateHashes(buffer, position, out _, out _);
+        CheckWindow(buffer, position, Math.Min(available, LzmaModel.MaxMatchLength));
+        LzmaMatchRaw.L(_chain, cp) = UpdateHashes(buffer, position, out _, out _);
     }
 
     private protected override void ResetLinks() => Array.Clear(_chain);

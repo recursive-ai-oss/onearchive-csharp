@@ -18,7 +18,7 @@ public sealed partial class LzmaDecoderCore
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FBit(ushort[] p, int index, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
     {
-        ref ushort prob = ref p[index];
+        ref ushort prob = ref LzmaRaw.P(p, index);
         uint pv = prob;
         uint bound = (range >> 11) * pv;
         int bit;
@@ -39,7 +39,7 @@ public sealed partial class LzmaDecoderCore
         if (range < (1u << 24))
         {
             range <<= 8;
-            code = (code << 8) | input[(int)ip];
+            code = (code << 8) | LzmaRaw.In(input, ip);
             ip++;
         }
 
@@ -51,7 +51,7 @@ public sealed partial class LzmaDecoderCore
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FBitNb(ushort[] p, int index, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
     {
-        ref ushort prob = ref p[index];
+        ref ushort prob = ref LzmaRaw.P(p, index);
         uint pv = prob;
         uint bound = (range >> 11) * pv;
         uint mask = (uint)((long)((ulong)code - bound) >> 63); // all ones when code < bound (bit 0)
@@ -61,38 +61,217 @@ public sealed partial class LzmaDecoderCore
         if (range < (1u << 24))
         {
             range <<= 8;
-            code = (code << 8) | input[(int)ip];
+            code = (code << 8) | LzmaRaw.In(input, ip);
             ip++;
         }
 
         return (int)mask + 1;
     }
 
+    // One bit of a literal tree with the probability already in hand. Returns all ones for a 0 bit and 0 for a 1 bit, so the
+    // caller can select the next probability without a branch. The caller loads the two possible next probabilities while this
+    // bit is still being resolved, which takes the load off the chain that links one bit to the next.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FTree(ushort[] p, int offset, int bits, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
+    private static uint NbStep(ref ushort prob, uint pv, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
     {
-        int m = 1;
-        for (int i = 0; i < bits; i++)
+        uint bound = (range >> 11) * pv;
+        uint mask = (uint)((long)((ulong)code - bound) >> 63);
+        range = (bound & mask) | ((range - bound) & ~mask);
+        code -= bound & ~mask;
+        prob = (ushort)(pv - (uint)((int)(pv - (mask & 2017u)) >> 5));
+        if (range < (1u << 24))
         {
-            m = (m << 1) + FBitNb(p, offset + m, ref range, ref code, input, ref ip);
+            range <<= 8;
+            code = (code << 8) | LzmaRaw.In(input, ip);
+            ip++;
         }
 
-        return m - (1 << bits);
+        return mask;
     }
 
+    // A 3-bit tree, unrolled: no loop counter, and the JIT can keep every node's values in registers.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FTree3(ushort[] p, int offset, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
+    {
+        int m = 1;
+        uint pv = LzmaRaw.P(p, offset + 1);
+        uint c0;
+        uint c1;
+        uint mask;
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        m = (m << 1) + (int)(NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip) + 1);
+        return m - 8;
+    }
+
+    // A 6-bit tree, unrolled: no loop counter, and the JIT can keep every node's values in registers.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FTree6(ushort[] p, int offset, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
+    {
+        int m = 1;
+        uint pv = LzmaRaw.P(p, offset + 1);
+        uint c0;
+        uint c1;
+        uint mask;
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        m = (m << 1) + (int)(NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip) + 1);
+        return m - 64;
+    }
+
+    // A 8-bit tree, unrolled: no loop counter, and the JIT can keep every node's values in registers.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FTree8(ushort[] p, int offset, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
+    {
+        int m = 1;
+        uint pv = LzmaRaw.P(p, offset + 1);
+        uint c0;
+        uint c1;
+        uint mask;
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        c0 = LzmaRaw.P(p, offset + (m << 1));
+        c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+        mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+        m = (m << 1) + (int)(mask + 1);
+        pv = c1 ^ ((c0 ^ c1) & mask);
+        m = (m << 1) + (int)(NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip) + 1);
+        return m - 256;
+    }
+
+    // The same walk with the decoded bits collected least significant first ("Reverse Bit Tree Decoding").
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FReverseTree(ushort[] p, int offset, int bits, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
     {
         int m = 1;
         int symbol = 0;
-        for (int i = 0; i < bits; i++)
+        uint pv = LzmaRaw.P(p, offset + 1);
+        for (int i = 1; i < bits; i++)
         {
-            int bit = FBitNb(p, offset + m, ref range, ref code, input, ref ip);
+            uint c0 = LzmaRaw.P(p, offset + (m << 1));
+            uint c1 = LzmaRaw.P(p, offset + (m << 1) + 1);
+            uint mask = NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip);
+            int bit = (int)(mask + 1);
             m = (m << 1) + bit;
-            symbol |= bit << i;
+            symbol |= bit << (i - 1);
+            pv = c1 ^ ((c0 ^ c1) & mask);
         }
 
-        return symbol;
+        int last = (int)(NbStep(ref LzmaRaw.P(p, offset + m), pv, ref range, ref code, input, ref ip) + 1);
+        return symbol | (last << (bits - 1));
+    }
+
+    // The eight bits of a literal after a literal or a short run of non-matches (LZMA specification, "The Literal Decoding"). Kept
+    // out of the symbol loop on purpose: with its own method the range coder state and the probability table stay in registers,
+    // where inside the loop they were spilled around every bit. The tree's seven inner nodes read both children before the bit is
+    // known.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int PlainLiteral(ushort[] p, int lit, ref Rc rc, ReadOnlySpan<byte> input)
+    {
+        uint range = rc.Range;
+        uint code = rc.Code;
+        nint ip = rc.Ip;
+        int sym = 1;
+        uint pv = LzmaRaw.P(p, lit + 1);
+        while (sym < 0x80)
+        {
+            uint c0 = LzmaRaw.P(p, lit + (sym << 1));
+            uint c1 = LzmaRaw.P(p, lit + (sym << 1) + 1);
+            uint mask = NbStep(ref LzmaRaw.P(p, lit + sym), pv, ref range, ref code, input, ref ip);
+            sym = (sym << 1) + (int)(mask + 1);
+            pv = c1 ^ ((c0 ^ c1) & mask);
+        }
+
+        sym = (sym << 1) + (int)(NbStep(ref LzmaRaw.P(p, lit + sym), pv, ref range, ref code, input, ref ip) + 1);
+        rc.Range = range;
+        rc.Code = code;
+        rc.Ip = ip;
+        return sym;
+    }
+
+    // The same after a match ("The Literal Decoding", matched literal): while the decoded bits equal the match byte's, the
+    // probabilities come from the group chosen by the match bit. offs is 0x100 while they agree and 0 after the first
+    // difference, which turns the same index formula into the plain literal tree without a branch.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int MatchedLiteral(ushort[] p, int lit, uint matchByte, ref Rc rc, ReadOnlySpan<byte> input)
+    {
+        uint range = rc.Range;
+        uint code = rc.Code;
+        nint ip = rc.Ip;
+        int sym = 1;
+        uint offs = 0x100;
+        do
+        {
+            matchByte <<= 1;
+            uint matchBit = matchByte & offs;
+            int bit = FBitNb(p, lit + (int)(offs + matchBit) + sym, ref range, ref code, input, ref ip);
+            sym = (sym << 1) | bit;
+            offs &= matchBit ^ (uint)(bit - 1);
+        }
+        while (sym < 0x100);
+        rc.Range = range;
+        rc.Code = code;
+        rc.Ip = ip;
+        return sym;
     }
 
     // LZMA specification, "The match length decoding": a zero-based length 0..271.
@@ -104,15 +283,15 @@ public sealed partial class LzmaDecoderCore
         int r;
         if (FBit(p, coder, ref range, ref code, input, ref ip) == 0)
         {
-            r = FTree(p, coder + LzmaModel.LengthLow + (posState << 3), 3, ref range, ref code, input, ref ip);
+            r = FTree3(p, coder + LzmaModel.LengthLow + (posState << 3), ref range, ref code, input, ref ip);
         }
         else if (FBit(p, coder + LzmaModel.LengthChoice2, ref range, ref code, input, ref ip) == 0)
         {
-            r = 8 + FTree(p, coder + LzmaModel.LengthMid + (posState << 3), 3, ref range, ref code, input, ref ip);
+            r = 8 + FTree3(p, coder + LzmaModel.LengthMid + (posState << 3), ref range, ref code, input, ref ip);
         }
         else
         {
-            r = 16 + FTree(p, coder + LzmaModel.LengthHigh, 8, ref range, ref code, input, ref ip);
+            r = 16 + FTree8(p, coder + LzmaModel.LengthHigh, ref range, ref code, input, ref ip);
         }
 
         rc.Range = range;
@@ -128,7 +307,7 @@ public sealed partial class LzmaDecoderCore
         uint code = rc.Code;
         nint ip = rc.Ip;
         int lenState = Math.Min(length, LzmaModel.LengthToPositionStates - 1);
-        int slot = FTree(p, LzmaModel.PositionSlot + (lenState << 6), 6, ref range, ref code, input, ref ip);
+        int slot = FTree6(p, LzmaModel.PositionSlot + (lenState << 6), ref range, ref code, input, ref ip);
         uint dist;
         if (slot < 4)
         {
@@ -154,7 +333,7 @@ public sealed partial class LzmaDecoderCore
                     if (range < (1u << 24))
                     {
                         range <<= 8;
-                        code = (code << 8) | input[(int)ip];
+                        code = (code << 8) | LzmaRaw.In(input, ip);
                         ip++;
                     }
 
@@ -235,7 +414,8 @@ public sealed partial class LzmaDecoderCore
                 // LZMA specification, "The Literal Decoding".
                 int prev = pos > 0 ? w[pos - 1] : (_full ? w[capacity - 1] : 0);
                 int lit = LzmaModel.Literal + (LzmaModel.LiteralCoderSize * ((((int)total & lpMask) << lc) + (prev >> (8 - lc))));
-                int sym = 1;
+                int sym;
+                var lrc = new Rc { Range = range, Code = code, Ip = ip };
                 if (state >= LzmaModel.LiteralStateLimit)
                 {
                     int mpos = pos - (int)rep0 - 1;
@@ -244,26 +424,16 @@ public sealed partial class LzmaDecoderCore
                         mpos += capacity;
                     }
 
-                    // LZMA specification, "The Literal Decoding" (matched literal): while the decoded bits equal the match byte's, the
-                    // probabilities come from the group chosen by the match bit. offs is 0x100 while they agree and 0 after the first
-                    // difference, which turns the same index formula into the plain literal tree without a branch.
-                    uint matchByte = w[mpos];
-                    uint offs = 0x100;
-                    do
-                    {
-                        matchByte <<= 1;
-                        uint matchBit = matchByte & offs;
-                        int bit = FBitNb(p, lit + (int)(offs + matchBit) + sym, ref range, ref code, input, ref ip);
-                        sym = (sym << 1) | bit;
-                        offs &= matchBit ^ (uint)(bit - 1);
-                    }
-                    while (sym < 0x100);
+                    sym = MatchedLiteral(p, lit, w[mpos], ref lrc, input);
+                }
+                else
+                {
+                    sym = PlainLiteral(p, lit, ref lrc, input);
                 }
 
-                while (sym < 0x100)
-                {
-                    sym = (sym << 1) | FBitNb(p, lit + sym, ref range, ref code, input, ref ip);
-                }
+                range = lrc.Range;
+                code = lrc.Code;
+                ip = lrc.Ip;
 
                 w[pos++] = (byte)sym;
                 total++;
@@ -360,7 +530,16 @@ public sealed partial class LzmaDecoderCore
 
             length += LzmaModel.MinMatchLength;
             int copy = Math.Min(length, limit - pos);
-            CopyMatch(w, pos, capacity, (int)rep0 + 1, copy);
+            if (rep0 >= 15 && pos > (int)rep0 && copy > 0)
+            {
+                // The common case: the source is behind the destination by a whole sixteen-byte step and has not wrapped.
+                LzmaRaw.CopyWide16(w, pos, pos - (int)rep0 - 1, copy);
+            }
+            else
+            {
+                CopyMatch(w, pos, capacity, (int)rep0 + 1, copy);
+            }
+
             pos += copy;
             total += copy;
             matchLeft = length - copy;
