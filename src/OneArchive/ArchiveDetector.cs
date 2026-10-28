@@ -73,6 +73,12 @@ public static class ArchiveDetector
             return ArchiveFormat.SevenZip;
         }
 
+        // [MS-CAB] 2.1: the cabinet signature 'MSCF'.
+        if (prefix.StartsWith("MSCF"u8))
+        {
+            return ArchiveFormat.Cab;
+        }
+
         // ar(5): "!<arch>\n"; a thin archive ("!<thin>\n") is recognised so that the reader can say it is unsupported.
         if (prefix.StartsWith("!<arch>\n"u8) || prefix.StartsWith("!<thin>\n"u8))
         {
@@ -139,6 +145,11 @@ public static class ArchiveDetector
         if (name.EndsWith(".7z", StringComparison.Ordinal))
         {
             return (ArchiveFormat.SevenZip, ArchiveCompression.None);
+        }
+
+        if (name.EndsWith(".cab", StringComparison.Ordinal))
+        {
+            return (ArchiveFormat.Cab, ArchiveCompression.None);
         }
 
         if (name.EndsWith(".zip", StringComparison.Ordinal))

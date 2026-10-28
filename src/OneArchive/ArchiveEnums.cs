@@ -26,6 +26,9 @@ public enum ArchiveFormat
 
     /// <summary>ar (see <c>RecursiveAI.OneArchive.Ar</c>): common, GNU and BSD variants, read and write; also <c>.deb</c> packages.</summary>
     Ar = 6,
+
+    /// <summary>Microsoft cabinet (see <c>RecursiveAI.OneArchive.Cab</c>): read only; stored, MSZIP and LZX folders.</summary>
+    Cab = 7,
 }
 
 /// <summary>A compression layer wrapped around a whole archive, as in <c>.tar.zst</c>.</summary>

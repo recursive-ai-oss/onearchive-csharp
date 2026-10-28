@@ -12,6 +12,12 @@
     <PackageReference Include="SharpFuzz" Version="2.2.0" />
   </ItemGroup>
 
+  <!-- The LZX test compressor and cabinet builder write the seeds. -->
+  <ItemGroup>
+    <Compile Include="../tests/OneCompress.Tests/Lzx/LzxTestEncoder.cs" Link="Shared/LzxTestEncoder.cs" />
+    <Compile Include="../tests/OneArchive.Tests/Cab/CabTestBuilder.cs" Link="Shared/CabTestBuilder.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../src/OneCompress/OneCompress.csproj" />
     <ProjectReference Include="../src/OneArchive/OneArchive.csproj" />

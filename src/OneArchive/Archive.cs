@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cpio;
+using RecursiveAI.OneArchive.Cab;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Zip;
@@ -314,6 +315,23 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                 }
 
                 return new SevenZipReader(stream, sz, leaveOpen: !ownsTop);
+            case ArchiveFormat.Cab:
+                CabReaderOptions cab = options.Cab is { } cb
+                    ? new CabReaderOptions { Limits = options.Limits, VerifyChecksum = cb.VerifyChecksum, LegacyNameEncoding = cb.LegacyNameEncoding }
+                    : new CabReaderOptions { Limits = options.Limits };
+                if (!stream.CanSeek)
+                {
+                    // The file table points at the data blocks: a source that cannot seek is copied into memory first.
+                    Stream spooled = SpoolToMemory(stream, options.Limits, CabReader.Name);
+                    if (ownsTop)
+                    {
+                        stream.Dispose();
+                    }
+
+                    return new CabReader(spooled, cab, leaveOpen: false);
+                }
+
+                return new CabReader(stream, cab, leaveOpen: !ownsTop);
             case ArchiveFormat.SingleStream:
                 return new SingleStreamReader(stream, singleName ?? "data", singleTime, options.Limits, leaveOpen: !ownsTop);
             case ArchiveFormat.Tar:
@@ -337,7 +355,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
         }
     }
 
-    private static MemoryStream SpoolToMemory(Stream source, ArchiveLimits limits)
+    private static MemoryStream SpoolToMemory(Stream source, ArchiveLimits limits, string format = "7z")
     {
         var memory = new MemoryStream();
         byte[] buffer = new byte[81920];
@@ -346,7 +364,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
         {
             if (memory.Length + n > limits.MaxTotalSize)
             {
-                throw new CompressionLimitException("7z", nameof(ArchiveLimits.MaxTotalSize), limits.MaxTotalSize, memory.Length + n);
+                throw new CompressionLimitException(format, nameof(ArchiveLimits.MaxTotalSize), limits.MaxTotalSize, memory.Length + n);
             }
 
             memory.Write(buffer, 0, n);

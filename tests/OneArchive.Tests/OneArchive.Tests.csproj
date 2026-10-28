@@ -22,6 +22,11 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The LZX test compressor is shared with the codec tests so that cabinets with LZX folders can be built here. -->
+  <ItemGroup>
+    <Compile Include="../OneCompress.Tests/Lzx/LzxTestEncoder.cs" Link="Cab/LzxTestEncoder.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../../src/OneArchive/OneArchive.csproj" />
   </ItemGroup>
