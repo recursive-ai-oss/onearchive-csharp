@@ -6,7 +6,9 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// <summary>
 /// A dictionary prepared for compression (RFC 8878 §5): its content acts as history in front of every frame, and a
 /// dictionary in the Zstandard format also brings the Huffman tree and sequence tables to start from and the initial repeat
-/// offsets. All of that is digested once here, so compressing with it costs nothing extra per frame.
+/// offsets. All of that is digested once here, so compressing with it costs nothing extra per frame. Dictionary IDs from 1 to 32767 and
+/// from 2^31 up are reserved by the format (RFC 8878 §5); IDs for your own dictionaries belong in 32768 to 2^31-1, and 0 means no ID.
+/// <see cref="ForDecompression"/> gives the matching decoder-side dictionary, so one object serves both directions.
 /// </summary>
 /// <remarks>
 /// The search tables that match finders build over the content are made on first use for each parameter set and kept, so the
@@ -20,6 +22,8 @@ namespace RecursiveAI.OneCompress.Zstd;
 public sealed class ZstdCompressionDictionary
 {
     private readonly byte[] _content;
+    private byte[]? _file;
+    private ZstdDictionary? _decoding;
     private readonly object _indexLock = new();
     private ZstdDictionaryIndex[] _indexes = [];
     private ZstdChainDictionaryIndex[] _chainIndexes = [];
@@ -65,6 +69,20 @@ public sealed class ZstdCompressionDictionary
     internal ReadOnlySpan<byte> ContentSpan => _content;
 
     /// <summary>
+    /// Gets the same dictionary prepared for decompression, for <see cref="ZstdDecompressionOptions.Dictionary"/>. It is made on first
+    /// use from the bytes this dictionary was parsed or trained from, and then kept, so a caller who trains or loads a dictionary once
+    /// uses it on both sides without parsing it twice.
+    /// </summary>
+    public ZstdDictionary ForDecompression => _decoding ??= _file is not null ? ZstdDictionary.Parse(_file) : ZstdDictionary.FromContent(_content, Id);
+
+    /// <summary>
+    /// Gets the dictionary as a file: the bytes it was parsed or trained from for a Zstandard-format dictionary, or the content
+    /// for a raw-content one. <see cref="Parse"/> reads the result back.
+    /// </summary>
+    /// <returns>A new array holding the dictionary bytes.</returns>
+    public byte[] ToArray() => (_file ?? _content).ToArray();
+
+    /// <summary>
     /// Creates a dictionary from the bytes of a dictionary file. Data that begins with the Zstandard dictionary magic number is
     /// parsed as the Zstandard dictionary format; anything else is a raw-content dictionary with ID 0.
     /// </summary>
@@ -98,7 +116,7 @@ public sealed class ZstdCompressionDictionary
             Offset3 = BinaryPrimitives.ReadUInt32LittleEndian(data[(p + 8)..]),
         };
         p += 12;
-        return new ZstdCompressionDictionary(id, data[p..].ToArray(), reps, huffman, literalLengths, offsets, matchLengths);
+        return new ZstdCompressionDictionary(id, data[p..].ToArray(), reps, huffman, literalLengths, offsets, matchLengths) { _file = data.ToArray() };
     }
 
     /// <summary>Creates a raw-content dictionary: bytes that act as history, with no entropy tables.</summary>
@@ -123,7 +141,7 @@ public sealed class ZstdCompressionDictionary
     /// <param name="samples">The training samples; empty samples are ignored.</param>
     /// <param name="options">The options; null means the defaults (FastCover with parameter search, 110 KiB).</param>
     /// <param name="cancellationToken">Cancels a long search.</param>
-    /// <returns>The trained dictionary, ready to compress with. Use <see cref="ZstdDictionary.Train"/> for the bytes to save.</returns>
+    /// <returns>The trained dictionary, ready to compress with. <see cref="ForDecompression"/> gives the decoder's side of it and <see cref="ToArray"/> the bytes to save.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="samples"/> is null.</exception>
     /// <exception cref="ArgumentException">An option is out of range.</exception>
     /// <exception cref="CompressionDictionaryException">The samples hold fewer than 8 bytes in total.</exception>
