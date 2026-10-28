@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 #if !CHECKED
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 #endif
 
 namespace RecursiveAI.OneCompress.Lzma;
@@ -66,6 +67,32 @@ internal static class LzmaRaw
         {
             Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, dst + i), Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, src + i)));
         }
+#endif
+    }
+
+    /// <summary>
+    /// As <see cref="CopyWide"/> in sixteen-byte steps, for <c>dst - src &gt;= 16</c>; may write up to fifteen bytes past
+    /// <c>dst + length</c> (the slack is <see cref="LzmaDecoderCore.WindowSlack"/>, which exceeds that). <paramref name="length"/> is at least 1.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void CopyWide16(byte[] w, int dst, int src, int length)
+    {
+#if CHECKED
+        for (int i = 0; i < length; i += 16)
+        {
+            w.AsSpan(src + i, 16).CopyTo(w.AsSpan(dst + i, 16));
+        }
+#else
+        // Bound: src + length and dst + length are at most the ring size, and the array is the ring size plus the slack, so
+        // the last step ends at most 15 bytes past the ring.
+        ref byte b = ref MemoryMarshal.GetArrayDataReference(w);
+        int i = 0;
+        do
+        {
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, dst + i), Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref b, src + i)));
+            i += 16;
+        }
+        while (i < length);
 #endif
     }
 }

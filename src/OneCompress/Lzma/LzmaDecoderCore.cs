@@ -47,7 +47,7 @@ public sealed partial class LzmaDecoderCore
     // Spare bytes behind the ring (the ring is the dictionary size plus this much, so bytes a wide copy overshoots onto were
     // already too old for any match to reach) and behind the array (so the overshoot of a copy that ends at the ring's end
     // stays inside it).
-    internal const int WindowSlack = 16;
+    internal const int WindowSlack = 32;
 
     private ushort[] _probs = [];
     private int _lc;
