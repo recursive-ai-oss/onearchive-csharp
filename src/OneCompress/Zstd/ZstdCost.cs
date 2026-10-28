@@ -69,6 +69,29 @@ internal static class ZstdCost
     /// <paramref name="histogram"/>: their empirical entropy, reduced by the rounding of the integer logarithm.
     /// </summary>
     /// <param name="histogram">How often each symbol occurs.</param>
+    /// <param name="symbols">The symbols that occur, in any order, each once.</param>
+    /// <param name="total">The sum of the histogram.</param>
+    public static long EntropyLowerBound(ReadOnlySpan<uint> histogram, ReadOnlySpan<byte> symbols, int total)
+    {
+        if (total <= 1)
+        {
+            return 0;
+        }
+
+        long logTotal = Log2((uint)total);
+        long sum = 0;
+        ushort[] small = s_log2Small;
+        foreach (byte s in symbols)
+        {
+            uint count = histogram[s];
+            sum += count * (logTotal - (count < SmallLogLimit ? small[count] : Log2(count)));
+        }
+
+        return Math.Max(0, sum - (2L * total) - (8 * Bit));
+    }
+
+    /// <summary>The same bound, visiting every counter up to <paramref name="maxSymbol"/>.</summary>
+    /// <param name="histogram">How often each symbol occurs.</param>
     /// <param name="maxSymbol">The largest symbol that occurs.</param>
     /// <param name="total">The sum of the histogram.</param>
     public static long EntropyLowerBound(ReadOnlySpan<uint> histogram, int maxSymbol, int total)

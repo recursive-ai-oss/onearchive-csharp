@@ -3,6 +3,11 @@ using RecursiveAI.OneCompress;
 using RecursiveAI.OneCompress.Checksums;
 
 // Runs under Node. The hash-matrix runner will grow out of this host.
+if (args.Length > 0 && args[0] == "small")
+{
+    return RecursiveAI.Smoke.SmallRows.Run(args);
+}
+
 string compress = OneCompressInfo.Name;
 string archive = OneArchiveInfo.Name;
 if (compress != "OneCompress" || !archive.Contains(compress, StringComparison.Ordinal))
@@ -43,6 +48,69 @@ if (crc.GetCurrentValue() != Crc32.Compute(big) || crcC.GetCurrentValue() != Crc
 {
     Console.Error.WriteLine("checksum split mismatch");
     return 1;
+}
+
+// Archives without a file system: tar written and read back, then the Archive layer over .tar.zst in memory,
+// sparse-free but with pax fields, a safe-extraction refusal and a limit.
+var tarBytes = new MemoryStream();
+using (var tarWriter = new RecursiveAI.OneArchive.Tar.TarWriter(tarBytes, leaveOpen: true))
+{
+    tarWriter.WriteEntry(new ArchiveEntry { Name = new string('n', 150) + "/f.txt", Size = 5, ModifiedTime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000).AddTicks(1234567) }, "hello"u8.ToArray());
+    tarWriter.WriteEntry(new ArchiveEntry { Name = "../evil", Size = 1 }, "x"u8.ToArray());
+}
+
+tarBytes.Position = 0;
+using (var tarReader = new RecursiveAI.OneArchive.Tar.TarReader(tarBytes))
+{
+    var first = tarReader.GetNextEntry();
+    if (first is null || first.Name.Length != 156 || first.Size != 5 || first.ModifiedTime!.Value.Ticks % 10_000_000 != 1234567)
+    {
+        Console.Error.WriteLine("tar entry failed");
+        return 1;
+    }
+}
+
+var zstTar = new MemoryStream();
+Archive.Create(zstTar, new ArchiveCreateOptions { Compression = ArchiveCompression.Zstd, LeaveOpen = true })
+    .Add(new ArchiveEntry { Name = "a.txt", Size = 3 }, "abc"u8.ToArray()).Save();
+using (var opened = Archive.Open(new MemoryStream(zstTar.ToArray())))
+{
+    using var content = new StreamReader(opened.OpenEntry(opened.Entries[0]));
+    if (opened.Compression != ArchiveCompression.Zstd || opened.Entries.Count != 1 || content.ReadToEnd() != "abc")
+    {
+        Console.Error.WriteLine("archive round trip failed");
+        return 1;
+    }
+}
+
+try
+{
+    var lz4Tar = new MemoryStream();
+    Archive.Create(lz4Tar, new ArchiveCreateOptions { Compression = ArchiveCompression.Lz4, LeaveOpen = true }).Save();
+    using var emptyArchive = Archive.Open(new MemoryStream(lz4Tar.ToArray()));
+    if (emptyArchive.Entries.Count != 0)
+    {
+        Console.Error.WriteLine("empty lz4 tar failed");
+        return 1;
+    }
+
+    using var hostile = Archive.Open(new MemoryStream(tarBytes.ToArray()));
+    hostile.Extract(Path.Combine(Path.GetTempPath(), "onearchive-smoke-never"));
+    Console.Error.WriteLine("traversal was not refused");
+    return 1;
+}
+catch (ArchiveSafetyException)
+{
+}
+catch (IOException)
+{
+    // No writable file system (the browser host): the refusal is not reachable there, the stream-only API above is.
+}
+catch (UnauthorizedAccessException)
+{
+}
+catch (PlatformNotSupportedException)
+{
 }
 
 Console.WriteLine("ok: " + archive);

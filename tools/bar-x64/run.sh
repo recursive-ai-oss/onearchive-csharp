@@ -8,8 +8,8 @@
 #            small game snapshot payloads with trained dictionaries (compress and decode), LZ4 whole files and small payloads.
 #   chunk 2: the decode rows again (the tool frames, LZ4 whole files, small payloads), Zstandard levels 20 and 22,
 #            long-distance matching.
-#   chunk 3: multithreaded jobs, dictionary training time and memory, Zstandard level 19 on small payloads, and the
-#            bar runner on a few files.
+#   chunk 3: multithreaded jobs, dictionary training time and memory, Zstandard level 19 on small payloads, the small
+#            synthetic payload rows (256 B to 16 KiB, tools/small-bench), and the bar runner on a few files.
 #
 # Each chunk is one job: it takes the host's bench lock itself (exits 3 if the lock is held, without waiting), builds the
 # benchmark programs in Release, runs its steps one after another, records load every minute next to a list of the busiest
@@ -61,7 +61,7 @@ lock="${BAR_LOCK_FILE:-$HOME/WORKER-BENCH.lock}"
 
 # Step table: name, chunk, expected minutes, command. Expected minutes come from the per-row times in the bench docs and are
 # deliberately generous; a step whose expected time no longer fits in the budget is skipped, not started.
-zenc="$repo/tools/zstd-encode-bench"; zdec="$repo/tools/zstd-decode-bench"; ztrain="$repo/tools/zstd-train-bench"; l4="$repo/tools/lz4-bench"
+zenc="$repo/tools/zstd-encode-bench"; zdec="$repo/tools/zstd-decode-bench"; ztrain="$repo/tools/zstd-train-bench"; l4="$repo/tools/lz4-bench"; sb="$repo/tools/small-bench"
 steps() {
   if [ "$chunk" = 1 ]; then
     echo "enc-fast|8|enc_run --levels '-5 -1 1 2 3 4 5 6 7 9'"
@@ -82,6 +82,7 @@ steps() {
     echo "jobs|14|jobs_run"
     echo "train|15|train_run"
     echo "game-enc|5|game_enc19"
+    echo "small|45|small_run"
     echo "bar-runner|15|bar_runner"
   fi
 }
@@ -140,21 +141,28 @@ enc_dll="$(build ZstdEncodeBench "$zenc/ZstdEncodeBench.csproj")" || exit 4
 dec_dll="$(build ZstdDecodeBench "$zdec/ZstdDecodeBench.csproj")" || exit 4
 train_dll="$(build ZstdTrainBench "$ztrain/ZstdTrainBench.csproj")" || exit 4
 lz4_dll="$(build Lz4Bench "$l4/Lz4Bench.csproj")" || exit 4
+small_dll="$(build SmallBench "$sb/SmallBench.csproj")" || exit 4
 echo "build done $(date +%T), elapsed $(elapsed_min) min" >> "$out/steps.log"
 
 # ---- step bodies (stdout becomes the step's TSV) ----
 enc_run() { BENCH_DLL="$enc_dll" "$zenc/run.sh" --files "$files" "$@"; }
 dec_run() { BENCH_DLL="$dec_dll" OURS_MAX_LEVEL=19 "$zdec/run.sh" --files "$files" --levels "1 3 9 19" --reps 3; }
 lz4_run() { BENCH_DLL="$lz4_dll" "$l4/bar.sh" --files "$files" --levels "fast8 1 2 3 6 9 12" --reps 3 --seconds 3; }
+# The reference library is the pinned lz4 install (tools/pins.tsv), never the system's liblz4, which is whatever version the
+# distribution ships (the 0.1 close rows were measured against 1.9.4 by mistake).
 lz4_game() {
-  local lib refsmall="$tmp/refsmall" prep="$tmp/lz4-game"
-  for lib in /usr/lib/x86_64-linux-gnu/liblz4.so.1 /lib/x86_64-linux-gnu/liblz4.so.1 /usr/lib64/liblz4.so.1 /usr/lib/liblz4.so.1; do [ -e "$lib" ] && break; lib=""; done
-  [ -n "$lib" ] || { echo "# no liblz4.so.1 on this host: small-payload LZ4 rows skipped"; return 0; }
-  echo "# liblz4: $(readlink -f "$lib")"
-  cc -O2 "$l4/refsmall.c" -o "$refsmall" "$lib" || { echo "# refsmall build failed"; return 1; }
+  local prefix lib refsmall="$tmp/refsmall" prep="$tmp/lz4-game"
+  prefix="$(ls -d "$home"/tools/opt/lz4-* 2>/dev/null | head -1)"
+  lib="$(ls "$prefix"/lib/liblz4.so "$prefix"/lib/liblz4.dylib 2>/dev/null | head -1)"
+  [ -n "$lib" ] || { echo "# no pinned lz4 library under $home/tools/opt: small-payload LZ4 rows skipped"; return 0; }
+  echo "# liblz4: pinned $(basename "$prefix") ($(readlink -f "$lib" | xargs basename))"
+  cc -O2 "$l4/refsmall.c" -o "$refsmall" "$lib" -Wl,-rpath,"$prefix/lib" || { echo "# refsmall build failed"; return 1; }
   DICT_KB=16 "$l4/game-prep.sh" "$ONEARCHIVE_CORPORA/game" "$prep" 20 >&2 || return 1
   BENCH_DLL="$lz4_dll" REFSMALL="$refsmall" "$l4/game-bar.sh" "$prep" "-1 1 3 9"
 }
+# Small synthetic payloads (256 B to 16 KiB) with 16 and 112 KiB dictionaries, one at a time through reused contexts, against
+# the pinned zstd and lz4 libraries; ../small-bench/run.sh describes the method and the columns.
+small_run() { BENCH_DLL="$small_dll" ONEARCHIVE_HOME="$home" ONEARCHIVE_BENCH_TMP="$tmp/small" TRAIN_DLL="${train_dll:-}" "$sb/run.sh" --seconds 2 --ours-dict; }
 game_enc() {
   local k lv
   for kl in "frames:1 3" "snapshots:3 9 19" "saves:3 9 19"; do
