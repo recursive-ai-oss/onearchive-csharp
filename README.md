@@ -44,6 +44,9 @@ formats' interop and fuzz coverage grows. Their public types carry `[Experimenta
 | LZ4 | `ONECOMPRESS002` |
 | Deflate, zlib and gzip (decoder) | `ONECOMPRESS003` |
 | bzip2 (decoder) | `ONECOMPRESS004` |
+| LZMA and LZMA2 (decoders) | `ONECOMPRESS005` |
+| xz (decoder) and the branch and delta filters | `ONECOMPRESS006` |
+| lzip (decoder) | `ONECOMPRESS007` |
 | OneArchive: `Archive`, the entry model, readers and writers, tar | `ONEARCHIVE001` |
 
 ```xml
