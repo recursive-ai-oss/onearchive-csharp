@@ -14,7 +14,7 @@ out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
          zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
-         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip deflate64-decode deflate64-encode-roundtrip bzip2-decode lzma-decode xz-decode lzip-decode lzma-encode-roundtrip xz-encode-roundtrip tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read sevenzip-read cpio-read ar-read cpio-roundtrip ar-roundtrip; do
+         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip deflate64-decode deflate64-encode-roundtrip bzip2-decode brotli-decode lzma-decode xz-decode lzip-decode lzma-encode-roundtrip xz-encode-roundtrip tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read sevenzip-read cpio-read ar-read cpio-roundtrip ar-roundtrip; do
   mkdir -p "$out/$t"
 done
 
@@ -98,6 +98,15 @@ for f in $(small "$root"/testdata/bzip2/vectors/*); do { printf '\x00'; cat "$f"
 if command -v bzip2 >/dev/null; then
   for p in "$payloads"/*; do
     for l in 1 5 9; do { printf '\x00'; bzip2 -$l -c "$p"; } > "$out/bzip2-decode/ref-bzip2-$(basename "$p")-$l" || true; done
+  done
+fi
+
+# brotli: the vectors (a leading option byte: 0 means no trailing data, default window limit), and the tool's output
+# over the payloads at three qualities when it is on PATH.
+for f in $(small "$root"/testdata/brotli/vectors/*); do { printf '\x00'; cat "$f"; } > "$out/brotli-decode/$(basename "$f")"; done
+if command -v brotli >/dev/null; then
+  for p in "$payloads"/*; do
+    for q in 1 5 11; do { printf '\x00'; brotli -q $q -c "$p"; } > "$out/brotli-decode/ref-brotli-$(basename "$p")-$q" || true; done
   done
 fi
 
