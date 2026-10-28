@@ -14,7 +14,7 @@ out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
          zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
-         deflate-decode zlib-decode gzip-decode tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read; do
+         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read; do
   mkdir -p "$out/$t"
 done
 
@@ -83,6 +83,15 @@ if command -v pigz >/dev/null; then
   for p in "$payloads"/*; do { printf '\x00'; pigz -q -z -6 -c "$p"; } > "$out/zlib-decode/ref-pigz-$(basename "$p")" || true; done
 fi
 
+# bzip2: the vectors, and the tool's own output over the payloads at three levels. The first
+# byte is the option byte of the target (0: verify checksums, no trailing data).
+for f in $(small "$root"/testdata/bzip2/vectors/*); do { printf '\x00'; cat "$f"; } > "$out/bzip2-decode/$(basename "$f")"; done
+if command -v bzip2 >/dev/null; then
+  for p in "$payloads"/*; do
+    for l in 1 5 9; do { printf '\x00'; bzip2 -$l -c "$p"; } > "$out/bzip2-decode/ref-bzip2-$(basename "$p")-$l" || true; done
+  done
+fi
+
 # Round-trip targets: option bytes followed by a payload (see the target sources for what the bytes mean).
 n=0
 for p in "$payloads"/*; do
@@ -91,6 +100,9 @@ for p in "$payloads"/*; do
     { printf "\\x$(printf %02x $((lv + n % 5)))\\x$(printf %02x $((n * 7 % 256)))\\x$(printf %02x $((8 + n % 8)))"; head -c 8000 "$p"; } > "$out/zstd-encode-roundtrip/$b-$lv"
   done
   { printf '\x05\x00\x00\x00'; head -c 6000 "$p"; } > "$out/lz4-encode-frame/$b"
+  for lv in 1 6 12; do # level byte, format and strategy flags, piece and output sizes, flush plan
+    { printf "\x$(printf %02x $lv)\x$(printf %02x $((n * 5 % 128)))\x$(printf %02x $((n * 3 % 256)))\x$(printf %02x $((n * 11 % 256)))\x$(printf %02x $((n % 8)))"; head -c 6000 "$p"; } > "$out/deflate-encode-roundtrip/$b-$lv"
+  done
   { printf '\x01\x00\x00\x00'; head -c 6000 "$p"; } > "$out/lz4-encode-block/$b"
   { printf "\\x$(printf %02x $((n % 4)))\\x$(printf %02x $((n * 5 % 8)))\\x02\\x03\\x04\\x40"; head -c 9000 "$p"; } > "$out/zstd-train-roundtrip/$b"
 done

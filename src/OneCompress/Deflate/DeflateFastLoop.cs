@@ -25,11 +25,19 @@ internal static class DeflateFastLoop
     // The longest match (258) plus the 8-byte copies that may run past its end.
     public const int OutputMargin = 258 + 8 + 6;
 
-    private const uint LinkKind = (uint)DeflateSymbolKind.Link;
-    private const uint LiteralKind = (uint)DeflateSymbolKind.Literal;
-    private const uint LengthKind = (uint)DeflateSymbolKind.Length;
-    private const uint EndOfBlockKind = (uint)DeflateSymbolKind.EndOfBlock;
-    private const uint DistanceKind = (uint)DeflateSymbolKind.Distance;
+    // The first-level sizes of the literal/length and distance tables (DeflateHuffmanTable fixes them per alphabet). As constants they
+    // free registers in the loop.
+    private const int LiteralPrimaryBits = 10;
+    private const int DistancePrimaryBits = 8;
+    private const uint LiteralMask = (1u << LiteralPrimaryBits) - 1;
+    private const uint DistanceMask = (1u << DistancePrimaryBits) - 1;
+
+    private const uint KindMask = 15u << DeflateHuffmanEntry.KindShift;
+    private const uint LinkKind = (uint)DeflateSymbolKind.Link << DeflateHuffmanEntry.KindShift;
+    private const uint LiteralKind = (uint)DeflateSymbolKind.Literal << DeflateHuffmanEntry.KindShift;
+    private const uint LengthKind = (uint)DeflateSymbolKind.Length << DeflateHuffmanEntry.KindShift;
+    private const uint EndOfBlockKind = (uint)DeflateSymbolKind.EndOfBlock << DeflateHuffmanEntry.KindShift;
+    private const uint DistanceKind = (uint)DeflateSymbolKind.Distance << DeflateHuffmanEntry.KindShift;
 
     public static FastResult Run(ref DeflateBitReader br, Span<byte> dst, ref int dp, DeflateHuffmanTable literalTable, DeflateHuffmanTable distanceTable, ReadOnlySpan<byte> history)
     {
@@ -40,13 +48,13 @@ internal static class DeflateFastLoop
         int op = dp;
         uint[] literals = literalTable.Entries;
         uint[] distances = distanceTable.Entries;
-        int literalPrimary = literalTable.PrimaryBits;
-        int distancePrimary = distanceTable.PrimaryBits;
-        uint literalMask = literalTable.PrimaryMask;
-        uint distanceMask = distanceTable.PrimaryMask;
+        if (literalTable.PrimaryBits != LiteralPrimaryBits || distanceTable.PrimaryBits != DistancePrimaryBits)
+        {
+            return FastResult.Exhausted;
+        }
+
         int inputLimit = src.Length - 8;
         int outputLimit = dst.Length - OutputMargin;
-        int historyLength = history.Length;
         FastResult result = FastResult.Exhausted;
 
         while (ip <= inputLimit && op <= outputLimit)
@@ -57,19 +65,39 @@ internal static class DeflateFastLoop
             ip += (63 - count) >> 3;
             count |= 56;
 
-            uint e = DeflateRaw.Get(literals, (int)(bits & literalMask));
-            if (((e >> DeflateHuffmanEntry.KindShift) & 15) == LinkKind)
+            uint e = DeflateRaw.Get(literals, (int)(bits & LiteralMask));
+            if ((e & KindMask) == LinkKind)
             {
-                e = DeflateRaw.Get(literals, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)((bits >> literalPrimary) & ((1u << (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15)) - 1)));
+                e = DeflateRaw.Get(literals, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits >> LiteralPrimaryBits, (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15)));
             }
 
             int n = (int)(e & 0xFF);
             bits >>= n;
             count -= n;
-            uint kind = (e >> DeflateHuffmanEntry.KindShift) & 15;
+            uint kind = e & KindMask;
             if (kind == LiteralKind)
             {
                 DeflateRaw.Set(dst, op++, (byte)(e >> DeflateHuffmanEntry.ValueShift));
+
+                // The refill left at least 56 bits and this code used at most 15, so two more codes found directly in the first-level
+                // table (at most 10 bits each) can be decoded before the next refill. Anything else is left for the loop's next turn.
+                e = DeflateRaw.Get(literals, (int)(bits & LiteralMask));
+                if ((e & KindMask) == LiteralKind)
+                {
+                    n = (int)(e & 0xFF);
+                    bits >>= n;
+                    count -= n;
+                    DeflateRaw.Set(dst, op++, (byte)(e >> DeflateHuffmanEntry.ValueShift));
+                    e = DeflateRaw.Get(literals, (int)(bits & LiteralMask));
+                    if ((e & KindMask) == LiteralKind)
+                    {
+                        n = (int)(e & 0xFF);
+                        bits >>= n;
+                        count -= n;
+                        DeflateRaw.Set(dst, op++, (byte)(e >> DeflateHuffmanEntry.ValueShift));
+                    }
+                }
+
                 continue;
             }
 
@@ -80,73 +108,46 @@ internal static class DeflateFastLoop
             }
 
             int extra = (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
-            int length = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)(bits & ((1UL << extra) - 1));
+            int length = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits, extra);
             bits >>= extra;
             count -= extra;
 
-            e = DeflateRaw.Get(distances, (int)(bits & distanceMask));
-            if (((e >> DeflateHuffmanEntry.KindShift) & 15) == LinkKind)
+            e = DeflateRaw.Get(distances, (int)(bits & DistanceMask));
+            if ((e & KindMask) == LinkKind)
             {
-                e = DeflateRaw.Get(distances, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)((bits >> distancePrimary) & ((1u << (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15)) - 1)));
+                e = DeflateRaw.Get(distances, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits >> DistancePrimaryBits, (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15)));
             }
 
             n = (int)(e & 0xFF);
             bits >>= n;
             count -= n;
-            if (((e >> DeflateHuffmanEntry.KindShift) & 15) != DistanceKind)
+            if ((e & KindMask) != DistanceKind)
             {
                 result = FastResult.InvalidDistance;
                 break;
             }
 
             extra = (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
-            int distance = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)(bits & ((1UL << extra) - 1));
+            int distance = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits, extra);
             bits >>= extra;
             count -= extra;
 
             int end = op + length;
-            if (distance <= op)
+            if (distance >= 8 && distance <= op)
             {
+                // Eight bytes at a time: each read is at least 8 bytes behind its write, so it only sees bytes already written.
                 int s = op - distance;
-                if (distance >= 8)
+                do
                 {
-                    // Eight bytes at a time: each read is at least 8 bytes behind its write, so it only sees bytes already written.
-                    do
-                    {
-                        DeflateRaw.Copy8(dst, op, s);
-                        op += 8;
-                        s += 8;
-                    }
-                    while (op < end);
-                    op = end;
+                    DeflateRaw.Copy8(dst, op, s);
+                    op += 8;
+                    s += 8;
                 }
-                else if (distance == 1)
-                {
-                    dst.Slice(op, length).Fill(DeflateRaw.Get(dst, op - 1));
-                    op = end;
-                }
-                else
-                {
-                    do
-                    {
-                        DeflateRaw.Set(dst, op, DeflateRaw.Get(dst, s));
-                        op++;
-                        s++;
-                    }
-                    while (op < end);
-                }
+                while (op < end);
+                op = end;
             }
-            else if (distance <= op + historyLength)
+            else if (CopyUncommon(dst, op, distance, length, history))
             {
-                // The match starts in the history (earlier calls' output) and may continue into this call's output.
-                int fromHistory = distance - op;
-                int m = Math.Min(length, fromHistory);
-                history.Slice(historyLength - fromHistory, m).CopyTo(dst[op..]);
-                for (int i = m; i < length; i++)
-                {
-                    dst[op + i] = dst[i - fromHistory];
-                }
-
                 op = end;
             }
             else
@@ -163,5 +164,77 @@ internal static class DeflateFastLoop
         br.Set(ip, bits, count);
         dp = op;
         return result;
+    }
+
+    // The low `count` bits of `value` (count 0 to 31). The same result with or without BMI2.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static ulong LowBits(ulong value, int count) =>
+        System.Runtime.Intrinsics.X86.Bmi2.X64.IsSupported ? System.Runtime.Intrinsics.X86.Bmi2.X64.ZeroHighBits(value, (uint)count) : value & ((1UL << count) - 1);
+
+    // The matches the main loop does not copy eight bytes at a time: distances below 8, and distances reaching into the history
+    // (earlier calls' output). Returns false when the distance reaches before the start of the unit.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static bool CopyUncommon(Span<byte> dst, int op, int distance, int length, ReadOnlySpan<byte> history)
+    {
+        int end = op + length;
+        if (distance <= op)
+        {
+            int s = op - distance;
+            if (distance == 1)
+            {
+                // Whole eight-byte stores of the repeated byte; the last may run past the match (the output margin covers it).
+                ulong pattern = DeflateRaw.Get(dst, op - 1) * 0x0101010101010101UL;
+                for (int p = op; p < end; p += 8)
+                {
+                    DeflateRaw.Write64(dst, p, pattern);
+                }
+
+                return true;
+            }
+
+            // Distance 2 to 7: write the first eight bytes one by one (each read is behind its write), after which the pattern
+            // repeats with a period of the smallest multiple of the distance that is at least 8, and eight-byte copies from that
+            // far back only read bytes that exist. The copy may run up to 7 bytes past the match; the output margin covers that
+            // and the next symbols overwrite it.
+            int first = Math.Min(length, 8);
+            for (int i = 0; i < first; i++)
+            {
+                DeflateRaw.Set(dst, op + i, DeflateRaw.Get(dst, s + i));
+            }
+
+            if (length <= 8)
+            {
+                return true;
+            }
+
+            int period = distance;
+            while (period < 8)
+            {
+                period += distance;
+            }
+
+            for (int p = op + 8; p < end; p += 8)
+            {
+                DeflateRaw.Copy8(dst, p, p - period);
+            }
+
+            return true;
+        }
+
+        if (distance <= op + history.Length)
+        {
+            // The match starts in the history and may continue into this call's output.
+            int fromHistory = distance - op;
+            int m = Math.Min(length, fromHistory);
+            history.Slice(history.Length - fromHistory, m).CopyTo(dst[op..]);
+            for (int i = m; i < length; i++)
+            {
+                dst[op + i] = dst[i - fromHistory];
+            }
+
+            return true;
+        }
+
+        return false;
     }
 }
