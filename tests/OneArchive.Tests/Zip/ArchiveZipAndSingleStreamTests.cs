@@ -165,6 +165,32 @@ public class ArchiveZipAndSingleStreamTests
     }
 
     [Fact]
+    public void TarBz2AndSingleBz2AreWrittenAndReadBack()
+    {
+        using var temp = new TempDir();
+        string tree = temp.Combine("tree");
+        MakeTree(tree);
+        string path = temp.Combine("x.tar.bz2");
+        Archive.Create(path).Add(tree, "tree").Save();
+        Assert.True(File.ReadAllBytes(path).AsSpan(0, 3).SequenceEqual("BZh"u8));
+        using (Archive a = Archive.Open(path))
+        {
+            Assert.Equal(ArchiveFormat.Tar, a.Format);
+            Assert.Equal(ArchiveCompression.Bzip2, a.Compression);
+        }
+
+        Archive.Extract(path, temp.Combine("o"));
+        AssertSameTree(tree, temp.Combine("o/tree"));
+
+        byte[] data = ZipTests.Text(300_000, 9);
+        File.WriteAllBytes(temp.Combine("doc.txt"), data);
+        Archive.Create(temp.Combine("doc.txt.bz2"), new ArchiveCreateOptions { CompressionLevel = 2 }).Add(temp.Combine("doc.txt")).Save();
+        Assert.Equal((byte)'2', File.ReadAllBytes(temp.Combine("doc.txt.bz2"))[3]);
+        Archive.Extract(temp.Combine("doc.txt.bz2"), temp.Combine("z"));
+        Assert.Equal(data, File.ReadAllBytes(temp.Combine("z/doc.txt")));
+    }
+
+    [Fact]
     public void ZipEntryCompressedWithBzip2IsRead()
     {
         byte[] zip = Convert.FromBase64String("UEsDBC4AAAAMAMA4XF2eUQiZSgAAALgBAAAFAAAAYS50eHRCWmg5MUFZJlNZhghw2AAAWZmAQAAQABJl1DAgAFCAAAFKkADTonZPibE0JsTkmBMidE8JgmCeCZJ8TJOSZJ+LuSKcKEhDBDhsAFBLAQIuAy4AAAAMAMA4XF2eUQiZSgAAALgBAAAFAAAAAAAAAAAAAACAAQAAAABhLnR4dFBLBQYAAAAAAQABADMAAABtAAAAAAA=");

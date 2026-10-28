@@ -4,7 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.BZip2;
 
 /// <summary>
-/// One-call decompression of bzip2 data. Everything here is built on <see cref="BZip2Decoder"/>. A buffer may hold several streams
+/// One-call compression and decompression of bzip2 data. Everything here is built on <see cref="BZip2Encoder"/> and <see cref="BZip2Decoder"/>. A buffer may hold several streams
 /// one after the other (as <c>cat a.bz2 b.bz2</c> or a parallel compressor writes them); their outputs are joined.
 /// </summary>
 [Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
@@ -13,6 +13,44 @@ public static class BZip2
     // The first stage run-length coding expands 5 bytes to at most 259, and the Huffman and move-to-front stages
     // pack a run of equal bytes far tighter still, so there is no useful bound on the expansion; start small and double.
     private const int InitialFactor = 4;
+
+    /// <summary>Compresses a buffer to one bzip2 stream.</summary>
+    /// <param name="source">The data; may be empty (the result is then a 14-byte stream).</param>
+    /// <param name="options">The level; <see langword="null"/> for <see cref="BZip2Options.Default"/>.</param>
+    /// <returns>The compressed bytes.</returns>
+    public static byte[] Compress(ReadOnlySpan<byte> source, BZip2Options? options = null)
+    {
+        var encoder = new BZip2Encoder(options);
+        byte[] output = new byte[Math.Max((source.Length / 2) + 256, 256)];
+        int consumed = 0;
+        int written = 0;
+        while (true)
+        {
+            OperationStatus status = encoder.Compress(source[consumed..], output.AsSpan(written), out int c, out int w, isFinalBlock: true);
+            consumed += c;
+            written += w;
+            if (status == OperationStatus.Done)
+            {
+                return output.AsSpan(0, written).ToArray();
+            }
+
+            Array.Resize(ref output, checked(output.Length * 2));
+        }
+    }
+
+    /// <summary>Compresses a buffer into a caller-supplied buffer.</summary>
+    /// <param name="source">The data.</param>
+    /// <param name="destination">Receives the stream. There is no tight bound on its size before compressing; incompressible data grows by roughly an eighth.</param>
+    /// <param name="bytesWritten">The number of bytes written, or 0 when the destination is too small.</param>
+    /// <param name="options">The level; <see langword="null"/> for the default.</param>
+    /// <returns>True on success; false when <paramref name="destination"/> is too small.</returns>
+    public static bool TryCompress(ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten, BZip2Options? options = null)
+    {
+        var encoder = new BZip2Encoder(options);
+        OperationStatus status = encoder.Compress(source, destination, out _, out int written, isFinalBlock: true);
+        bytesWritten = status == OperationStatus.Done ? written : 0;
+        return status == OperationStatus.Done;
+    }
 
     /// <summary>Decompresses a buffer holding one or more bzip2 streams.</summary>
     /// <param name="source">The compressed data.</param>

@@ -16,7 +16,7 @@ public enum ZipMethod : ushort
     /// <summary>Deflate64 (APPNOTE 5.6): Deflate with a 64 KiB window and longer matches.</summary>
     Deflate64 = 9,
 
-    /// <summary>bzip2. Listed, not yet supported.</summary>
+    /// <summary>bzip2. Read and written.</summary>
     BZip2 = 12,
 
     /// <summary>LZMA with the APPNOTE 5.8 header. Read only.</summary>

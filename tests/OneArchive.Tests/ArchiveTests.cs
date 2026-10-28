@@ -192,9 +192,9 @@ public class ArchiveTests
         byte[] xz = [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00, 0, 4];
         var truncated = Assert.Throws<CompressionFormatException>(() => Archive.Open(new MemoryStream(xz)));
         Assert.Contains("xz", truncated.Message, StringComparison.Ordinal);
-        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create(new MemoryStream(), new ArchiveCreateOptions { Compression = ArchiveCompression.Bzip2 }));
+        // Every defined compression layer can be written; a value outside the enum cannot.
+        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create(new MemoryStream(), new ArchiveCreateOptions { Compression = (ArchiveCompression)99 }));
         Assert.Throws<ArgumentException>(() => Archive.Create("/nonexistent/x.unknown"));
-        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create("x.tar.bz2"));
     }
 
     [Fact]

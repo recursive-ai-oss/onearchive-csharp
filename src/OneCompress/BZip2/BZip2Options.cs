@@ -33,3 +33,45 @@ public sealed class BZip2DecompressionOptions
     /// </summary>
     public bool AllowTrailingData { get; init; }
 }
+
+/// <summary>Options for compressing to bzip2.</summary>
+[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
+public sealed class BZip2Options
+{
+    /// <summary>The default level: 9, as the <c>bzip2</c> tool.</summary>
+    public const int DefaultLevel = 9;
+
+    /// <summary>Gets the shared default options.</summary>
+    public static BZip2Options Default { get; } = new();
+
+    /// <summary>
+    /// Gets the block size level, 1 to 9: blocks hold up to the level times 100 000 bytes (less 19) after the first run-length stage, and the
+    /// stream header names the level. Larger blocks compress better and cost memory, about 20 bytes per block byte here and 4 bytes per block byte
+    /// for the reader. The default is 9.
+    /// </summary>
+    public int Level
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 9);
+            field = value;
+        }
+    } = DefaultLevel;
+
+    /// <summary>
+    /// Gets the longest Huffman code length written, 9 to 20. The format allows 20; the default, 17, is the longest the <c>bzip2</c> tool
+    /// writes, which keeps the output inside what every reader is known to accept. Longer limits make the tables slightly closer to optimal.
+    /// </summary>
+    public int MaxCodeLength
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 9);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, BZip2HuffmanTable.MaxCodeLength);
+            field = value;
+        }
+    } = BZip2HuffmanBuilder.DefaultMaxLength;
+}

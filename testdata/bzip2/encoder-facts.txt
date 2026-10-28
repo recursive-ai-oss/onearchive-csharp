@@ -1,0 +1,104 @@
+# bzip2, a block-sorting file compressor.  Version 1.0.8, 13-Jul-2019. Output of tools/bzip2/derive-encoder-facts.py
+F1: level 1: block sizes [99981, 99981, 12383] (level*100000 = 100000; short by 19)
+F1: level 2: block sizes [199981, 199981, 12383] (level*100000 = 200000; short by 19)
+F1: level 5: block sizes [499981, 499981, 12383] (level*100000 = 500000; short by 19)
+F1: level 9: block sizes [899981, 899981, 12383] (level*100000 = 900000; short by 19)
+F2: run of 1: first-stage bytes 786179 (undone ok: True)
+F2: run of 3: first-stage bytes 7861616179 (undone ok: True)
+F2: run of 4: first-stage bytes 78616161610079 (undone ok: True)
+F2: run of 5: first-stage bytes 78616161610179 (undone ok: True)
+F2: run of 8: first-stage bytes 78616161610479 (undone ok: True)
+F2: run of 258: first-stage bytes 7861616161fb61616179 (undone ok: True)
+F2: run of 259: first-stage bytes 7861616161fb616161610079 (undone ok: True)
+F2: run of 260: first-stage bytes 7861616161fb616161610179 (undone ok: True)
+F2: run of 261: first-stage bytes 7861616161fb616161610279 (undone ok: True)
+F2: run of 263: first-stage bytes 7861616161fb616161610479 (undone ok: True)
+F2: run of 264: first-stage bytes 7861616161fb616161610579 (undone ok: True)
+F2: run of 300: first-stage bytes 7861616161fb616161612979 (undone ok: True)
+F2: run of 518: first-stage bytes 7861616161fb61616161fb616161610479 (undone ok: True)
+F2: run of 519: first-stage bytes 7861616161fb61616161fb616161610579 (undone ok: True)
+F2: run of 520: first-stage bytes 7861616161fb61616161fb616161610679 (undone ok: True)
+F3: level 1, 99960 varied bytes then 1000 'z' and 'q': (first-stage length, input bytes, tail) per block [(99981, 100961, '7a7a7a7ae771')], round trip of the first stage True
+F3: level 1, 99970 varied bytes then 1000 'z' and 'q': (first-stage length, input bytes, tail) per block [(99985, 100735, 'fb7a7a7a7afb'), (6, 236, '7a7a7a7ae771')], round trip of the first stage True
+F3: level 1, 99975 varied bytes then 1000 'z' and 'q': (first-stage length, input bytes, tail) per block [(99985, 100485, 'fb7a7a7a7afb'), (11, 491, '7a7a7a7ae771')], round trip of the first stage True
+F3: level 1, 99977 varied bytes then 1000 'z' and 'q': (first-stage length, input bytes, tail) per block [(99982, 100232, 'e07a7a7a7afb'), (16, 746, '7a7a7a7ae771')], round trip of the first stage True
+F3: level 1, 99978 varied bytes then 1000 'z' and 'q': (first-stage length, input bytes, tail) per block [(99983, 100233, 'a27a7a7a7afb'), (16, 746, '7a7a7a7ae771')], round trip of the first stage True
+F3: level 1, 99979 varied bytes then 1000 'z' and 'q': (first-stage length, input bytes, tail) per block [(99984, 100234, '817a7a7a7afb'), (16, 746, '7a7a7a7ae771')], round trip of the first stage True
+F3: level 1, 99980 varied bytes then 1000 'z' and 'q': (first-stage length, input bytes, tail) per block [(99985, 100235, '257a7a7a7afb'), (16, 746, '7a7a7a7ae771')], round trip of the first stage True
+F3: level 1, 99981 varied bytes then 1000 'z' and 'q': (first-stage length, input bytes, tail) per block [(99981, 99981, 'a0e0a281255f'), (21, 1001, '7a7a7a7ae771')], round trip of the first stage True
+F3b: level 1, 100002 input bytes without runs: block sizes [99981, 21]
+F3b: level 1, 100001 input bytes without runs: block sizes [99981, 20]
+F3b: level 1, 100000 input bytes without runs: block sizes [99981, 19]
+F3b: level 1, 99992 input bytes without runs: block sizes [99981, 11]
+F3b: level 1, 99984 input bytes without runs: block sizes [99981, 3]
+F3b: level 1, 99983 input bytes without runs: block sizes [99981, 2]
+F3b: level 1, 99982 input bytes without runs: block sizes [99981, 1]
+F3b: level 1, 99964 input bytes without runs: block sizes [99964]
+F4: 1 bytes: 2 symbols, 2 tables, 1 selectors, used 1, max code length 2
+F4: 10 bytes: 11 symbols, 2 tables, 1 selectors, used 8, max code length 4
+F4: 100 bytes: 98 symbols, 2 tables, 2 selectors, used 27, max code length 6
+F4: 199 bytes: 199 symbols, 2 tables, 4 selectors, used 27, max code length 7
+F4: 200 bytes: 199 symbols, 2 tables, 4 selectors, used 27, max code length 7
+F4: 201 bytes: 200 symbols, 3 tables, 4 selectors, used 27, max code length 7
+F4: 300 bytes: 294 symbols, 3 tables, 6 selectors, used 27, max code length 7
+F4: 500 bytes: 494 symbols, 3 tables, 10 selectors, used 27, max code length 8
+F4: 799 bytes: 777 symbols, 4 tables, 16 selectors, used 27, max code length 7
+F4: 800 bytes: 770 symbols, 4 tables, 16 selectors, used 27, max code length 7
+F4: 801 bytes: 790 symbols, 4 tables, 16 selectors, used 27, max code length 7
+F4: 1200 bytes: 1168 symbols, 4 tables, 24 selectors, used 27, max code length 7
+F4: 1700 bytes: 1628 symbols, 5 tables, 33 selectors, used 27, max code length 8
+F4: 1799 bytes: 1724 symbols, 5 tables, 35 selectors, used 27, max code length 8
+F4: 1800 bytes: 1701 symbols, 5 tables, 35 selectors, used 27, max code length 7
+F4: 1801 bytes: 1720 symbols, 5 tables, 35 selectors, used 27, max code length 7
+F4: 2400 bytes: 2238 symbols, 5 tables, 45 selectors, used 27, max code length 8
+F4: 2401 bytes: 2236 symbols, 5 tables, 45 selectors, used 27, max code length 8
+F4: 3000 bytes: 2789 symbols, 6 tables, 56 selectors, used 27, max code length 8
+F4: 5000 bytes: 4364 symbols, 6 tables, 88 selectors, used 27, max code length 8
+F4: 20000 bytes: 13399 symbols, 6 tables, 268 selectors, used 27, max code length 10
+F4: 200000 bytes: 91644 symbols, 6 tables, 1833 selectors, used 27, max code length 12
+F5: skewed: alphabet 80, lengths 3..17, tables 6
+F5:   table 0: Kraft sum 1.000000, use count 1982
+F5:   table 1: Kraft sum 1.000000, use count 1294
+F5:   table 2: Kraft sum 1.000000, use count 2261
+F5:   table 3: Kraft sum 1.000000, use count 749
+F5:   table 4: Kraft sum 1.000000, use count 631
+F5:   table 5: Kraft sum 1.000000, use count 1032
+F5: uniform-random: alphabet 258, lengths 7..14, tables 6
+F5:   table 0: Kraft sum 1.000000, use count 1858
+F5:   table 1: Kraft sum 1.000000, use count 1095
+F5:   table 2: Kraft sum 1.000000, use count 935
+F5:   table 3: Kraft sum 1.000000, use count 801
+F5:   table 4: Kraft sum 1.000000, use count 627
+F5:   table 5: Kraft sum 1.000000, use count 684
+F5: two-symbols: alphabet 16, lengths 1..14, tables 6
+F5:   table 0: Kraft sum 1.000000, use count 0
+F5:   table 1: Kraft sum 1.000000, use count 0
+F5:   table 2: Kraft sum 1.000000, use count 60
+F5:   table 3: Kraft sum 1.000000, use count 447
+F5:   table 4: Kraft sum 1.000000, use count 23
+F5:   table 5: Kraft sum 1.000000, use count 56
+F5c: skewed (Fibonacci) frequencies over 24 symbols, 20245 bytes: max length 12, tables 6
+F6: b'banana': last column matches plain rotation sort: True; tool origin 3, rows holding the original rotation [3]
+F6: b'abracadabra': last column matches plain rotation sort: True; tool origin 2, rows holding the original rotation [2]
+F6: b'mississippi': last column matches plain rotation sort: True; tool origin 4, rows holding the original rotation [4]
+F6: b'abab': last column matches plain rotation sort: True; tool origin 1, rows holding the original rotation [0]
+F6: b'abcabcabc': last column matches plain rotation sort: True; tool origin 2, rows holding the original rotation [0]
+F6: b'hello world': last column matches plain rotation sort: True; tool origin 3, rows holding the original rotation [3]
+F6: b'a': last column matches plain rotation sort: True; tool origin 0, rows holding the original rotation [0]
+F6: b'ab': last column matches plain rotation sort: True; tool origin 0, rows holding the original rotation [0]
+F6: b'ba': last column matches plain rotation sort: True; tool origin 1, rows holding the original rotation [1]
+F6: b'aaab': last column matches plain rotation sort: True; tool origin 0, rows holding the original rotation [0]
+F6: b'abaabaabaab': last column matches plain rotation sort: True; tool origin 3, rows holding the original rotation [3]
+F6b: b'abababab': tool origin 3; stable-by-index order puts rotation 0 at row [0]
+F6b: b'abcabcabcabc': tool origin 3; stable-by-index order puts rotation 0 at row [0]
+F6b: b'xyxyxyxyxyxy': tool origin 5; stable-by-index order puts rotation 0 at row [0]
+F7: empty: header b'BZh7' blocks 0 block crc matches CRC of the input: [], combined matches: True, length 14, end bit 112 (padding 0 bits, pad bits zero: True)
+F7: one byte: header b'BZh7' blocks 1 block crc matches CRC of the input: [True], combined matches: True, length 37, end bit 291 (padding 5 bits, pad bits zero: True)
+F7: text: header b'BZh7' blocks 1 block crc matches CRC of the input: [True], combined matches: True, length 57, end bit 453 (padding 3 bits, pad bits zero: True)
+F7: runs: header b'BZh7' blocks 1 block crc matches CRC of the input: [True], combined matches: True, length 51, end bit 406 (padding 2 bits, pad bits zero: True)
+F7b: level 1 on 3 bytes writes header b'BZh1'
+F7b: level 9 on 3 bytes writes header b'BZh9'
+F7c: 3 blocks: each block CRC is the CRC of its own input bytes: True; combined as rotate-xor: True
+F8: 'abcabczzz' symbols [4, 4, 3, 0, 4, 0, 4, 0, 4, 5] used 4
+F8b: all 256 byte values: alphabet 258, max symbol 257
+F9: selector mtf values (first 24): [5, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 1, 1, 5, 1, 0], selectors [5, 3, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 5, 4, 2, 4, 4]
