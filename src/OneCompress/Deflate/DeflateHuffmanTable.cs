@@ -315,7 +315,8 @@ public sealed class DeflateHuffmanTable
             _fast = new uint[_entries.Length];
         }
 
-        const uint LiteralBits = (uint)DeflateSymbolKind.Literal << DeflateHuffmanEntry.KindShift;
+        // The fast table's kind bits are one flag per kind (see DeflateFastLoop): literal 8, length 4, link 2, end of block 1.
+        const uint LiteralBits = 8u << DeflateHuffmanEntry.KindShift;
         int primary = _primaryBits;
         for (int i = 0; i < size; i++)
         {
@@ -333,6 +334,18 @@ public sealed class DeflateHuffmanTable
                         e = ((e >> 16) | ((next >> 16) << 8)) << 16 | LiteralBits | (2u << DeflateHuffmanEntry.ExtraShift) | (uint)(first + second);
                     }
                 }
+            }
+
+            if (((e >> DeflateHuffmanEntry.KindShift) & 15) != 8)
+            {
+                uint flag = (DeflateSymbolKind)((e >> DeflateHuffmanEntry.KindShift) & 15) switch
+                {
+                    DeflateSymbolKind.Length => 4u,
+                    DeflateSymbolKind.Link => 2u,
+                    DeflateSymbolKind.EndOfBlock => 1u,
+                    _ => 0u,
+                };
+                e = (e & ~(15u << DeflateHuffmanEntry.KindShift)) | (flag << DeflateHuffmanEntry.KindShift);
             }
 
             _fast[i] = e;

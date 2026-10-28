@@ -97,4 +97,20 @@ internal static class DeflateRaw
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref start, (nint)(uint)destination), Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, (nint)(uint)source)));
 #endif
     }
+
+    /// <summary>
+    /// Copies sixteen bytes from <paramref name="source"/> to <paramref name="destination"/> within one buffer. The caller guarantees both
+    /// ranges are inside the buffer (the fast loop's output margin) and, for overlapping data, that the source is at least 16 bytes
+    /// behind the destination. The bytes moved are the same as with two eight-byte copies.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Copy16(Span<byte> buffer, int destination, int source)
+    {
+#if CHECKED
+        buffer.Slice(source, 16).CopyTo(buffer.Slice(destination, 16));
+#else
+        ref byte start = ref MemoryMarshal.GetReference(buffer);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref start, (nint)(uint)destination), Unsafe.ReadUnaligned<System.Runtime.Intrinsics.Vector128<byte>>(ref Unsafe.Add(ref start, (nint)(uint)source)));
+#endif
+    }
 }
