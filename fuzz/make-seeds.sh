@@ -14,7 +14,7 @@ out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
          zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
-         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read; do
+         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode lzma-decode xz-decode lzip-decode tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read; do
   mkdir -p "$out/$t"
 done
 
@@ -91,6 +91,28 @@ if command -v bzip2 >/dev/null; then
     for l in 1 5 9; do { printf '\x00'; bzip2 -$l -c "$p"; } > "$out/bzip2-decode/ref-bzip2-$(basename "$p")-$l" || true; done
   done
 fi
+
+# lzma, xz, lzip: the vectors (a leading option byte; for lzma-decode 0 reads the .lzma alone format, 2 raw LZMA2 behind
+# a dictionary-property byte, 4 raw LZMA behind a properties byte), and the tools' own output when they are on PATH.
+for f in $(small "$root"/testdata/lzma/vectors/*); do
+  b=$(basename "$f")
+  case "$b" in
+    *.lzma) { printf '\x00'; cat "$f"; } > "$out/lzma-decode/$b" ;;
+    *.xz) { printf '\x00'; cat "$f"; } > "$out/xz-decode/$b" ;;
+    *.lz) { printf '\x00'; cat "$f"; } > "$out/lzip-decode/$b" ;;
+  esac
+done
+printf '\x02\x10\x01\x00\x04hello\x00' > "$out/lzma-decode/lzma2-stored"
+printf '\x02\x10\x01\x00\x04hello\x02\x00\x02ab\x00' > "$out/lzma-decode/lzma2-stored-twice"
+for p in "$payloads"/*; do
+  if command -v xz >/dev/null; then
+    for l in 0 6; do { printf '\x00'; xz -$l -c "$p"; } > "$out/xz-decode/ref-xz-$(basename "$p")-$l" || true; done
+    { printf '\x00'; xz --format=lzma -6 -c "$p"; } > "$out/lzma-decode/ref-lzma-$(basename "$p")" || true
+  fi
+  if command -v lzip >/dev/null; then
+    { printf '\x00'; lzip -6 -c "$p"; } > "$out/lzip-decode/ref-lzip-$(basename "$p")" || true
+  fi
+done
 
 # Round-trip targets: option bytes followed by a payload (see the target sources for what the bytes mean).
 n=0
