@@ -4,7 +4,6 @@ public sealed partial class LzmaEncoderCore
 {
     private const int Infinity = 1 << 30;
     private const int LengthSymbols = LzmaModel.MaxMatchLength - LzmaModel.MinMatchLength + 1;
-    private const int RebuildPriceInterval = 64;
 
     private const byte KindLiteral = 0;
     private const byte KindShortRep = 1;
@@ -33,19 +32,21 @@ public sealed partial class LzmaEncoderCore
     private int[] _alignPrice = [];
     private int[] _lenPrice = [];
     private int _priceAge;
+    private int _rebuildInterval;
     private int _end;
 
     private void InitializeNormalParser()
     {
-        if (_settings.Mode != LzmaMode.Normal)
+        // Prices steer the choice of symbols; the normal parser needs them fresher than the fast one, which only compares a few candidates.
+        _rebuildInterval = _settings.Mode == LzmaMode.Normal ? 256 : 2048;
+        if (_settings.Mode == LzmaMode.Normal)
         {
-            return;
+            _opt = new Node[MaxParseLength + 2];
+            _opKind = new byte[MaxParseLength + 2];
+            _opLen = new int[MaxParseLength + 2];
+            _opDist = new uint[MaxParseLength + 2];
         }
 
-        _opt = new Node[MaxParseLength + 2];
-        _opKind = new byte[MaxParseLength + 2];
-        _opLen = new int[MaxParseLength + 2];
-        _opDist = new uint[MaxParseLength + 2];
         _slotPrice = new int[LzmaModel.LengthToPositionStates * 64];
         _distPrice = new int[LzmaModel.LengthToPositionStates * 128];
         _alignPrice = new int[16];
@@ -68,7 +69,7 @@ public sealed partial class LzmaEncoderCore
             return;
         }
 
-        if (_priceAge >= RebuildPriceInterval)
+        if (_priceAge >= _rebuildInterval)
         {
             UpdatePrices();
         }
@@ -454,5 +455,33 @@ public sealed partial class LzmaEncoderCore
                 }
             }
         }
+    }
+
+    // The price of a match of `length` at distance `distance0` (the minus-one form), as a fresh symbol in the given state.
+    private int MatchPrice(int length, uint distance0, int state, int posState)
+    {
+        ushort[] probs = _probs;
+        return LzmaPrices.One(probs[LzmaModel.IsMatch + (state << 4) + posState]) + LzmaPrices.Zero(probs[LzmaModel.IsRep + state])
+            + _lenPrice[(posState * LengthSymbols) + length - 2] + DistancePrice(distance0, length);
+    }
+
+    // The price of a repeated match with repeated-distance index `index` of `length`.
+    private int RepPrice(int index, int length, int state, int posState)
+    {
+        ushort[] probs = _probs;
+        int price = LzmaPrices.One(probs[LzmaModel.IsMatch + (state << 4) + posState]) + LzmaPrices.One(probs[LzmaModel.IsRep + state]);
+        int g0 = probs[LzmaModel.IsRepG0 + state];
+        if (index == 0)
+        {
+            price += LzmaPrices.Zero(g0) + LzmaPrices.One(probs[LzmaModel.IsRep0Long + (state << 4) + posState]);
+        }
+        else
+        {
+            int g1 = probs[LzmaModel.IsRepG1 + state];
+            price += LzmaPrices.One(g0);
+            price += index == 1 ? LzmaPrices.Zero(g1) : LzmaPrices.One(g1) + LzmaPrices.Get(probs[LzmaModel.IsRepG2 + state], index - 2);
+        }
+
+        return price + _lenPrice[(((LzmaModel.MaxPositionStates) + posState) * LengthSymbols) + length - 2];
     }
 }

@@ -133,7 +133,10 @@ public readonly struct LzmaEncoderSettings
     private static ReadOnlySpan<uint> PresetDictionary => [1u << 18, 1u << 20, 1u << 21, 1u << 22, 1u << 22, 1u << 23, 1u << 23, 1u << 24, 1u << 25, 1u << 26];
 
     // Nice lengths of presets 0 to 9 and of their extreme variants; see docs/lzma-encoder.md for how they were chosen.
-    private static ReadOnlySpan<byte> PresetNice => [4, 8, 24, 48, 16, 32, 64, 64, 64, 64];
+    private static ReadOnlySpan<byte> PresetNice => [6, 8, 24, 48, 16, 32, 64, 64, 64, 64];
+
+    // Search depths of the hash-chain presets 0 to 3; the binary-tree presets derive theirs from the nice length.
+    private static ReadOnlySpan<byte> PresetChainDepth => [6, 8, 16, 24];
 
     private LzmaEncoderSettings(int lc, int lp, int pb, uint dictionarySize, int niceLength, int depth, LzmaMode mode, LzmaMatchFinderKind matchFinder, bool endMarker)
     {
@@ -208,7 +211,7 @@ public readonly struct LzmaEncoderSettings
         if (depth == 0)
         {
             bool tree = mf >= LzmaMatchFinderKind.BinaryTree2;
-            depth = tree ? 16 + (nice / 2) : 4 + (nice / 4);
+            depth = tree ? 16 + (nice / 2) : p <= 3 && !ext ? PresetChainDepth[p] : 4 + (nice / 4);
             if (ext)
             {
                 depth = Math.Max(depth, tree ? 512 : 100);
