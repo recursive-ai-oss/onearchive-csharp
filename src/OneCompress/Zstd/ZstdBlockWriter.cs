@@ -72,7 +72,7 @@ public sealed class ZstdBlockWriter
     }
     private readonly uint[] _histogram4 = new uint[4 * 256];
     private readonly uint[] _literalHistogram = new uint[256];
-    private readonly byte[] _symbolList = new byte[256];
+    private readonly byte[] _symbolList = new byte[257];
     private readonly uint[][] _codeHistogram = [new uint[64], new uint[64], new uint[64]];
     private readonly byte[] _description = new byte[160];
     private readonly short[][] _normalizedByKind = [new short[64], new short[64], new short[64]];
@@ -333,7 +333,9 @@ public sealed class ZstdBlockWriter
             previousCost = CompressedHeaderSize(n, streamBytes, singleStream) + streamBytes;
         }
 
-        bool tryNew = n >= MinimumLiteralsForNewTree;
+        // Under estimated pricing a usable previous tree also makes fewer than twice the minimum a block too small to repay a tree
+        // of its own: its description is a fifth of such a block, and the estimate below would only confirm that.
+        bool tryNew = n >= (_estimatedPricing && previousCost != int.MaxValue ? 2 * MinimumLiteralsForNewTree : MinimumLiteralsForNewTree);
         if (tryNew)
         {
             int estimate = CompressedHeaderSize(n, 0, singleStream) + 8 + ((distinct * 3) / 8)
@@ -504,22 +506,24 @@ public sealed class ZstdBlockWriter
     // all 256 counters; for those blocks the 256-counter sweeps were most of the time spent on literals.
     private int Histogram(ReadOnlySpan<byte> data, uint[] histogram, out int distinct, out ReadOnlySpan<byte> symbols)
     {
+        byte[] list = _symbolList;
         if (data.Length < 1024)
         {
             Array.Clear(histogram);
-            byte[] list = _symbolList;
             int count = 0;
             int top = 0;
+            // Branch-free: whether a byte is new is unpredictable, and a mispredicted branch per new symbol cost more than the
+            // counting. The list slot at `count` is written for every byte and kept only when the byte was new, so the list holds
+            // the distinct bytes in order of first appearance (it has a spare slot for the write after the 256th). Bounds: a byte
+            // indexes the 256 counters, and `count` is at most 256 in a list of 257.
             foreach (byte value in data)
             {
-                if (histogram[value]++ == 0)
-                {
-                    list[count++] = value;
-                    if (value > top)
-                    {
-                        top = value;
-                    }
-                }
+                ref uint counter = ref Raw.RefRw(histogram, value);
+                uint seen = counter;
+                Raw.RefRw(list, count) = value;
+                count += seen == 0 ? 1 : 0;
+                counter = seen + 1;
+                top = Math.Max(top, value);
             }
 
             distinct = count;
@@ -527,36 +531,41 @@ public sealed class ZstdBlockWriter
             return top;
         }
 
-        symbols = default;
-        distinct = 0;
+        // Four counter sets break the dependency between neighbouring equal bytes. Bounds: a byte plus 0, 256, 512 or 768 is below
+        // the 1,024 counters.
         uint[] h4 = _histogram4;
         Array.Clear(h4);
         int i = 0;
         for (; i + 4 <= data.Length; i += 4)
         {
-            h4[data[i]]++;
-            h4[256 + data[i + 1]]++;
-            h4[512 + data[i + 2]]++;
-            h4[768 + data[i + 3]]++;
+            Raw.RefRw(h4, data[i])++;
+            Raw.RefRw(h4, 256 + data[i + 1])++;
+            Raw.RefRw(h4, 512 + data[i + 2])++;
+            Raw.RefRw(h4, 768 + data[i + 3])++;
         }
 
         for (; i < data.Length; i++)
         {
-            h4[data[i]]++;
+            Raw.RefRw(h4, data[i])++;
         }
 
+        // Sum the sets and list the symbols that occur (in ascending order), branch-free: the counters of a block are mostly a
+        // mix of zero and non-zero, which makes a branch per counter unpredictable. The list slot at `count` is written every
+        // time and kept only for a non-zero counter; the list has 257 slots, so the write after the 256th is harmless.
+        int found = 0;
         int max = 0;
         for (int s = 0; s < 256; s++)
         {
-            uint c = h4[s] + h4[256 + s] + h4[512 + s] + h4[768 + s];
-            histogram[s] = c;
-            if (c != 0)
-            {
-                max = s;
-                distinct++;
-            }
+            uint c = Raw.Get(h4, s) + Raw.Get(h4, 256 + s) + Raw.Get(h4, 512 + s) + Raw.Get(h4, 768 + s);
+            Raw.RefRw(histogram, s) = c;
+            Raw.RefRw(list, found) = (byte)s;
+            bool occurs = c != 0;
+            found += occurs ? 1 : 0;
+            max = occurs ? s : max;
         }
 
+        distinct = found;
+        symbols = list.AsSpan(0, found);
         return max;
     }
 
@@ -577,6 +586,7 @@ public sealed class ZstdBlockWriter
         uint[] ofHistogram,
         uint[] mlHistogram,
         ReadOnlySpan<uint> offsetValues,
+        Span<ulong> present,
         out int maxLl,
         out int maxOf,
         out int maxMl)
@@ -585,6 +595,7 @@ public sealed class ZstdBlockWriter
         maxLl = 0;
         maxOf = 0;
         maxMl = 0;
+        ulong llPresent = 0, ofPresent = 0, mlPresent = 0;
         ReadOnlySpan<byte> llLookup = s_literalLengthCodes;
         ReadOnlySpan<byte> mlLookup = s_matchLengthCodes;
         for (int i = 0; i < nseq; i++)
@@ -612,7 +623,15 @@ public sealed class ZstdBlockWriter
             maxLl = Math.Max(maxLl, ll);
             maxMl = Math.Max(maxMl, ml);
             maxOf = Math.Max(maxOf, of);
+            // Codes are at most 52, so one bit each fits a word.
+            llPresent |= 1UL << ll;
+            ofPresent |= 1UL << of;
+            mlPresent |= 1UL << ml;
         }
+
+        present[0] = llPresent;
+        present[1] = ofPresent;
+        present[2] = mlPresent;
 
     }
 
@@ -660,7 +679,8 @@ public sealed class ZstdBlockWriter
             offsetValues = resolved;
         }
 
-        ComputeCodes(sequences, seqCodes, llHistogram, ofHistogram, mlHistogram, offsetValues, out int maxLl, out int maxOf, out int maxMl);
+        Span<ulong> present = stackalloc ulong[3];
+        ComputeCodes(sequences, seqCodes, llHistogram, ofHistogram, mlHistogram, offsetValues, present, out int maxLl, out int maxOf, out int maxMl);
         int exactLimit = _estimatedPricing ? 0 : ExactCostLimit;
         if (nseq <= exactLimit)
         {
@@ -713,14 +733,7 @@ public sealed class ZstdBlockWriter
         {
             uint[] histogram = _codeHistogram[k];
             int maxSymbol = maxSymbols[k];
-            int distinct = 0;
-            for (int s = 0; s <= maxSymbol; s++)
-            {
-                if (histogram[s] != 0)
-                {
-                    distinct++;
-                }
-            }
+            int distinct = BitOperations.PopCount(present[k]);
 
             if (distinct == 1)
             {
@@ -733,7 +746,7 @@ public sealed class ZstdBlockWriter
 
             modes[k] = Mode.Compressed;
             FseEncodingTable? previous = _previous[k];
-            repeatCost[k] = previous is not null && previous.Contains(maxSymbol) ? previous.Cost(histogram, maxSymbol) : int.MaxValue;
+            repeatCost[k] = previous is not null && previous.Contains(maxSymbol) ? previous.CostOfPresent(histogram, present[k]) : int.MaxValue;
             repeatOk[k] = repeatCost[k] != int.MaxValue;
             predefinedOk[k] = maxSymbol <= defaultMaxSymbol[k];
             lanes[2 * k] = repeatOk[k] ? previous! : FseEncodingTable.Every;
@@ -777,7 +790,7 @@ public sealed class ZstdBlockWriter
 
             if (predefinedOk[k])
             {
-                int cost = exact ? priced[(2 * k) + 1] * ZstdCost.Bit : Default(k).Cost(histogram, maxSymbol);
+                int cost = exact ? priced[(2 * k) + 1] * ZstdCost.Bit : Default(k).CostOfPresent(histogram, present[k]);
                 if (cost < bestCost)
                 {
                     bestCost = cost;
