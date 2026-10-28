@@ -14,7 +14,7 @@ out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
          zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
-         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode lzma-decode xz-decode lzip-decode tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read sevenzip-read; do
+         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode lzma-decode xz-decode lzip-decode lzma-encode-roundtrip xz-encode-roundtrip tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read sevenzip-read; do
   mkdir -p "$out/$t"
 done
 
@@ -126,6 +126,10 @@ for p in "$payloads"/*; do
     { printf "\x$(printf %02x $lv)\x$(printf %02x $((n * 5 % 128)))\x$(printf %02x $((n * 3 % 256)))\x$(printf %02x $((n * 11 % 256)))\x$(printf %02x $((n % 8)))"; head -c 6000 "$p"; } > "$out/deflate-encode-roundtrip/$b-$lv"
   done
   { printf '\x01\x00\x00\x00'; head -c 6000 "$p"; } > "$out/lz4-encode-block/$b"
+  for fmt in 0 1 2; do # format, preset, pb, lc/lp, dictionary and nice, match finder and mode, piece and output sizes
+    { printf "\\x$(printf %02x $fmt)\\x$(printf %02x $((n * 3 % 10)))\\x02\\x03\\x$(printf %02x $((n * 7 % 256)))\\x00\\x$(printf %02x $((n % 256)))\\x$(printf %02x $((n * 5 % 256)))"; head -c 6000 "$p"; } > "$out/lzma-encode-roundtrip/$b-$fmt"
+  done
+  { printf "\\x$(printf %02x $((n % 32)))\\x$(printf %02x $((n * 3 % 10)))\\x02\\x03\\x00\\x00\\x$(printf %02x $((n * 11 % 256)))\\x$(printf %02x $((n * 5 % 256)))"; head -c 6000 "$p"; } > "$out/xz-encode-roundtrip/$b"
   { printf "\\x$(printf %02x $((n % 4)))\\x$(printf %02x $((n * 5 % 8)))\\x02\\x03\\x04\\x40"; head -c 9000 "$p"; } > "$out/zstd-train-roundtrip/$b"
 done
 bash "$here/seeds-long.sh" "$out/zstd-encode-long-roundtrip" >/dev/null

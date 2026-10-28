@@ -41,6 +41,8 @@ internal static class FuzzTargets
         LzmaTargets.Xz,
         LzmaTargets.Lzip,
         DeflateEncoderTargets.RoundTrip,
+        LzmaEncoderTargets.LzmaRoundTrip,
+        LzmaEncoderTargets.XzRoundTrip,
         ArchiveTargets.TarRead,
         ArchiveTargets.Open,
         ArchiveTargets.TarRoundTrip,
