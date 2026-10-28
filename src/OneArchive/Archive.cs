@@ -1,5 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
+using RecursiveAI.OneArchive.Ar;
+using RecursiveAI.OneArchive.Cpio;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Zip;
@@ -326,6 +328,10 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                     }
                     : new TarReaderOptions { Limits = options.Limits };
                 return new TarReader(stream, tar, leaveOpen: !ownsTop, meter);
+            case ArchiveFormat.Cpio:
+                return new CpioReader(stream, options.Cpio is { } c ? new CpioReaderOptions { Limits = options.Limits, VerifyChecksum = c.VerifyChecksum, RequireTrailer = c.RequireTrailer, ResolveLinkStubs = c.ResolveLinkStubs } : new CpioReaderOptions { Limits = options.Limits }, leaveOpen: !ownsTop, drainAtEnd: meter is not null);
+            case ArchiveFormat.Ar:
+                return new ArReader(stream, options.Ar is { } a ? new ArReaderOptions { Limits = options.Limits, MaxNameTableSize = a.MaxNameTableSize, IncludeSpecialMembers = a.IncludeSpecialMembers } : new ArReaderOptions { Limits = options.Limits }, leaveOpen: !ownsTop, drainAtEnd: meter is not null);
             default:
                 throw new ArchiveUnsupportedException("archive", $"the {format} format");
         }

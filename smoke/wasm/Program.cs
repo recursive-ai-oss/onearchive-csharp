@@ -70,6 +70,39 @@ using (var tarReader = new RecursiveAI.OneArchive.Tar.TarReader(tarBytes))
     }
 }
 
+// cpio and ar written and read back through the Archive layer and the format types.
+var cpioBytes = new MemoryStream();
+using (var cpioWriter = new RecursiveAI.OneArchive.Cpio.CpioWriter(cpioBytes, leaveOpen: true))
+{
+    cpioWriter.WriteEntry(new ArchiveEntry { Name = "dir/a.txt", Size = 5, ModifiedTime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000) }, "hello"u8.ToArray());
+}
+
+using (var cpioReader = new RecursiveAI.OneArchive.Cpio.CpioReader(new MemoryStream(cpioBytes.ToArray())))
+{
+    var cpioEntry = cpioReader.GetNextEntry();
+    if (cpioEntry is null || cpioEntry.Name != "dir/a.txt" || cpioEntry.Size != 5 || cpioReader.GetNextEntry() is not null || Archive.Open(new MemoryStream(cpioBytes.ToArray())).Format != ArchiveFormat.Cpio)
+    {
+        Console.Error.WriteLine("cpio round trip failed");
+        return 1;
+    }
+}
+
+var arBytes = new MemoryStream();
+using (var arWriter = new RecursiveAI.OneArchive.Ar.ArWriter(arBytes, leaveOpen: true))
+{
+    arWriter.WriteEntry(new ArchiveEntry { Name = new string('m', 40) + ".o", Size = 3 }, "abc"u8.ToArray());
+}
+
+using (var arReader = new RecursiveAI.OneArchive.Ar.ArReader(new MemoryStream(arBytes.ToArray())))
+{
+    var arEntry = arReader.GetNextEntry();
+    if (arEntry is null || arEntry.Name.Length != 42 || arEntry.Size != 3 || arReader.GetNextEntry() is not null || Archive.Open(new MemoryStream(arBytes.ToArray())).Format != ArchiveFormat.Ar)
+    {
+        Console.Error.WriteLine("ar round trip failed");
+        return 1;
+    }
+}
+
 var zstTar = new MemoryStream();
 Archive.Create(zstTar, new ArchiveCreateOptions { Compression = ArchiveCompression.Zstd, LeaveOpen = true })
     .Add(new ArchiveEntry { Name = "a.txt", Size = 3 }, "abc"u8.ToArray()).Save();

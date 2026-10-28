@@ -1,5 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Tar;
+using RecursiveAI.OneArchive.Ar;
+using RecursiveAI.OneArchive.Cpio;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Zip;
 
@@ -29,6 +31,12 @@ public class ArchiveOpenOptions
 
     /// <summary>Gets the tar reading options (the limits above override <see cref="TarReaderOptions.Limits"/>). Default: the tar defaults.</summary>
     public TarReaderOptions? Tar { get; init; }
+
+    /// <summary>Gets the cpio reading options (the limits above override <see cref="CpioReaderOptions.Limits"/>). Default: the cpio defaults.</summary>
+    public CpioReaderOptions? Cpio { get; init; }
+
+    /// <summary>Gets the ar reading options (the limits above override <see cref="ArReaderOptions.Limits"/>). Default: the ar defaults.</summary>
+    public ArReaderOptions? Ar { get; init; }
 
     /// <summary>Gets the zip reading options (the limits above override <see cref="ZipReaderOptions.Limits"/>). Default: the zip defaults.</summary>
     public ZipReaderOptions? Zip { get; init; }
@@ -174,6 +182,12 @@ public sealed class ArchiveCreateOptions
 
     /// <summary>Gets the tar writing options. Default: the tar defaults (pax).</summary>
     public TarWriterOptions? Tar { get; init; }
+
+    /// <summary>Gets the cpio writing options. Default: newc with 512-byte blocks.</summary>
+    public CpioWriterOptions? Cpio { get; init; }
+
+    /// <summary>Gets the ar writing options. Default: the GNU variant.</summary>
+    public ArWriterOptions? Ar { get; init; }
 
     /// <summary>Gets the zip writing options (<see cref="CompressionLevel"/>, when set, overrides <see cref="ZipWriterOptions.Level"/>). Default: the zip defaults (Deflate).</summary>
     public ZipWriterOptions? Zip { get; init; }

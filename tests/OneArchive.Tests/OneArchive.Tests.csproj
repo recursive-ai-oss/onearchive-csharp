@@ -5,6 +5,17 @@
     <NoWarn>$(NoWarn);xUnit1051</NoWarn>
   </PropertyGroup>
 
+  <!-- Test vectors under testdata/, copied next to the test assembly (source paths are not available when the build
+       maps them for reproducibility). -->
+  <ItemGroup>
+    <Content Include="../../testdata/cpio/*.cpio"
+             Link="testdata/cpio/%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../testdata/ar/*.a;../../testdata/ar/*.deb"
+             Link="testdata/ar/%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../../src/OneArchive/OneArchive.csproj" />
   </ItemGroup>
