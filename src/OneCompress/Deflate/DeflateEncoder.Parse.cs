@@ -51,9 +51,9 @@ internal readonly struct LevelParameters
     {
         0 => new() { Mode = ParseMode.Stored },
         1 => new() { Mode = ParseMode.Greedy, HashBits = 17, HashBytes = 4, Chain = 1, Nice = 32, MaxLazy = 32, Tail = 4, SkipAfter = 16 },
-        2 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 3, Chain = 6, Nice = 40, MaxLazy = 32, Tail = 4, SkipAfter = 16 },
-        3 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 48, Tail = 4, SkipAfter = 16 },
-        4 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 8, Nice = 32, MaxLazy = 16, Good = 8, SkipAfter = 16 },
+        2 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 4, Chain = 12, Nice = 40, MaxLazy = 32, Tail = 4, SkipAfter = 16 },
+        3 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 4, Chain = 24, Nice = 48, MaxLazy = 48, Tail = 4, SkipAfter = 16 },
+        4 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 4, Chain = 8, Nice = 32, MaxLazy = 16, Good = 8, SkipAfter = 16 },
         5 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 24, Good = 12, SkipAfter = 16 },
         6 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 20, Nice = 64, MaxLazy = 64, Good = 16, SkipAfter = 16 },
         7 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 48, Nice = 100, MaxLazy = 100, Good = 16, SkipAfter = 16 },

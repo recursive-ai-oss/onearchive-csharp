@@ -74,14 +74,32 @@ a unit. After an exception the decoder refuses calls until `Reset`.
 ## Window and speed notes
 
 The decoder writes into the caller's buffer and keeps the last 32 KiB of each call's output in a window (a copy of at most 32 KiB
-per call) so matches can reach into earlier calls. The hot loop (`DeflateFastLoop`) runs while 8 input and 272 output bytes remain:
-one 8-byte load per symbol refills the bit buffer to at least 56 bits, and entries of the lookup tables carry the length or
-distance base and extra-bit count, so a symbol is one or two table reads. The low byte of an entry is the code length plus its extra bits, so one shift drops both and the extra bits are read from the bits before the shift (the code length sits in bits 8 to 11). Tables have a 10-bit (literal/length), 8-bit (distance) or
-7-bit (code-length) first level and second-level tables for longer codes. The output depends only on the input and options. After the first literal of a refill the loop decodes up to two more first-level literals before refilling. The literal/length
-table keeps a second copy for the loop in which a first-level entry whose code is followed, within the same ten index bits, by a
-complete literal code stands for both literals (one two-byte store); this changes nothing a caller can observe, since the
-slow path and `Lookup` read the plain table. A match that reaches back before the call's output ends the loop, and the caller
-copies it from the window and re-enters, so the loop makes no calls.
+per call) so matches can reach into earlier calls. The hot loop (`DeflateFastLoop`) runs while 16 input and 280 output bytes remain:
+one 8-byte load tops the bit buffer up to at least 56 bits per symbol, enough for a literal/length code (15 bits), its extra
+bits (5), a distance code (15) and its extra bits (13) together. Entries of the lookup tables carry the length or distance base
+and extra-bit count, so a symbol is one or two table reads. The low byte of an entry is the code length plus its extra bits, so one
+shift drops both and the extra bits are read from the bits before the shift (the code length sits in bits 8 to 11). Tables have a
+10-bit (literal/length), 8-bit (distance) or 7-bit (code-length) first level and second-level tables for longer codes.
+
+Choices that make the loop fast without changing what it decodes:
+
+- **The next symbol's refill and table read are issued before a match is copied**, since they do not depend on the copy; the loop
+  therefore needs 16 input bytes in hand (two refills) rather than 8.
+- **The literal/length table keeps a second copy for the loop** (`FastEntries`). Its kind bits are one flag per kind (literal 8,
+  length 4, link 2, end of block 1 in bits 12 to 15), so each test is one bit test; the plain table and `Lookup` keep
+  `DeflateSymbolKind`. In the copy, a first-level literal entry whose code is followed, within the same ten index bits, by a complete
+  literal code stands for both literals (one two-byte store). After the first literal of a refill the loop decodes up to two more
+  first-level literals before refilling. Making these follow-on literals branch-free (masking a non-literal entry to nothing) was
+  measured slower on binary data (silesia) and faster only by 1% on text, so they are ordinary branches.
+- **Matches copy 16 bytes at a time** when the distance is at least 16 (two unconditional 16-byte copies, a loop beyond 32 bytes), eight
+  at a time for distances 8 to 15, and by pattern for shorter distances. The output margin is the longest match plus the width of
+  the last copy that may run past it.
+- **Table building** visits only the first-level prefixes that have codes longer than the first level (a list is kept while sizing),
+  and fills unused entries only for an incomplete code, since a complete code leaves none.
+- A first-level size of 9 or 11 bits for the literal/length table was measured slower on binary data or on all data respectively; 10 stays.
+
+A match that reaches back before the call's output ends the loop, and the caller copies it from the window and re-enters, so the loop makes no
+calls. None of this changes what a caller can observe, since the slow path and `Lookup` read the plain table.
 
 ## Tests and data
 
