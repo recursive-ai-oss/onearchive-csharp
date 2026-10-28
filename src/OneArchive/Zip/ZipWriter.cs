@@ -1,3 +1,4 @@
+using RecursiveAI.OneCompress.Deflate;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
@@ -259,12 +260,9 @@ public sealed class ZipWriter : ArchiveWriter
         // The CRC-32 in the zip header covers the data, so a zstd frame carries no checksum of its own.
         Stream stream = method == ZipMethod.Zstd
             ? new ZstdStream(sink, new ZstdCompressionOptions { Level = level ?? 3, Checksum = false, ContentSize = size }, leaveOpen: true)
-            : OpenDeflate();
+            : new DeflateEncoderStream(sink, DeflateFormat.Raw, new DeflateOptions { Level = level ?? DeflateOptions.DefaultLevel }, leaveOpen: true);
         return stream;
     }
-
-    private static Stream OpenDeflate() =>
-        throw new ArchiveUnsupportedException(ZipFormat.Name, "writing Deflate entries (the Deflate encoder is not available in this build)");
 
     private async ValueTask WriteBytesAsync(ReadOnlyMemory<byte> data, bool async, CancellationToken ct)
     {

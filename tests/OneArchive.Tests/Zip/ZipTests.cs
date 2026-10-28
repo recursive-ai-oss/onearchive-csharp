@@ -608,11 +608,36 @@ public class ZipTests
         Assert.Throws<ArgumentException>(() => new ZipWriter(new WriteOnly(new MemoryStream()), new ZipWriterOptions { DataDescriptors = ZipDataDescriptorMode.Never }));
     }
 
-    [Fact]
-    public void DeflateWritingSaysItIsNotAvailableYet()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(6)]
+    [InlineData(12)]
+    public void DeflateEntriesRoundTripSeekableAndStreaming(int level)
     {
-        var ms = new MemoryStream();
-        using var w = new ZipWriter(ms, new ZipWriterOptions { Method = ZipMethod.Deflate }, leaveOpen: true);
-        Assert.Throws<ArchiveUnsupportedException>(() => w.WriteEntry(new ArchiveEntry { Name = "f", Size = 3 }, new byte[3]));
+        byte[] data = Text(200_000, 9);
+        foreach (bool streaming in new[] { false, true })
+        {
+            var ms = new MemoryStream();
+            Stream sink = streaming ? new WriteOnly(ms) : ms;
+            using (var w = new ZipWriter(sink, new ZipWriterOptions { Method = ZipMethod.Deflate, Level = level }, leaveOpen: true))
+            {
+                w.WriteEntry(new ArchiveEntry { Name = "f", Size = data.Length }, data);
+                w.Finish();
+            }
+
+            using var reader = new ZipReader(new MemoryStream(ms.ToArray()));
+            Assert.Equal("f", reader.GetNextEntry()!.Name);
+            using Stream s = reader.OpenEntryStream();
+            var o = new MemoryStream();
+            s.CopyTo(o);
+            Assert.Equal(data, o.ToArray());
+
+            using var forward = new ZipReader(new ForwardOnly(new MemoryStream(ms.ToArray())));
+            forward.GetNextEntry();
+            var o2 = new MemoryStream();
+            forward.OpenEntryStream().CopyTo(o2);
+            Assert.Equal(data, o2.ToArray());
+        }
     }
 }

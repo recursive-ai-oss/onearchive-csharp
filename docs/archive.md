@@ -45,9 +45,9 @@ Archive.Create("backup.tar.zst").Add("assets/").Add("notes.txt", "docs/notes.txt
 ```
 
 `Archive.Create(path)` chooses the format and compression from the extension (`.tar`, `.tar.zst`/`.tzst`, `.tar.lz4`/`.tlz4`,
-`.zip`, and `.zst`/`.lz4` for one compressed file) unless `ArchiveCreateOptions.Format`/`Compression` say otherwise. An extension
+`.tar.gz`/`.tgz`, `.zip`, and `.gz`/`.zst`/`.lz4` for one compressed file) unless `ArchiveCreateOptions.Format`/`Compression` say otherwise. An extension
 that names no writable format and no `Format` option is an `ArgumentException`. `Archive.Create(Stream)` defaults to
-uncompressed tar. `.tar.gz` and `.gz` can be read; writing them waits for the Deflate encoder.
+uncompressed tar. `.tar.bz2` and `.bz2` can be read, not written.
 
 ### Detection
 
@@ -62,8 +62,9 @@ uncompressed tar. `.tar.gz` and `.gz` can be read; writing them waits for the De
 5. A compressed stream that is still unrecognised is a single compressed file (below).
 6. Otherwise `CompressionFormatException` (`archive`, offset 0).
 
-gzip is read (RFC 1952, all members in a row). bzip2 and xz are recognised but their codecs are not wired in yet: opening raises
-`ArchiveUnsupportedException`. Creating gzip, bzip2 and xz is unavailable the same way. The place to add them is
+gzip (RFC 1952, all members in a row) and bzip2 are read; zstd, LZ4 and gzip are written (gzip at `CompressionLevel`, default 6,
+through the Deflate encoder; MTIME is the entry's modification time or 0, OS byte 255). xz is recognised but its codec is not wired in
+yet: opening or creating raises `ArchiveUnsupportedException`. The place to add them is
 `Internal/CompressionFilters.cs` (`OpenDecompress`, `OpenCompress`, `CanCompress`); nothing else changes.
 
 ## Entry model
@@ -199,13 +200,13 @@ Single-threaded, so the bytes do not depend on the machine.
 
 ## Single compressed files
 
-A `.gz`, `.zst` or `.lz4` file (any compressed stream the detector finds no container in) is an archive of one regular file,
+A `.gz`, `.bz2`, `.zst` or `.lz4` file (any compressed stream the detector finds no container in) is an archive of one regular file,
 `ArchiveFormat.SingleStream`, with `Archive.Compression` saying which codec. The entry's name is the gzip header's FNAME when it
-has one (ISO 8859-1, as RFC 1952 2.3.1 says), otherwise the archive's file name without its `.gz`/`.zst`/`.zstd`/`.lz4`
+has one (ISO 8859-1, as RFC 1952 2.3.1 says), otherwise the archive's file name without its `.gz`/`.bz2`/`.zst`/`.zstd`/`.lz4`
 extension, otherwise `data`. The gzip MTIME, when not zero, is the entry's modification time. `Size` is 0: the content's length
 is not known before it has been read (it is limited and metered like every compressed archive). Writing takes exactly one file
-entry (`ArchiveUnsupportedException` for a second entry or for anything but a regular file); the name is not stored, except in
-a future gzip header. `Archive.Create("a.txt.zst")` and `ArchiveCreateOptions { Format = SingleStream, Compression = ... }`
+entry (`ArchiveUnsupportedException` for a second entry or for anything but a regular file); gzip stores the entry's base name as FNAME (ISO 8859-1; left out when it has characters above U+00FF) and its modification time
+as MTIME, the other formats store no name. `Archive.Create("a.txt.zst")` and `ArchiveCreateOptions { Format = SingleStream, Compression = ... }`
 produce them. `.tar.gz`/`.tgz` is a tar inside gzip, like `.tar.zst`.
 
 ## Zip
@@ -256,7 +257,7 @@ are those of PKWARE's APPNOTE 6.3.10; its text is not reproduced here.
   A symbolic link's target is its data (UTF-8 when valid, else Latin-1), read when the directory is loaded, at most `4 * MaxPathLength` bytes.
 - **Times.** NTFS field 0x000a (100 ns) wins over the extended timestamp 0x5455 (Unix seconds; modification, access, creation), which wins
   over the DOS date and time, read as UTC (the fields carry no zone); an impossible DOS value is no time.
-- **Methods.** 0 store, 8 deflate, 93 zstd (4.4.5). Anything else, and encrypted entries (bit 0, bit 6 or method 99), are listed and raise
+- **Methods.** 0 store, 8 deflate, 12 bzip2, 93 zstd (4.4.5). Anything else, and encrypted entries (bit 0, bit 6 or method 99), are listed and raise
   `ArchiveUnsupportedException` naming the method when opened. Zip64 extra fields (0x0001) hold exactly the values whose header field is
   saturated, in the order size, compressed size, offset, disk; a short field is an error.
 
@@ -268,8 +269,7 @@ Everything not listed is as APPNOTE says. The same entries and options give the 
   end record and locator if needed, and the end record. "Version made by" is `0x033F` (Unix, 6.3); "version needed" is 10 (store), 20
   (deflate, directories and descriptor entries), 63 (zstd), at least 45 with zip64. Compression method per entry: `ZipWriterOptions.Method`
   (default deflate); directories, symbolic links and empty files are stored. Hard links, devices and FIFOs are
-  `ArchiveUnsupportedException`. Deflate entries need the Deflate encoder (`ArchiveUnsupportedException` until it is wired in at
-  `ZipWriter.OpenDeflate`); zstd entries are one frame at `Level` (default 3) with the content size and no frame checksum (the zip CRC-32
+  `ArchiveUnsupportedException`. Deflate entries are raw Deflate at `Level` (default 6, 0-12, through `DeflateEncoderStream`); zstd entries are one frame at `Level` (default 3) with the content size and no frame checksum (the zip CRC-32
   covers the data).
 - **Names**: UTF-8, bit 11 set when any byte is not ASCII (name or comment); directories get a trailing `/`. An empty name or NUL is an
   `ArgumentException`; names and comments are at most 65535 bytes.

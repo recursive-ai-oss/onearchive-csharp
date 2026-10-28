@@ -110,8 +110,10 @@ public class ZipInteropTests
         AssertSame(tree, temp.Combine("y"), forward: true);
     }
 
-    [Fact]
-    public void InfoZipAndSevenZipAndBsdtarReadOurStoredZip()
+    [Theory]
+    [InlineData(ZipMethod.Store)]
+    [InlineData(ZipMethod.Deflate)]
+    public void InfoZipAndSevenZipAndBsdtarReadOurZip(ZipMethod method)
     {
         Enabled();
         using var temp = new TempDir();
@@ -123,7 +125,7 @@ public class ZipInteropTests
             using (var file = File.Create(zip))
             using (Stream sink = seekable ? file : new WriteOnly(file))
             {
-                Archive.Create(sink, new ArchiveCreateOptions { Format = ArchiveFormat.Zip, Zip = new ZipWriterOptions { Method = ZipMethod.Store }, LeaveOpen = true }).Add(tree, "").Save();
+                Archive.Create(sink, new ArchiveCreateOptions { Format = ArchiveFormat.Zip, Zip = new ZipWriterOptions { Method = method }, LeaveOpen = true }).Add(tree, "").Save();
             }
 
             Tools.Run(Unzip, ["-tq", zip]);
@@ -153,6 +155,8 @@ public class ZipInteropTests
         string listing = Tools.Run(SevenZip, ["l", "-slt", zip], failOnError: false);
         Assert.Contains("data.bin", listing, StringComparison.Ordinal);
         Console.WriteLine("7-Zip method for zstd entries: " + string.Join(' ', listing.Split('\n').Where(l => l.StartsWith("Method", StringComparison.Ordinal)).Distinct()));
+        string test = Tools.Run(SevenZip, ["t", zip], failOnError: false);
+        Console.WriteLine("7-Zip test of zstd entries: " + string.Join(' ', test.Split('\n').Where(l => l.StartsWith("Everything", StringComparison.Ordinal) || l.StartsWith("Errors", StringComparison.Ordinal) || l.StartsWith("ERROR", StringComparison.Ordinal) || l.Contains("Unsupported", StringComparison.Ordinal))));
     }
 
     [Fact]
@@ -327,6 +331,53 @@ public class ZipInteropTests
         Sh("zstd -dc ours.txt.zst > from-zst && lz4 -dc ours.txt.lz4 > from-lz4", temp.Root);
         Assert.Equal(data, File.ReadAllBytes(temp.Combine("from-zst")));
         Assert.Equal(data, File.ReadAllBytes(temp.Combine("from-lz4")));
+    }
+
+    [Fact]
+    public void ReferenceToolsReadOurGzipAndTarGz()
+    {
+        Enabled();
+        using var temp = new TempDir();
+        string tree = temp.Combine("tree");
+        Tree(tree);
+        byte[] data = ZipTests.Text(400_000, 23);
+        File.WriteAllBytes(temp.Combine("doc.txt"), data);
+        foreach (int level in new[] { 1, 6, 9, 12 })
+        {
+            Archive.Create(temp.Combine($"ours{level}.txt.gz"), new ArchiveCreateOptions { CompressionLevel = level }).Add(temp.Combine("doc.txt")).Save();
+        }
+
+        Sh("for l in 1 6 9 12; do gzip -t ours$l.txt.gz && gzip -dc ours$l.txt.gz | cmp - doc.txt && pigz -dc ours$l.txt.gz | cmp - doc.txt; done", temp.Root);
+        Sh("mkdir g && cd g && gzip -dN -c ../ours6.txt.gz > /dev/null && cp ../ours6.txt.gz . && gzip -dN ours6.txt.gz && cmp doc.txt ../doc.txt", temp.Root);
+
+        Archive.Create(temp.Combine("ours.tar.gz")).Add(tree, "").Save();
+        Archive.Create(temp.Combine("ours.tgz")).Add(tree, "").Save();
+        Sh("mkdir gnu bsd && tar xzf ours.tar.gz -C gnu && " + BsdTar + " xzf ours.tgz -C bsd", temp.Root);
+        AssertSame(tree, temp.Combine("gnu"));
+        AssertSame(tree, temp.Combine("bsd"));
+    }
+
+    [Fact]
+    public void WeReadBzip2ZipEntriesAndBz2Streams()
+    {
+        Enabled();
+        using var temp = new TempDir();
+        string tree = temp.Combine("tree");
+        Tree(tree);
+        Sh("zip -qry -Z bzip2 ../b.zip .", tree);
+        Archive.Extract(temp.Combine("b.zip"), temp.Combine("x"));
+        AssertSame(tree, temp.Combine("x"));
+        using var fwd = new ForwardOnly(File.OpenRead(temp.Combine("b.zip")), 100);
+        Archive.Extract(fwd, temp.Combine("y"));
+        AssertSame(tree, temp.Combine("y"), forward: true);
+
+        byte[] data = ZipTests.Text(300_000, 24);
+        File.WriteAllBytes(temp.Combine("doc.txt"), data);
+        Sh("bzip2 -k doc.txt && tar cjf t.tar.bz2 tree", temp.Root);
+        Archive.Extract(temp.Combine("doc.txt.bz2"), temp.Combine("z"));
+        Assert.Equal(data, File.ReadAllBytes(temp.Combine("z/doc.txt")));
+        Archive.Extract(temp.Combine("t.tar.bz2"), temp.Combine("tb"));
+        AssertSame(tree, temp.Combine("tb/tree"));
     }
 
     [Fact]

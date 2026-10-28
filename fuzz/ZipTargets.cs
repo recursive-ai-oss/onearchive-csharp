@@ -172,7 +172,7 @@ internal static class ZipTargets
         }
 
         byte o = input[0];
-        ZipMethod method = (o & 1) == 0 ? ZipMethod.Store : ZipMethod.Zstd;
+        ZipMethod method = ((o >> 5) & 3) switch { 1 => ZipMethod.Deflate, 2 => ZipMethod.Zstd, _ => ZipMethod.Store };
         var options = new ZipWriterOptions
         {
             Method = method,

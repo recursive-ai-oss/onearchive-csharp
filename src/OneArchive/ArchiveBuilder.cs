@@ -1,3 +1,4 @@
+using RecursiveAI.OneCompress.Deflate;
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Tar;
@@ -318,12 +319,14 @@ public sealed class ArchiveBuilder
         bool ok = false;
         try
         {
-            Stream top = _compression == ArchiveCompression.None
+            bool lazyGzip = _format == ArchiveFormat.SingleStream && _compression == ArchiveCompression.Gzip;
+            Stream top = _compression == ArchiveCompression.None || lazyGzip
                 ? sink
                 : CompressionFilters.OpenCompress(_compression, sink, _options.CompressionLevel, leaveSink);
             ArchiveWriter writer = _format switch
             {
                 ArchiveFormat.Zip => new ZipWriter(sink, ZipOptions(), leaveOpen: leaveSink),
+                ArchiveFormat.SingleStream when lazyGzip => new SingleStreamWriter(e => OpenGzip(sink, e, leaveSink)),
                 ArchiveFormat.SingleStream => new SingleStreamWriter(top),
                 _ => new TarWriter(top, _options.Tar, leaveOpen: top == sink && leaveSink),
             };
@@ -378,6 +381,24 @@ public sealed class ArchiveBuilder
 
             throw;
         }
+    }
+
+    private DeflateEncoderStream OpenGzip(Stream sink, ArchiveEntry? entry, bool leaveOpen)
+    {
+        // FNAME is the file's base name in ISO 8859-1 (RFC 1952 2.3.1); a name that does not fit is left out rather than mangled.
+        string? name = entry?.Name is { } n ? n[(n.LastIndexOf('/') + 1)..] : null;
+        if (name is not null && (name.Length == 0 || name.Any(c => c == '\0' || c > '\u00ff')))
+        {
+            name = null;
+        }
+
+        long unix = entry?.ModifiedTime?.ToUnixTimeSeconds() ?? 0;
+        return new DeflateEncoderStream(sink, DeflateFormat.GZip, new DeflateOptions
+        {
+            Level = _options.CompressionLevel ?? DeflateOptions.DefaultLevel,
+            GZipFileName = name,
+            GZipModificationTime = unix is > 0 and <= uint.MaxValue ? (uint)unix : 0,
+        }, leaveOpen);
     }
 
     private ZipWriterOptions ZipOptions()

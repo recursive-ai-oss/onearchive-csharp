@@ -20,7 +20,7 @@ internal static class ZipEntries
     [ModuleInitializer]
     internal static void Register()
     {
-        foreach (ZipMethod method in new[] { ZipMethod.Store, ZipMethod.Zstd })
+        foreach (ZipMethod method in new[] { ZipMethod.Store, ZipMethod.Deflate, ZipMethod.Zstd })
         {
             ZipMethod m = method;
             string n = m.ToString().ToLowerInvariant();
@@ -32,11 +32,17 @@ internal static class ZipEntries
         }
 
         Matrix.Add("zip-write", "zstd-level9-comment", (input, _) => Write(input, new ZipWriterOptions { Method = ZipMethod.Zstd, Level = 9, Comment = "matrix" }, seekable: true));
+        Matrix.Add("zip-write", "deflate-level1", (input, _) => Write(input, new ZipWriterOptions { Method = ZipMethod.Deflate, Level = 1 }, seekable: true));
+        Matrix.Add("zip-write", "deflate-level12-comment", (input, _) => Write(input, new ZipWriterOptions { Method = ZipMethod.Deflate, Level = 12, Comment = "matrix" }, seekable: true));
         Matrix.Add("zip-write", "many-empty-entries", (_, _) => ManyEntries(), "empty");
         Matrix.Add("zip-read", "store-summary", (input, _) => Summary(input));
         Matrix.Add("zip-single-stream", "zst", (input, _) => Single(input, ArchiveCompression.Zstd, null));
         Matrix.Add("zip-single-stream", "zst-level9", (input, _) => Single(input, ArchiveCompression.Zstd, 9));
         Matrix.Add("zip-single-stream", "lz4", (input, _) => Single(input, ArchiveCompression.Lz4, null));
+        Matrix.Add("zip-single-stream", "gz", (input, _) => Single(input, ArchiveCompression.Gzip, null));
+        Matrix.Add("zip-single-stream", "gz-level1", (input, _) => Single(input, ArchiveCompression.Gzip, 1));
+        Matrix.Add("zip-single-stream", "gz-level9", (input, _) => Single(input, ArchiveCompression.Gzip, 9));
+        Matrix.Add("zip-single-stream", "tar-gz", (input, _) => TarGz(input));
         Matrix.Add("zip-single-stream", "gzip-read", (input, _) => GzipRead(input));
     }
 
@@ -167,6 +173,15 @@ internal static class ZipEntries
     {
         var ms = new MemoryStream();
         Archive.Create(ms, new ArchiveCreateOptions { Format = ArchiveFormat.SingleStream, Compression = compression, CompressionLevel = level, LeaveOpen = true })
+            .Add(new ArchiveEntry { Name = "data.bin", Size = content.Length }, content.ToArray())
+            .Save();
+        return ms.ToArray();
+    }
+
+    private static byte[] TarGz(ReadOnlySpan<byte> content)
+    {
+        var ms = new MemoryStream();
+        Archive.Create(ms, new ArchiveCreateOptions { Format = ArchiveFormat.Tar, Compression = ArchiveCompression.Gzip, LeaveOpen = true })
             .Add(new ArchiveEntry { Name = "data.bin", Size = content.Length }, content.ToArray())
             .Save();
         return ms.ToArray();

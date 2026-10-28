@@ -167,6 +167,7 @@ internal sealed class ZipEntryStream : Stream
     private readonly ZipReader _owner;
     private readonly DeflateDecoder? _deflate;
     private readonly ZstdDecoder? _zstd;
+    private readonly RecursiveAI.OneCompress.BZip2.BZip2Decoder? _bzip2;
     private long _compRemaining;             // -1 when the compressed size is unknown (the decoder finds the end)
     private long _consumed;
     private long _produced;
@@ -195,6 +196,9 @@ internal sealed class ZipEntryStream : Stream
                 break;
             case ZipMethod.Deflate:
                 _deflate = new DeflateDecoder(DeflateFormat.Raw, new DeflateDecompressionOptions { MaxOutputSize = long.MaxValue });
+                break;
+            case ZipMethod.BZip2:
+                _bzip2 = new RecursiveAI.OneCompress.BZip2.BZip2Decoder(new RecursiveAI.OneCompress.BZip2.BZip2DecompressionOptions { MaxOutputSize = long.MaxValue });
                 break;
             case ZipMethod.Zstd:
                 _zstd = new ZstdDecoder(new ZstdDecompressionOptions { MaxWindowSize = limits.MaxWindowSize, MaxOutputSize = long.MaxValue });
@@ -340,6 +344,10 @@ internal sealed class ZipEntryStream : Stream
             {
                 status = _deflate.Decompress(src, dest.Span[..cap], out consumed, out written);
             }
+            else if (_bzip2 is not null)
+            {
+                status = _bzip2.Decompress(src, dest.Span[..cap], out consumed, out written);
+            }
             else
             {
                 status = _zstd!.Decompress(src, dest.Span[..cap], out consumed, out written);
@@ -355,7 +363,7 @@ internal sealed class ZipEntryStream : Stream
                 {
                     if (_zstd is null)
                     {
-                        throw ZipFormat.Bad(_input.Offset, "the entry's compressed data to end with the deflate stream");
+                        throw ZipFormat.Bad(_input.Offset, "the entry's compressed data to end with the compressed stream");
                     }
 
                     // zstd: another frame (or a skippable frame) follows within the entry.

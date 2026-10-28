@@ -194,7 +194,7 @@ public class ArchiveTests
         Assert.Contains("Xz", unsupported.Message, StringComparison.Ordinal);
         Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create(new MemoryStream(), new ArchiveCreateOptions { Compression = ArchiveCompression.Xz }));
         Assert.Throws<ArgumentException>(() => Archive.Create("/nonexistent/x.unknown"));
-        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create("x.tar.gz"));
+        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create("x.tar.xz"));
     }
 
     [Fact]

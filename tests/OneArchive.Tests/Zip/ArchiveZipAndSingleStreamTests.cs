@@ -28,6 +28,7 @@ public class ArchiveZipAndSingleStreamTests
 
     [Theory]
     [InlineData(ZipMethod.Store)]
+    [InlineData(ZipMethod.Deflate)]
     [InlineData(ZipMethod.Zstd)]
     public void CreateOpenAndExtractZip(ZipMethod method)
     {
@@ -113,6 +114,71 @@ public class ArchiveZipAndSingleStreamTests
         File.Copy(packed, renamed);
         Archive.Extract(renamed, temp.Combine("out2"));
         Assert.Equal(data, File.ReadAllBytes(temp.Combine("out2/mystery")));
+    }
+
+    [Fact]
+    public void GzipSingleStreamIsWrittenWithTheEntryName()
+    {
+        using var temp = new TempDir();
+        byte[] data = ZipTests.Text(50_000, 3);
+        string src = temp.Combine("report.txt");
+        File.WriteAllBytes(src, data);
+        string gz = temp.Combine("out.gz");
+        Archive.Create(gz).Add(src).Save();
+
+        byte[] packed = File.ReadAllBytes(gz);
+        Assert.Equal(8, packed[3] & 8);
+        Assert.Contains("report.txt", System.Text.Encoding.Latin1.GetString(packed, 10, 16), StringComparison.Ordinal);
+        using (var z = new GZipStream(new MemoryStream(packed), CompressionMode.Decompress))
+        {
+            var ms = new MemoryStream();
+            z.CopyTo(ms);
+            Assert.Equal(data, ms.ToArray());
+        }
+
+        using (Archive archive = Archive.Open(gz))
+        {
+            Assert.Equal("report.txt", Assert.Single(archive.Entries).Name);
+        }
+
+        // Same inputs, same bytes.
+        string again = temp.Combine("again.gz");
+        Archive.Create(again).Add(src).Save();
+        Assert.Equal(packed, File.ReadAllBytes(again));
+    }
+
+    [Fact]
+    public void TarGzIsWrittenAndReadBack()
+    {
+        using var temp = new TempDir();
+        string tree = temp.Combine("tree");
+        MakeTree(tree);
+        string path = temp.Combine("x.tar.gz");
+        Archive.Create(path).Add(tree, "tree").Save();
+        using (var z = new GZipStream(File.OpenRead(path), CompressionMode.Decompress))
+        {
+            Assert.True(z.ReadByte() >= 0);
+        }
+
+        Archive.Extract(path, temp.Combine("o"));
+        AssertSameTree(tree, temp.Combine("o/tree"));
+    }
+
+    [Fact]
+    public void ZipEntryCompressedWithBzip2IsRead()
+    {
+        byte[] zip = Convert.FromBase64String("UEsDBC4AAAAMAMA4XF2eUQiZSgAAALgBAAAFAAAAYS50eHRCWmg5MUFZJlNZhghw2AAAWZmAQAAQABJl1DAgAFCAAAFKkADTonZPibE0JsTkmBMidE8JgmCeCZJ8TJOSZJ+LuSKcKEhDBDhsAFBLAQIuAy4AAAAMAMA4XF2eUQiZSgAAALgBAAAFAAAAAAAAAAAAAACAAQAAAABhLnR4dFBLBQYAAAAAAQABADMAAABtAAAAAAA=");
+        byte[] expected = System.Text.Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat("hello bzip2 zip entry ", 20)));
+        foreach (bool forward in new[] { false, true })
+        {
+            using var reader = new ZipReader(forward ? new ForwardOnly(new MemoryStream(zip)) : new MemoryStream(zip));
+            ArchiveEntry e = reader.GetNextEntry()!;
+            Assert.Equal("a.txt", e.Name);
+            using Stream s = reader.OpenEntryStream();
+            var ms = new MemoryStream();
+            s.CopyTo(ms);
+            Assert.Equal(expected, ms.ToArray());
+        }
     }
 
     [Fact]
@@ -208,7 +274,7 @@ public class ArchiveZipAndSingleStreamTests
 
         Archive.Extract(path, temp.Combine("o"));
         Assert.Equal("hello", File.ReadAllText(temp.Combine("o/f.txt")));
-        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create(temp.Combine("new.tar.gz")));
+        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create(temp.Combine("new.tar.xz")));
     }
 
     [Fact]

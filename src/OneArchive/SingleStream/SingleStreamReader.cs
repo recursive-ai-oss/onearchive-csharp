@@ -97,8 +97,17 @@ internal sealed class SingleStreamReader : ArchiveReader
 }
 
 /// <summary>Writes the content of its one file entry into a compression stream; the container is the compression format itself.</summary>
-internal sealed class SingleStreamWriter(Stream compressed) : ArchiveWriter
+internal sealed class SingleStreamWriter : ArchiveWriter
 {
+    private Stream? _compressed;
+    private readonly Func<ArchiveEntry?, Stream>? _open;
+
+    /// <summary>Writes into an already opened compression stream.</summary>
+    public SingleStreamWriter(Stream compressed) => _compressed = compressed;
+
+    /// <summary>Opens the compression stream when the entry (or the end of an empty archive) is known, so a format whose header carries the file name (gzip FNAME) can use it.</summary>
+    public SingleStreamWriter(Func<ArchiveEntry?, Stream> open) => _open = open;
+
     private bool _written;
     private bool _finished;
     private bool _disposed;
@@ -125,6 +134,7 @@ internal sealed class SingleStreamWriter(Stream compressed) : ArchiveWriter
         }
 
         _written = true;
+        Stream compressed = _compressed ??= _open!(entry);
         long total = 0;
         if (content is not null)
         {
@@ -168,6 +178,7 @@ internal sealed class SingleStreamWriter(Stream compressed) : ArchiveWriter
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _finished = true;
+        _compressed ??= _open!(null);
         return ValueTask.CompletedTask;
     }
 
@@ -181,7 +192,7 @@ internal sealed class SingleStreamWriter(Stream compressed) : ArchiveWriter
         _disposed = true;
         if (disposing)
         {
-            compressed.Dispose();
+            _compressed?.Dispose();
         }
     }
 
@@ -193,6 +204,9 @@ internal sealed class SingleStreamWriter(Stream compressed) : ArchiveWriter
         }
 
         _disposed = true;
-        await compressed.DisposeAsync().ConfigureAwait(false);
+        if (_compressed is not null)
+        {
+            await _compressed.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }
