@@ -16,6 +16,7 @@ public class PreviewMarkerTests
     [InlineData("RecursiveAI.OneCompress.Xz", "ONECOMPRESS006")]
     [InlineData("RecursiveAI.OneCompress.Filters", "ONECOMPRESS006")]
     [InlineData("RecursiveAI.OneCompress.Lzip", "ONECOMPRESS007")]
+    [InlineData("RecursiveAI.OneCompress.Brotli", "ONECOMPRESS008")]
     public void EveryPublicTypeIsExperimental(string ns, string id)
     {
         var assembly = typeof(OneCompressInfo).Assembly;
@@ -45,7 +46,7 @@ public class PreviewMarkerTests
                 || ns.EndsWith(".Deflate", StringComparison.Ordinal) || ns.Contains(".Deflate.", StringComparison.Ordinal)
                 || ns.EndsWith(".Deflate64", StringComparison.Ordinal)
                 || ns.EndsWith(".BZip2", StringComparison.Ordinal) || ns.Contains(".BZip2.", StringComparison.Ordinal)
-                || ns.EndsWith(".Lzma", StringComparison.Ordinal) || ns.EndsWith(".Xz", StringComparison.Ordinal) || ns.EndsWith(".Filters", StringComparison.Ordinal) || ns.EndsWith(".Lzip", StringComparison.Ordinal))) continue;
+                || ns.EndsWith(".Lzma", StringComparison.Ordinal) || ns.EndsWith(".Xz", StringComparison.Ordinal) || ns.EndsWith(".Filters", StringComparison.Ordinal) || ns.EndsWith(".Lzip", StringComparison.Ordinal) || ns.EndsWith(".Brotli", StringComparison.Ordinal))) continue;
             Assert.Null(type.GetCustomAttribute<ExperimentalAttribute>());
         }
     }
