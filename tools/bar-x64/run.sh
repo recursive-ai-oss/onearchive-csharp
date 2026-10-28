@@ -2,12 +2,15 @@
 # Full speed, ratio and memory bar for the Zstandard and LZ4 codecs against the reference tools, in chunks that each fit
 # in about two hours on a shared benchmark host.
 #
-#   run.sh <1|2|3> [--only "step step"] [--list]
+#   run.sh <1|2|3|0.2> [--only "step step"] [--list]
 #
 #   chunk 1: Zstandard levels -5..19 on whole files (compress, and decode of our own output), decode of the tool's frames,
 #            small game snapshot payloads with trained dictionaries (compress and decode), LZ4 whole files and small payloads.
 #   chunk 2: the decode rows again (the tool frames, LZ4 whole files, small payloads), Zstandard levels 20 and 22,
 #            long-distance matching.
+#   chunk 0.2 (output dir chunk0.2): the Deflate family and bzip2 decode. One-shot compression against libdeflate 1-12, streaming
+#            compression against zlib-ng 1-9, decode of the references' output and of ours by libdeflate and zlib-ng and by us,
+#            and bzip2 decode against `bzip2 -dc`; silesia.tar and enwik8. Also runs on the Mac (BAR_LOCK_FILE=~/onearchive/BENCH.lock).
 #   chunk 3: multithreaded jobs, dictionary training time and memory, Zstandard level 19 on small payloads, the small
 #            synthetic payload rows (256 B to 16 KiB, tools/small-bench), and the bar runner on a few files.
 #
@@ -21,7 +24,7 @@
 #   BAR_OUT          results directory (default $ONEARCHIVE_HOME/bar-x64/chunk<N>)
 #   BAR_DEADLINE     HH:MM today; overrides BAR_BUDGET_MIN
 #   BAR_BUDGET_MIN   wall-clock budget for the steps in minutes (default 115)
-#   BAR_LOCK_FILE    lock file (default ~/WORKER-BENCH.lock)
+#   BAR_LOCK_FILE    lock file (default ~/WORKER-BENCH.lock, ~/onearchive/BENCH.lock on macOS)
 #   BAR_LOCK_LABEL   text at the start of the lock file entry (default "onearchive bar")
 #   BAR_COMMIT       free text recorded in machine.txt (for example the commit hash)
 #   BAR_FILES        whole-file inputs (default "silesia.tar enwik8")
@@ -41,15 +44,16 @@ while [ $# -gt 0 ]; do
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
-case "$chunk" in 1|2|3) ;; *) echo "usage: run.sh <1|2|3> [--only \"step ...\"] [--list]" >&2; exit 2 ;; esac
+case "$chunk" in 1|2|3|0.2) ;; *) echo "usage: run.sh <1|2|3|0.2> [--only \"step ...\"] [--list]" >&2; exit 2 ;; esac
 
 home="${ONEARCHIVE_HOME:-$HOME/onearchive}"
 [ -d "$HOME/dotnet10" ] && export DOTNET_ROOT="$HOME/dotnet10"
+[ -z "${DOTNET_ROOT:-}" ] && [ -d "$home/dotnet" ] && export DOTNET_ROOT="$home/dotnet"
 [ -n "${DOTNET_ROOT:-}" ] && export PATH="$DOTNET_ROOT:$PATH"
 export PATH="$home/tools/bin:$PATH"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 MSBUILDDISABLENODEREUSE=1
 export ONEARCHIVE_CORPORA="${ONEARCHIVE_CORPORA:-$home/corpora}"
-export ONEARCHIVE_ZSTD="${ONEARCHIVE_ZSTD:-$(command -v zstd)}" ONEARCHIVE_LZ4="${ONEARCHIVE_LZ4:-$(command -v lz4)}"
+export ONEARCHIVE_ZSTD="${ONEARCHIVE_ZSTD:-$(command -v zstd || true)}" ONEARCHIVE_LZ4="${ONEARCHIVE_LZ4:-$(command -v lz4 || true)}"
 export DOTNET="${DOTNET:-dotnet}"
 out="${BAR_OUT:-$home/bar-x64/chunk$chunk}"
 budget="${BAR_BUDGET_MIN:-115}"
@@ -57,13 +61,18 @@ budget="${BAR_BUDGET_MIN:-115}"
 if [ -n "${BAR_DEADLINE:-}" ]; then budget=$(( ( $(date -d "$BAR_DEADLINE" +%s) - $(date +%s) ) / 60 - 5 )); fi
 scale="${BAR_SCALE:-1}"
 files="${BAR_FILES:-silesia.tar enwik8}"
-lock="${BAR_LOCK_FILE:-$HOME/WORKER-BENCH.lock}"
+if [ "$(uname)" = Darwin ]; then lock="${BAR_LOCK_FILE:-$HOME/onearchive/BENCH.lock}"; else lock="${BAR_LOCK_FILE:-$HOME/WORKER-BENCH.lock}"; fi
 
 # Step table: name, chunk, expected minutes, command. Expected minutes come from the per-row times in the bench docs and are
 # deliberately generous; a step whose expected time no longer fits in the budget is skipped, not started.
 zenc="$repo/tools/zstd-encode-bench"; zdec="$repo/tools/zstd-decode-bench"; ztrain="$repo/tools/zstd-train-bench"; l4="$repo/tools/lz4-bench"; sb="$repo/tools/small-bench"
 steps() {
-  if [ "$chunk" = 1 ]; then
+  if [ "$chunk" = 0.2 ]; then
+    echo "defl-enc|45|defl_run oneshot"
+    echo "defl-stream|15|defl_run stream"
+    echo "defl-dec|15|defl_run decode"
+    echo "bzip2-dec|8|defl_run bzip2"
+  elif [ "$chunk" = 1 ]; then
     echo "enc-fast|8|enc_run --levels '-5 -1 1 2 3 4 5 6 7 9'"
     echo "dec-tool|15|dec_run"
     echo "lz4|12|lz4_run"
@@ -102,28 +111,34 @@ mkdir -p "$out"
 tmp="$out/../tmp$chunk"; mkdir -p "$tmp"; export ONEARCHIVE_BENCH_TMP="$tmp"
 art="$out/../artifacts"; mkdir -p "$art"
 start=$(date +%s)
-load() { cut -d' ' -f1-3 /proc/loadavg; }
+if [ "$(uname)" = Darwin ]; then load() { uptime | sed 's/.*load averages*: //; s/,//g'; }; else load() { cut -d' ' -f1-3 /proc/loadavg; }; fi
 elapsed_min() { echo $(( ($(date +%s) - start) / 60 )); }
 
 # ---- machine record and the load monitor ----
 {
   echo "date: $(date '+%F %T %Z')"
   echo "host: $(hostname -s 2>/dev/null)"
-  echo "cpu: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
-  echo "cores: $(nproc)"
+  if [ "$(uname)" = Darwin ]; then echo "cpu: $(sysctl -n machdep.cpu.brand_string)"; echo "cores: $(sysctl -n hw.ncpu)"
+  else echo "cpu: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"; echo "cores: $(nproc)"; fi
   echo "kernel: $(uname -sr)"
   echo "load before: $(load)"
-  echo "running now (top by cpu):"; ps -eo pcpu,user,comm --sort=-pcpu | head -6
+  echo "running now (top by cpu):"; ps -eo pcpu,user,comm | sort -rn | head -6
   echo "sdk: $(dotnet --version)"
-  echo "zstd: $("$ONEARCHIVE_ZSTD" --version | head -1)"
-  echo "lz4: $("$ONEARCHIVE_LZ4" --version | head -1)"
+  if [ "$chunk" = 0.2 ]; then
+    echo "libdeflate: $(basename "$(ls -d "$home"/tools/opt/libdeflate-* 2>/dev/null | head -1)")"
+    echo "zlib-ng: $(basename "$(ls -d "$home"/tools/opt/zlib-ng-* 2>/dev/null | head -1)")"
+    echo "bzip2: $(bzip2 --help 2>&1 | head -1 | sed 's/,.*//')"
+  else
+    echo "zstd: $("$ONEARCHIVE_ZSTD" --version | head -1)"
+    echo "lz4: $("$ONEARCHIVE_LZ4" --version | head -1)"
+  fi
   echo "commit: ${BAR_COMMIT:-unknown}"
   echo "budget_min: $budget"
 } > "$out/machine.txt"
 (
   while :; do
     sleep 60
-    echo "$(date +%T) load $(load) procs $(cut -d' ' -f4 /proc/loadavg) | $(ps -eo pcpu,user,comm --sort=-pcpu | sed -n 2,4p | awk '{printf "%s%% %s/%s; ", $1, $2, $3}')"
+    echo "$(date +%T) load $(load) procs $(cut -d' ' -f4 /proc/loadavg 2>/dev/null) | $(ps -eo pcpu,user,comm | sort -rn | sed -n 1,3p | awk '{printf "%s%% %s/%s; ", $1, $2, $3}')"
   done >> "$out/load.log"
 ) &
 mon_pid=$!
@@ -137,14 +152,35 @@ build() {
   echo "$art/bin/$name/release/$name.dll"
 }
 echo "# building ($(date +%T))"
+if [ "$chunk" = 0.2 ]; then
+  defl_dll="$(build DeflateBench "$repo/tools/deflate-bench/DeflateBench.csproj")" || exit 4
+  # refbench: in-memory libdeflate and zlib-ng timings against the pinned installs.
+  refbench="$art/refbench"
+  ONEARCHIVE_HOME="$home" bash "$repo/tools/deflate-bench/build.sh" "$refbench" > "$out/build-refbench.log" 2>&1 \
+    || { echo "refbench build failed (see $out/build-refbench.log)" >&2; exit 4; }
+else
 enc_dll="$(build ZstdEncodeBench "$zenc/ZstdEncodeBench.csproj")" || exit 4
 dec_dll="$(build ZstdDecodeBench "$zdec/ZstdDecodeBench.csproj")" || exit 4
 train_dll="$(build ZstdTrainBench "$ztrain/ZstdTrainBench.csproj")" || exit 4
 lz4_dll="$(build Lz4Bench "$l4/Lz4Bench.csproj")" || exit 4
 small_dll="$(build SmallBench "$sb/SmallBench.csproj")" || exit 4
+fi
 echo "build done $(date +%T), elapsed $(elapsed_min) min" >> "$out/steps.log"
 
 # ---- step bodies (stdout becomes the step's TSV) ----
+# The Deflate and bzip2 rows: tools/deflate-bench/bar.sh, one mode per step. Eight repeats for the fast levels, fewer where one
+# pass takes tens of seconds.
+defl_run() {
+  local mode="$1"
+  export REFBENCH="$refbench" BENCH_DLL="$defl_dll" TMPDIR="$tmp"
+  case "$mode" in
+    oneshot) "$repo/tools/deflate-bench/bar.sh" --mode oneshot --files "$files" --levels "1 2 3 4 5 6 7 8 9" --reps 5
+             "$repo/tools/deflate-bench/bar.sh" --mode oneshot --files "$files" --levels "10 11 12" --reps 3 | grep -v '^#\|^file' ;;
+    stream) "$repo/tools/deflate-bench/bar.sh" --mode stream --files "$files" --reps 5 ;;
+    decode) "$repo/tools/deflate-bench/bar.sh" --mode decode --files "$files" --levels "1 6 9 12" --reps 7 ;;
+    bzip2) "$repo/tools/deflate-bench/bar.sh" --mode bzip2 --files "$files" --levels "1 9" --reps 5 ;;
+  esac
+}
 enc_run() { BENCH_DLL="$enc_dll" "$zenc/run.sh" --files "$files" "$@"; }
 dec_run() { BENCH_DLL="$dec_dll" OURS_MAX_LEVEL=19 "$zdec/run.sh" --files "$files" --levels "1 3 9 19" --reps 3; }
 lz4_run() { BENCH_DLL="$lz4_dll" "$l4/bar.sh" --files "$files" --levels "fast8 1 2 3 6 9 12" --reps 3 --seconds 3; }
