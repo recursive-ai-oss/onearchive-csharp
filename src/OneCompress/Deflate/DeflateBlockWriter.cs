@@ -330,8 +330,9 @@ public sealed class DeflateBlockWriter
         for (int i = 0; i < sequences.Length; i++)
         {
             // Bounds: every index below is a literal byte, a length 3..258, or a distance slot 0..29, all inside the tables above;
-            // the buffer was sized for this block with a margin of Slack bytes past the last byte written. The accumulator is
-            // emptied four bytes at a time whenever it holds 32 bits, so it never needs more than 31 + 28 bits of room.
+            // the buffer was sized for this block with a margin of Slack bytes past the last byte written. Whole bytes are
+            // stored after every symbol (an unconditional eight-byte store beats a branch on the bit count), so the accumulator
+            // holds at most 7 bits before a symbol.
             uint word = sequences[i];
             uint length = word & 0x1FF;
             if (length == 0)
@@ -345,13 +346,10 @@ public sealed class DeflateBlockWriter
                 uint composite = DeflateEncRaw.Get(lengthComposite, (int)length);
                 accumulator |= (ulong)(composite & 0xFFFFFF) << bits;
                 bits += (int)(composite >> 24);
-                if (bits >= 32)
-                {
-                    DeflateEncRaw.Write64(buffer, position, accumulator);
-                    position += 4;
-                    accumulator >>= 32;
-                    bits -= 32;
-                }
+                DeflateEncRaw.Write64(buffer, position, accumulator);
+                position += bits >> 3;
+                accumulator >>= bits & ~7;
+                bits &= 7;
 
                 int distance = (int)(word >> 9) + 1;
                 int slot = DeflateSymbols.DistanceSlot(distance);
@@ -361,13 +359,10 @@ public sealed class DeflateBlockWriter
                 bits += codeLength + distanceExtra[slot];
             }
 
-            if (bits >= 32)
-            {
-                DeflateEncRaw.Write64(buffer, position, accumulator);
-                position += 4;
-                accumulator >>= 32;
-                bits -= 32;
-            }
+            DeflateEncRaw.Write64(buffer, position, accumulator);
+            position += bits >> 3;
+            accumulator >>= bits & ~7;
+            bits &= 7;
         }
 
         accumulator |= (ulong)_literalCodes[DeflateTables.EndOfBlockSymbol] << bits;

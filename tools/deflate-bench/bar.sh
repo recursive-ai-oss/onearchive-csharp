@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Deflate bar rows: our compressor against the reference tools, memory to memory.
+# Deflate bar rows: our compressor and decoder against libdeflate and zlib-ng, memory to memory.
 #
 #   bar.sh [--files "silesia.tar enwik8"] [--levels "1 2 ... 12"] [--reps 5] [--mode oneshot|stream|decode]
 #
-# oneshot rows compare against libdeflate-gzip at the same level (levels 1-12); stream rows compare ours, fed in 64 KiB pieces,
-# against zlib-ng's minigzip (levels 1-9); decode rows time our decoder on each tool's own output (levels 1 6 9 12 by default).
-# Environment: ONEARCHIVE_TOOLS (default ~/onearchive/tools/bin), ONEARCHIVE_CORPORA, BENCH_DLL (built DeflateBench.dll), DOTNET.
+# oneshot: ours (one call) against libdeflate at the same level, 1-12. stream: ours fed in 64 KiB pieces against zlib-ng's streaming
+# deflate, 1-9. decode: our decoder against libdeflate's and zlib-ng's on their own output at the given levels (default 1 6 9 12).
+# The references run through refbench (refbench.c, built by build.sh), which times only the library call on a file held in memory.
+# Environment: REFBENCH (built refbench), ONEARCHIVE_CORPORA, BENCH_DLL (built DeflateBench.dll), DOTNET, TMPDIR (use RAM).
 # It is a timing run: run it under the shared timing lock. Method: docs/bench-method.md, section Deflate.
 set -euo pipefail
-tools="${ONEARCHIVE_TOOLS:-$HOME/onearchive/tools/bin}"
 corpora="${ONEARCHIVE_CORPORA:-$HOME/onearchive/corpora}"
+ref="${REFBENCH:?set REFBENCH to the built refbench}"
 dll="${BENCH_DLL:?set BENCH_DLL to DeflateBench.dll}"
 dotnet="${DOTNET:-dotnet}"
 files="silesia.tar enwik8"; levels=""; reps=5; mode=oneshot
@@ -37,28 +38,25 @@ fi
 ratio() { awk -v a="$1" -v b="$2" -v d="$3" 'BEGIN { printf "%.*f", d, a / b }'; }
 field() { sed -n "s/.*$1=\\([0-9.]*\\).*/\\1/p" | head -1; }
 echo "# cpu: $(cpu), cores: $(cores), load before: $(load), $("$dotnet" --version | head -1) SDK, reps=$reps, mode=$mode"
-echo "# reference tools: $(ls -l "$tools/libdeflate-gzip" "$tools/minigzip-ng" | sed 's/.*-> //' | sed 's/.*opt\///' | tr '\n' ' ')"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/deflatebar.XXXXXX")"; trap 'rm -rf "$tmp"' EXIT
 case "$mode" in
-  oneshot) ref="libdeflate-gzip"; [ -n "$levels" ] || levels="1 2 3 4 5 6 7 8 9 10 11 12" ;;
-  stream) ref="minigzip-ng"; [ -n "$levels" ] || levels="1 2 3 4 5 6 7 8 9" ;;
-  decode) ref="both"; [ -n "$levels" ] || levels="1 6 9 12" ;;
+  oneshot) lib=libdeflate; [ -n "$levels" ] || levels="1 2 3 4 5 6 7 8 9 10 11 12" ;;
+  stream) lib=zlibng; [ -n "$levels" ] || levels="1 2 3 4 5 6 7 8 9" ;;
+  decode) lib=both; [ -n "$levels" ] || levels="1 6 9 12" ;;
   *) echo "unknown mode" >&2; exit 2 ;;
 esac
 if [ "$mode" = decode ]; then
-  printf 'file\ttool\tlevel\tref_dec_MBps\tours_dec_MBps\tratio\n'
+  printf 'file\treference\tlevel\tref_dec_MBps\tours_dec_MBps\ttime_ratio\tverdict\n'
   for f in $files; do
     path="$(find_file "$f")"
     for L in $levels; do
-      for t in libdeflate-gzip minigzip-ng; do
-        [ "$t" = libdeflate-gzip ] && args="-$L -c" || args="-$L"
-        [ "$t" = minigzip-ng ] && [ "$L" -gt 9 ] && continue
-        "$tools/$t" $args < "$path" > "$tmp/in.gz"
-        # The reference's decode time: its own decoder on its own output, same method as the encode rows.
-        [ "$t" = libdeflate-gzip ] && dargs="-d -c" || dargs="-d"
-        r="$("$dotnet" "$dll" ref "$tmp/in.gz" "$reps" "$tools/$t" $dargs | field MBps)"
+      for lib in libdeflate zlibng; do
+        [ "$lib" = zlibng ] && [ "$L" -gt 9 ] && continue
+        "$ref" "$lib" enc "$L" "$path" 1 "$tmp/in.gz" > /dev/null
+        r="$("$ref" "$lib" dec "$tmp/in.gz" "$reps" | field MBps)"
         o="$("$dotnet" "$dll" dec "$tmp/in.gz" --reps "$reps" | field dec_MBps)"
-        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$f" "$t" "$L" "$r" "$o" "$(ratio "$r" "$o" 3)"
+        tr="$(ratio "$r" "$o" 3)"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$f" "$lib" "$L" "$r" "$o" "$tr" "$(awk -v t="$tr" 'BEGIN { print (t <= 1.15) ? "pass" : "FAIL" }')"
       done
     done
   done
@@ -69,9 +67,7 @@ printf 'file\tlevel\tref_size\tours_size\tsize_ratio\tref_MBps\tours_MBps\ttime_
 for f in $files; do
   path="$(find_file "$f")"
   for L in $levels; do
-    [ "$ref" = libdeflate-gzip ] && args="-$L -c" || args="-$L"
-    "$dotnet" "$dll" ref "$path" "$reps" "$tools/$ref" $args > "$tmp/ref.out"
-    tv "$tools/$ref" $args < "$path" > /dev/null 2> "$tmp/ref.time"
+    tv "$ref" "$lib" enc "$L" "$path" "$reps" > "$tmp/ref.out" 2> "$tmp/ref.time"
     sflag=""; [ "$mode" = stream ] && sflag="--stream"
     tv "$dotnet" "$dll" enc "$path" "$L" --reps "$reps" $sflag > "$tmp/our.out" 2> "$tmp/our.time"
     rs="$(field size < "$tmp/ref.out")"; rm_="$(field MBps < "$tmp/ref.out")"

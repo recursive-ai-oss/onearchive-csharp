@@ -103,6 +103,90 @@ public sealed class DeflateHashChainMatchFinder
         }
     }
 
+    // The parsers bind the finder to the encoder's window once per parse, so a search takes few arguments and keeps its state in registers.
+    private byte[] _data = [];
+    private int _end;
+    private int _oldest;
+    private int _nice;
+
+    internal void Bind(byte[] data, int end, int oldest, int nice)
+    {
+        _data = data;
+        _end = end;
+        _oldest = oldest;
+        _nice = nice;
+    }
+
+    // As FindLongestUnchecked, over the bound window: the longest match at position beyond best, or best.
+    internal int Find(int position, int best, int depth, out int distance)
+    {
+        byte[] data = _data;
+        int maxLength = Math.Min(DeflateTables.MaxMatchLength, _end - position);
+        uint value = DeflateEncRaw.Read32(data, position);
+        int hash = (int)((value * 2654435761u) >> _shift);
+        int candidate = DeflateEncRaw.Get(_head, hash);
+        DeflateEncRaw.Set(_head, hash, position);
+        DeflateEncRaw.SetLink(_previous, position & WindowMask, (uint)(position - candidate) <= WindowMask + 1 ? (ushort)(position - candidate) : (ushort)0);
+        distance = 0;
+        int limit = Math.Max(_oldest, position - DeflateTables.WindowSize);
+        if (_shortHead is not null)
+        {
+            int shortHash = (int)(((value & 0xFFFFFF) * 2654435761u) >> (32 - ShortHashBits));
+            int shortCandidate = DeflateEncRaw.Get(_shortHead, shortHash);
+            DeflateEncRaw.Set(_shortHead, shortHash, position);
+            if (best < DeflateTables.MinMatchLength && shortCandidate >= limit)
+            {
+                int length = DeflateEncRaw.MatchLength(data, shortCandidate, position, maxLength);
+                if (length >= DeflateTables.MinMatchLength)
+                {
+                    best = length;
+                    distance = position - shortCandidate;
+                }
+            }
+        }
+
+        if (best >= maxLength)
+        {
+            return best;
+        }
+
+        int nice = _nice;
+        while (candidate >= limit)
+        {
+            int offset = best > 3 ? best - 3 : 0;
+            if (DeflateEncRaw.Read32(data, candidate + offset) == DeflateEncRaw.Read32(data, position + offset))
+            {
+                int length = DeflateEncRaw.MatchLength(data, candidate, position, maxLength);
+                if (length > best)
+                {
+                    best = length;
+                    distance = position - candidate;
+                    if (length >= nice || length >= maxLength)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            if (--depth <= 0)
+            {
+                break;
+            }
+
+            int step = DeflateEncRaw.GetLink(_previous, candidate & WindowMask);
+            if (step == 0)
+            {
+                break;
+            }
+
+            candidate -= step;
+        }
+
+        return best;
+    }
+
+    internal void InsertBound(int position) => InsertUnchecked(_data, position);
+
     // The two-probe search for the fastest level: each 4-byte hash owns a bucket of the latest two positions, both are tried, and
     // no links are stored. Returns 0 when neither matches for at least 4 bytes.
     internal int FindFirstUnchecked(ReadOnlySpan<byte> data, int position, int maxLength, int oldestPosition, out int distance)

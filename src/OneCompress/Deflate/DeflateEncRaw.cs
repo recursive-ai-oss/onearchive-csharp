@@ -146,6 +146,63 @@ internal static class DeflateEncRaw
 #endif
     }
 
+    // The same reads on an array, for the match finders that are bound to the encoder's window for a whole parse.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint Read32(byte[] data, int index)
+    {
+#if CHECKED
+        return System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(index, 4));
+#else
+        uint value = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(data), (nint)(uint)index));
+        return BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value);
+#endif
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Read64(byte[] data, int index)
+    {
+#if CHECKED
+        return System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(data.AsSpan(index, 8));
+#else
+        ulong value = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(data), (nint)(uint)index));
+        return BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value);
+#endif
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte Byte(byte[] data, int index)
+    {
+#if CHECKED
+        return data[index];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(data), (nint)(uint)index);
+#endif
+    }
+
+    /// <summary>As <see cref="MatchLength(ReadOnlySpan{byte}, int, int, int)"/>, on an array.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int MatchLength(byte[] data, int a, int b, int max)
+    {
+        int length = 0;
+        while (length + 8 <= max)
+        {
+            ulong difference = Read64(data, a + length) ^ Read64(data, b + length);
+            if (difference != 0)
+            {
+                return length + (System.Numerics.BitOperations.TrailingZeroCount(difference) >> 3);
+            }
+
+            length += 8;
+        }
+
+        while (length < max && Byte(data, a + length) == Byte(data, b + length))
+        {
+            length++;
+        }
+
+        return length;
+    }
+
     /// <summary>
     /// The number of equal bytes at the start of <c>data[a..]</c> and <c>data[b..]</c>, up to <paramref name="max"/>.
     /// The caller guarantees <c>a &lt; b</c> and <c>b + max &lt;= data.Length</c>.

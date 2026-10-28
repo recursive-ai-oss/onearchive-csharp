@@ -157,6 +157,7 @@ public sealed partial class DeflateEncoder
         int fill = _fill;
         int insertEnd = fill - DeflateHashChainMatchFinder.RequiredLookahead + 1;
         int oldest = _oldest;
+        finder.Bind(window, fill, oldest, p.Nice);
         while (position < limit)
         {
             int available = fill - position;
@@ -164,7 +165,7 @@ public sealed partial class DeflateEncoder
             int distance = 0;
             if (available >= DeflateHashChainMatchFinder.RequiredLookahead)
             {
-                length = finder.FindLongestUnchecked(window, position, Math.Min(DeflateTables.MaxMatchLength, available), 2, p.Chain, p.Nice, oldest, out distance);
+                length = finder.Find(position, 2, p.Chain, out distance);
             }
 
             if (length >= DeflateTables.MinMatchLength && (length > 3 || distance <= TooFar))
@@ -176,7 +177,7 @@ public sealed partial class DeflateEncoder
                     int last = Math.Min(end, insertEnd);
                     for (int q = position + 1; q < last; q++)
                     {
-                        finder.InsertUnchecked(window, q);
+                        finder.InsertBound(q);
                     }
                 }
 
@@ -277,6 +278,7 @@ public sealed partial class DeflateEncoder
         int fill = _fill;
         int insertEnd = fill - DeflateHashChainMatchFinder.RequiredLookahead + 1;
         int oldest = _oldest;
+        finder.Bind(window, fill, oldest, p.Nice);
         while (position < limit)
         {
             int available = fill - position;
@@ -284,7 +286,7 @@ public sealed partial class DeflateEncoder
             int distance = 0;
             if (available >= DeflateHashChainMatchFinder.RequiredLookahead)
             {
-                length = finder.FindLongestUnchecked(window, position, Math.Min(DeflateTables.MaxMatchLength, available), 2, p.Chain, p.Nice, oldest, out distance);
+                length = finder.Find(position, 2, p.Chain, out distance);
                 if (length == DeflateTables.MinMatchLength && distance > TooFar)
                 {
                     length = 0;
@@ -312,7 +314,7 @@ public sealed partial class DeflateEncoder
             {
                 int chain = length >= p.Good ? p.Chain >> 2 : p.Chain;
                 int next = position + 1;
-                int length2 = finder.FindLongestUnchecked(window, next, Math.Min(DeflateTables.MaxMatchLength, fill - next), length, chain, p.Nice, oldest, out int distance2);
+                int length2 = finder.Find(next, length, chain, out int distance2);
                 hashedTo = next + 1;
                 if (length2 > length && !(length2 == DeflateTables.MinMatchLength && distance2 > TooFar))
                 {
@@ -341,7 +343,7 @@ public sealed partial class DeflateEncoder
             int insertLast = Math.Min(matchEnd, insertEnd);
             for (int q = Math.Max(hashedTo, position + 1); q < insertLast; q++)
             {
-                finder.InsertUnchecked(window, q);
+                finder.InsertBound(q);
             }
 
             position = matchEnd;
