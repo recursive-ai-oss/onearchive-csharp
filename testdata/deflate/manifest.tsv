@@ -1,0 +1,106 @@
+# zlib 1.3.2 via Python 3.13.13; gzip 1.14; pigz 2.8
+# name	format	size	sha256	compressed	dictionary	made by
+empty-raw	raw	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	2		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0)
+empty-l0-raw	raw	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	5		zlib.compressobj(level=0, wbits=-15, memLevel=8, strategy=0)
+onebyte-raw	raw	1	bbeebd879e1dff6918546dc0c179fdde505f2a21591c9a9c96e36b054ec5af83	3		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0)
+text300-l0-raw	raw	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	305		zlib.compressobj(level=0, wbits=-15, memLevel=8, strategy=0)
+text300-l1-raw	raw	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	170		zlib.compressobj(level=1, wbits=-15, memLevel=8, strategy=0)
+text300-l6-raw	raw	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	169		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0)
+text300-l9-raw	raw	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	169		zlib.compressobj(level=9, wbits=-15, memLevel=8, strategy=0)
+text100k-l1-raw	raw	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	35280		zlib.compressobj(level=1, wbits=-15, memLevel=8, strategy=0)
+text100k-l4-raw	raw	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	32202		zlib.compressobj(level=4, wbits=-15, memLevel=8, strategy=0)
+text100k-l6-raw	raw	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28841		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0)
+text100k-l9-raw	raw	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28634		zlib.compressobj(level=9, wbits=-15, memLevel=8, strategy=0)
+text100k-l0-raw	raw	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	102415		zlib.compressobj(level=0, wbits=-15, memLevel=8, strategy=0)
+bin150k-filtered-raw	raw	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	49730		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=1)
+bin150k-huffman-raw	raw	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	65645		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=2)
+bin150k-rle-raw	raw	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	68138		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=3)
+bin150k-fixed-raw	raw	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	58820		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=4)
+bin150k-l9-raw	raw	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	48224		zlib.compressobj(level=9, wbits=-15, memLevel=8, strategy=0)
+runs300k-l6-raw	raw	307200	f695138f5fc95b251e6bab5aa18db928711601a0072147addd3a1bec3e8cbca5	683		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0)
+runs300k-rle-raw	raw	307200	f695138f5fc95b251e6bab5aa18db928711601a0072147addd3a1bec3e8cbca5	672		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=3)
+period100k-l6-raw	raw	102400	490ab62e1ee220e00a753abd6ea5c40ef48c4d4eb820f06f192120f7915f8d0c	2480		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0)
+period100k-fixed-raw	raw	102400	490ab62e1ee220e00a753abd6ea5c40ef48c4d4eb820f06f192120f7915f8d0c	2798		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=4)
+random70k-l6-raw	raw	71680	df878b96b867b8bae2d2928ba89877120ac534d25db4e454d0e962f7a930bc63	71705		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0)
+far200k-l9-raw	raw	204800	409e70811cdc7aad03c801e74d902186f787a3f574251c802e31e465afc3c9ef	116168		zlib.compressobj(level=9, wbits=-15, memLevel=8, strategy=0)
+text100k-l1-mem1-raw	raw	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	42009		zlib.compressobj(level=1, wbits=-15, memLevel=1, strategy=0)
+text100k-l6-w9-raw	raw	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	42935		zlib.compressobj(level=6, wbits=-9, memLevel=8, strategy=0)
+text100k-pieces-raw	raw	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28841		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0) fed in 997 byte pieces
+text100k-flushes-raw	raw	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	29717		zlib.compressobj level 6 with Z_SYNC_FLUSH and Z_FULL_FLUSH between thirds
+runs3m-l6-raw	raw	3145728	19f1a238ff020363e4ffa0c625d65c31edeada176176fdd1b71695dfdc591e79	6321		zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0)
+empty-zlib	zlib	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	8		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0)
+empty-l0-zlib	zlib	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	11		zlib.compressobj(level=0, wbits=15, memLevel=8, strategy=0)
+onebyte-zlib	zlib	1	bbeebd879e1dff6918546dc0c179fdde505f2a21591c9a9c96e36b054ec5af83	9		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0)
+text300-l0-zlib	zlib	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	311		zlib.compressobj(level=0, wbits=15, memLevel=8, strategy=0)
+text300-l1-zlib	zlib	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	176		zlib.compressobj(level=1, wbits=15, memLevel=8, strategy=0)
+text300-l6-zlib	zlib	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	175		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0)
+text300-l9-zlib	zlib	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	175		zlib.compressobj(level=9, wbits=15, memLevel=8, strategy=0)
+text100k-l1-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	35286		zlib.compressobj(level=1, wbits=15, memLevel=8, strategy=0)
+text100k-l4-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	32208		zlib.compressobj(level=4, wbits=15, memLevel=8, strategy=0)
+text100k-l6-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28847		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0)
+text100k-l9-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28640		zlib.compressobj(level=9, wbits=15, memLevel=8, strategy=0)
+text100k-l0-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	102421		zlib.compressobj(level=0, wbits=15, memLevel=8, strategy=0)
+bin150k-filtered-zlib	zlib	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	49736		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=1)
+bin150k-huffman-zlib	zlib	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	65651		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=2)
+bin150k-rle-zlib	zlib	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	68144		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=3)
+bin150k-fixed-zlib	zlib	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	58826		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=4)
+bin150k-l9-zlib	zlib	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	48230		zlib.compressobj(level=9, wbits=15, memLevel=8, strategy=0)
+runs300k-l6-zlib	zlib	307200	f695138f5fc95b251e6bab5aa18db928711601a0072147addd3a1bec3e8cbca5	689		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0)
+runs300k-rle-zlib	zlib	307200	f695138f5fc95b251e6bab5aa18db928711601a0072147addd3a1bec3e8cbca5	678		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=3)
+period100k-l6-zlib	zlib	102400	490ab62e1ee220e00a753abd6ea5c40ef48c4d4eb820f06f192120f7915f8d0c	2486		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0)
+period100k-fixed-zlib	zlib	102400	490ab62e1ee220e00a753abd6ea5c40ef48c4d4eb820f06f192120f7915f8d0c	2804		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=4)
+random70k-l6-zlib	zlib	71680	df878b96b867b8bae2d2928ba89877120ac534d25db4e454d0e962f7a930bc63	71711		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0)
+far200k-l9-zlib	zlib	204800	409e70811cdc7aad03c801e74d902186f787a3f574251c802e31e465afc3c9ef	116174		zlib.compressobj(level=9, wbits=15, memLevel=8, strategy=0)
+text100k-l1-mem1-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	42015		zlib.compressobj(level=1, wbits=15, memLevel=1, strategy=0)
+text100k-l6-w9-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	42941		zlib.compressobj(level=6, wbits=9, memLevel=8, strategy=0)
+text100k-pieces-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28847		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0) fed in 997 byte pieces
+text100k-flushes-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	29723		zlib.compressobj level 6 with Z_SYNC_FLUSH and Z_FULL_FLUSH between thirds
+runs3m-l6-zlib	zlib	3145728	19f1a238ff020363e4ffa0c625d65c31edeada176176fdd1b71695dfdc591e79	6327		zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0)
+empty-gzip	gzip	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	20		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=0)
+empty-l0-gzip	gzip	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	23		zlib.compressobj(level=0, wbits=31, memLevel=8, strategy=0)
+onebyte-gzip	gzip	1	bbeebd879e1dff6918546dc0c179fdde505f2a21591c9a9c96e36b054ec5af83	21		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=0)
+text300-l0-gzip	gzip	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	323		zlib.compressobj(level=0, wbits=31, memLevel=8, strategy=0)
+text300-l1-gzip	gzip	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	188		zlib.compressobj(level=1, wbits=31, memLevel=8, strategy=0)
+text300-l6-gzip	gzip	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	187		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=0)
+text300-l9-gzip	gzip	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	187		zlib.compressobj(level=9, wbits=31, memLevel=8, strategy=0)
+text100k-l1-gzip	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	35298		zlib.compressobj(level=1, wbits=31, memLevel=8, strategy=0)
+text100k-l4-gzip	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	32220		zlib.compressobj(level=4, wbits=31, memLevel=8, strategy=0)
+text100k-l6-gzip	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28859		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=0)
+text100k-l9-gzip	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28652		zlib.compressobj(level=9, wbits=31, memLevel=8, strategy=0)
+text100k-l0-gzip	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	102433		zlib.compressobj(level=0, wbits=31, memLevel=8, strategy=0)
+bin150k-filtered-gzip	gzip	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	49748		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=1)
+bin150k-huffman-gzip	gzip	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	65663		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=2)
+bin150k-rle-gzip	gzip	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	68156		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=3)
+bin150k-fixed-gzip	gzip	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	58838		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=4)
+bin150k-l9-gzip	gzip	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	48242		zlib.compressobj(level=9, wbits=31, memLevel=8, strategy=0)
+runs300k-l6-gzip	gzip	307200	f695138f5fc95b251e6bab5aa18db928711601a0072147addd3a1bec3e8cbca5	701		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=0)
+runs300k-rle-gzip	gzip	307200	f695138f5fc95b251e6bab5aa18db928711601a0072147addd3a1bec3e8cbca5	690		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=3)
+period100k-l6-gzip	gzip	102400	490ab62e1ee220e00a753abd6ea5c40ef48c4d4eb820f06f192120f7915f8d0c	2498		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=0)
+period100k-fixed-gzip	gzip	102400	490ab62e1ee220e00a753abd6ea5c40ef48c4d4eb820f06f192120f7915f8d0c	2816		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=4)
+random70k-l6-gzip	gzip	71680	df878b96b867b8bae2d2928ba89877120ac534d25db4e454d0e962f7a930bc63	71723		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=0)
+far200k-l9-gzip	gzip	204800	409e70811cdc7aad03c801e74d902186f787a3f574251c802e31e465afc3c9ef	116186		zlib.compressobj(level=9, wbits=31, memLevel=8, strategy=0)
+text100k-l1-mem1-gzip	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	42027		zlib.compressobj(level=1, wbits=31, memLevel=1, strategy=0)
+text100k-l6-w9-gzip	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	42953		zlib.compressobj(level=6, wbits=25, memLevel=8, strategy=0)
+text100k-pieces-gzip	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28859		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=0) fed in 997 byte pieces
+text100k-flushes-gzip	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	29735		zlib.compressobj level 6 with Z_SYNC_FLUSH and Z_FULL_FLUSH between thirds
+runs3m-l6-gzip	gzip	3145728	19f1a238ff020363e4ffa0c625d65c31edeada176176fdd1b71695dfdc591e79	6339		zlib.compressobj(level=6, wbits=31, memLevel=8, strategy=0)
+text300-dict-zlib	zlib	300	c374c571ab6c2df782578c8d58222dc5edeaba775a8998f3dc14dd1009d666f8	118	dictionary.bin	zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0, zdict)
+text100k-dict-zlib	zlib	50000	3194b2ba27c8a51e86829a5be5f371b885a8e30f6aa15b59534148ae682ca66c	13965	dictionary.bin	zlib.compressobj(level=9, wbits=15, memLevel=8, strategy=0, zdict)
+text300-dict-raw	raw	300	c374c571ab6c2df782578c8d58222dc5edeaba775a8998f3dc14dd1009d666f8	108	dictionary.bin	zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0, zdict)
+far-dict-big-zlib	zlib	55000	f3f5c262bf692418512ec1d0d4940b42ce6b31bbad0814f7e261ccbb6b5858c7	35291	dictionary-big.bin	zlib.compressobj(level=6, wbits=15, memLevel=8, strategy=0, zdict)
+far-dict-big-raw	raw	55000	f3f5c262bf692418512ec1d0d4940b42ce6b31bbad0814f7e261ccbb6b5858c7	35281	dictionary-big.bin	zlib.compressobj(level=6, wbits=-15, memLevel=8, strategy=0, zdict)
+text100k-gzip-1	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	35274		cat input | gzip -1 -c
+text100k-gzip-9	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28652		cat input | gzip -9 -c
+bin150k-gzip-6-n	gzip	153600	ad076441d9ea2105f6d88c114ed7f70f44414e579c43d9f1d68bfcf3700f31ce	50307		cat input | gzip -6 -n -c
+empty-gzip-tool	gzip	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	20		cat input | gzip -6 -c
+text100k-pigz-6	gzip	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28859		cat input | pigz -6 -c
+bin150k-pigz-9-b32	gzip	60000	5ece217d1f69beedb149c49a4bde7e90964070ec05ea42ad9c39ea527baee3c5	19080		cat input | pigz -9 -b 32 -c
+text100k-pigz-11	gzip	30000	600a2a1d4c93d49c6328eff758a9fc7ea0629fc37b9cfb04e2e69f975be0de92	8319		cat input | pigz -11 -c
+runs300k-pigz-i	gzip	307200	f695138f5fc95b251e6bab5aa18db928711601a0072147addd3a1bec3e8cbca5	785		cat input | pigz -6 -i -c
+text100k-pigz-zlib	zlib	102400	f246532fdf7f44207200956b8e3566080d0ecfc86d07920d84b08e9b2ff70978	28847		cat input | pigz -6 -z -c
+text100k-gzip-named	gzip	5000	7ec593752173ccc9d231410f0b53298c98d26506b92473e98284fcffa8ef09bc	1782		gzip -6 -c input.txt (name and mtime stored)
+multi-3	gzip	153901	42798ada2d936cc3fb9b54aa09cd4440e3b81835558c148e6d7269c3cf6bc040	50535		four gzip members concatenated: text300-l6, empty, onebyte, bin150k
+header-all-fields	gzip	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	230		hand-assembled header: FTEXT FHCRC FEXTRA FNAME FCOMMENT
+header-extra-only	gzip	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	189		hand-assembled header: empty FEXTRA
+header-name-empty	gzip	300	64072fa480af494b1d73e0c2907148f34fa2f1fc029b9456e838235826bc52ef	189		hand-assembled header: empty FNAME and FCOMMENT
+header-fhcrc	gzip	5000	7ec593752173ccc9d231410f0b53298c98d26506b92473e98284fcffa8ef09bc	1774		hand-assembled header: FHCRC only

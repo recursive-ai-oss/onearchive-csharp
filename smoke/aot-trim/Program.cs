@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using RecursiveAI.OneArchive;
 using RecursiveAI.OneCompress;
+using RecursiveAI.OneCompress.Deflate;
 using RecursiveAI.OneCompress.Lz4;
 using RecursiveAI.OneCompress.Zstd;
 using RecursiveAI.OneCompress.Checksums;
@@ -166,6 +167,59 @@ if (!Lz4.Decompress(lz4Compressed.ToArray()).AsSpan().SequenceEqual(lz4Input)
 {
     Console.Error.WriteLine("lz4 stream or block compress failed");
     return 1;
+}
+
+// The same 300 bytes of text as raw Deflate, zlib and gzip (a dynamic-Huffman block): one-liners, the stream, and the span decoder.
+byte[] deflateRaw = Convert.FromHexString("458f418ec4300804ef79457f8d78b040434cd6c663f9f7ebcc26da2320aabb34637a47d06e8ce1dd5e08617861e44a0763672ea002a186210e2ea131711a4daeeb8add3cbd611a5cc9206be9e562cc07d0735ecb218bb3f7c04191e4c2543fe7d6e6b1bb2174315e6c410f99cc9056ae571c5e796bfcd3b92406d524fa6168fe86ddf887b70afdb9dc18e1ed79181a72773abd69e8ea791979fe9f353096e86df1fd10bac2daf2fc05");
+byte[] deflateZlib = [0x78, 0xDA, .. deflateRaw, 0xFE, 0x9B, 0x6C, 0xE0];
+byte[] deflateGzip = [0x1F, 0x8B, 8, 0, 0, 0, 0, 0, 2, 3, .. deflateRaw, 0x44, 0xA6, 0xE7, 0xEA, 0x2C, 1, 0, 0];
+foreach (byte[] decoded in new[] { Deflate.Decompress(deflateRaw), ZLib.Decompress(deflateZlib), GZip.Decompress(deflateGzip) })
+{
+    if (!decoded.AsSpan().SequenceEqual(text))
+    {
+        Console.Error.WriteLine("deflate one-liner failed");
+        return 1;
+    }
+}
+
+using (var inflate = new DeflateCodecStream(new MemoryStream(deflateGzip), DeflateFormat.GZip))
+{
+    var inflated = new MemoryStream();
+    inflate.CopyTo(inflated);
+    if (!inflated.ToArray().AsSpan().SequenceEqual(text))
+    {
+        Console.Error.WriteLine("deflate stream failed");
+        return 1;
+    }
+}
+
+var inflater = new DeflateDecoder(DeflateFormat.ZLib);
+byte[] inflateBuffer = new byte[64];
+var inflateResult = new MemoryStream();
+for (int i = 0; ;)
+{
+    var status = inflater.Decompress(deflateZlib.AsSpan(i, Math.Min(7, deflateZlib.Length - i)), inflateBuffer, out int used, out int made);
+    i += used;
+    inflateResult.Write(inflateBuffer, 0, made);
+    if (status == System.Buffers.OperationStatus.Done)
+    {
+        break;
+    }
+}
+
+if (!inflateResult.ToArray().AsSpan().SequenceEqual(text))
+{
+    Console.Error.WriteLine("deflate decoder failed");
+    return 1;
+}
+
+try
+{
+    GZip.Decompress(deflateGzip.AsSpan(0, 40));
+    return 1;
+}
+catch (CompressionFormatException e) when (e.IsTruncated)
+{
 }
 
 // One checksum from each family, so the trimmer keeps (and analyses) the vector paths.

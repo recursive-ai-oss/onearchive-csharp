@@ -13,7 +13,8 @@ root="$here/.."
 out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
-         zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block; do
+         zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
+         deflate-decode zlib-decode gzip-decode; do
   mkdir -p "$out/$t"
 done
 
@@ -58,6 +59,28 @@ if command -v lz4 >/dev/null; then
     for l in 1 4 9 12; do lz4 -q -$l -c "$p" > "$out/lz4-decode/ref-$(basename "$p")-$l" || true; done
   done
   lz4 -q -9 -BD -B5 --content-size -c "$payloads/text3" > "$out/lz4-decode/ref-blockdep"
+fi
+
+# Deflate, zlib and gzip: the vectors, then the reference tools' own output (gzip, pigz) over the payloads. The first byte of each
+# seed is the option byte of the target (0: verify checksums, no dictionary).
+for f in $(small "$root"/testdata/deflate/vectors/*); do
+  b=$(basename "$f"); opt='\x00'
+  case "$b" in *dict*) opt='\x02' ;; esac
+  case "$b" in
+    *.deflate) { printf "$opt"; cat "$f"; } > "$out/deflate-decode/$b" ;;
+    *.zz) { printf "$opt"; cat "$f"; } > "$out/zlib-decode/$b" ;;
+    *.gz) { printf "$opt"; cat "$f"; } > "$out/gzip-decode/$b" ;;
+  esac
+done
+for tool in gzip pigz; do
+  if command -v $tool >/dev/null; then
+    for p in "$payloads"/*; do
+      for l in 1 6 9; do { printf '\x00'; $tool -q -$l -c "$p"; } > "$out/gzip-decode/ref-$tool-$(basename "$p")-$l" || true; done
+    done
+  fi
+done
+if command -v pigz >/dev/null; then
+  for p in "$payloads"/*; do { printf '\x00'; pigz -q -z -6 -c "$p"; } > "$out/zlib-decode/ref-pigz-$(basename "$p")" || true; done
 fi
 
 # Round-trip targets: option bytes followed by a payload (see the target sources for what the bytes mean).
