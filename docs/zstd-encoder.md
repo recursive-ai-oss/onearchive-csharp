@@ -251,6 +251,8 @@ allows 32 parts per 128 KiB.
   description) is below both the raw size and the cost of the previous tree. A new FSE table is tried only when the block has at least 64
   sequences and the entropy of its codes plus 16 bits is below the cost of the best of repeat and predefined; with neither available a
   table is always built. The estimates are integers; they decide bytes, so they are part of the format of our output.
+  At the fast and double-fast strategies, a block whose previous tree can code its literals (the dictionary's, or the last block's)
+  tries a new tree only from 128 literals; below that the saving never repaid the description in the measurements behind this rule.
 - **Sequences section:** for each of literal lengths, offsets and match lengths the cheapest of RLE (one symbol), repeat (the
   previous table from the frame or the dictionary), predefined and a new FSE table is chosen. Cost is in 1/256 bit, integer:
   blocks with at most 1,500 sequences price each choice by running the encoder's state machine over the symbols (the table
@@ -303,6 +305,13 @@ and the repeat offsets start the frame's carried state, so the first block can u
 A dictionary builds search tables over its content for each set of match-finder parameters it is used with (level, size class and
 window change them). It keeps at most 128 MiB of such tables; the least recently used sets are dropped and rebuilt on demand, which
 costs time but never changes the output. A long-lived dictionary used at many settings therefore stays bounded in memory.
+
+The fast and double-fast strategies search a dictionary through its index (every content position, the latest of each hash). For
+content under 16 MiB each index entry holds the position in its low 24 bits and, in its top 8 bits, a tag: the top byte of
+`bytes * 0x9E3779B1` (32-bit, wrapping) for the four bytes at that position. A search compares the tag of the four bytes at the
+current position before it reads the dictionary content, so a slot that holds other bytes costs no second memory access. A tag
+is a function of the four bytes a match must share, so it never rejects a match the untagged search would take: the output is the
+same with or without it. Content of 16 MiB and more has untagged entries.
 
 ## Windows
 
