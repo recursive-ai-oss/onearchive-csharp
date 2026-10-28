@@ -1,0 +1,29 @@
+using RecursiveAI.OneCompress.Lz4;
+using RecursiveAI.OneCompress.Zstd;
+
+namespace RecursiveAI.OneArchive.Internal;
+
+/// <summary>
+/// The one place that maps a compression layer to a codec. A new codec (gzip once inflate lands, then bzip2 and xz)
+/// is added to the two switches here and nowhere else.
+/// </summary>
+internal static class CompressionFilters
+{
+    public static Stream OpenDecompress(ArchiveCompression compression, Stream source, ArchiveLimits limits) => compression switch
+    {
+        // MaxOutputSize is unbounded here: the archive reader bounds what it takes (total size, expansion ratio).
+        ArchiveCompression.Zstd => new ZstdStream(source, new ZstdDecompressionOptions { MaxWindowSize = limits.MaxWindowSize, MaxOutputSize = long.MaxValue }),
+        ArchiveCompression.Lz4 => new Lz4Stream(source, new Lz4DecompressionOptions { MaxOutputSize = long.MaxValue }),
+        _ => throw Unsupported(compression),
+    };
+
+    public static Stream OpenCompress(ArchiveCompression compression, Stream sink, int? level, bool leaveOpen) => compression switch
+    {
+        ArchiveCompression.Zstd => new ZstdStream(sink, new ZstdCompressionOptions { Level = level ?? 3, Checksum = true }, leaveOpen),
+        ArchiveCompression.Lz4 => new Lz4Stream(sink, new Lz4CompressionOptions { Level = level ?? Lz4CompressionOptions.DefaultLevel }, leaveOpen),
+        _ => throw Unsupported(compression),
+    };
+
+    private static ArchiveUnsupportedException Unsupported(ArchiveCompression compression) =>
+        new("archive", $"{compression} compression (not yet available; use zstd or lz4)");
+}

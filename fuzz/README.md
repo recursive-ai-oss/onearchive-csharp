@@ -43,3 +43,10 @@ fix the cause, and add the minimized input (under 1 MB) with a regression test t
 
 A target added as one line in `FuzzTargets.All` is picked up by both drivers, the seed directory
 `seeds/<target>` is optional (a one-byte seed is used when absent), and `make-seeds.sh` is where its seeds go.
+
+## Archive targets
+
+`tar-read` (the tar reader on a seekable and a forward-only stream, which must agree), `archive-open` (detection, `Archive.Open`,
+listing, random access and extraction into a scratch directory, then a check that nothing was created outside it) and
+`tar-roundtrip` (entries built from the input are written and read back). Seeds come from `seeds-tar.sh`: GNU tar and bsdtar
+archives over a tree with long names, links and sparse files, and the hostile set from `testdata/tar/make-hostile.py`.

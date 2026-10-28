@@ -34,18 +34,20 @@ for example one directory per git worktree.
 
 Zstandard and LZ4 are preview while their speed is below the reference tools'. Their compression ratio and
 byte-identical output are already at the target; speed is what is still being tuned. The Deflate, zlib and gzip
-decoder is preview until it has been measured against the reference tools; its encoder is not written yet. Their public types
-carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
+decoder is preview until it has been measured against the reference tools; its encoder is not written yet.
+The archive layer (`Archive`, the tar reader and writer) is preview while the containers are being added and the
+formats' interop and fuzz coverage grows. Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
 
 | Codec | Diagnostic ID |
 |---|---|
 | Zstandard (including dictionary training and the seekable format) | `ONECOMPRESS001` |
 | LZ4 | `ONECOMPRESS002` |
 | Deflate, zlib and gzip (decoder) | `ONECOMPRESS003` |
+| OneArchive: `Archive`, the entry model, readers and writers, tar | `ONEARCHIVE001` |
 
 ```xml
 <PropertyGroup>
-  <NoWarn>$(NoWarn);ONECOMPRESS001</NoWarn>
+  <NoWarn>$(NoWarn);ONECOMPRESS001;ONEARCHIVE001</NoWarn>
 </PropertyGroup>
 ```
 
@@ -76,6 +78,17 @@ x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0
 
 Output is byte-identical across x64 and arm64, the JIT and NativeAOT, with and without hardware
 intrinsics, at any thread count, and in the browser (WebAssembly).
+
+## Archives
+
+```csharp
+Archive.Extract("data.tar.zst", "out");                         // safe by default: no writes outside "out", limits on
+Archive.Create("backup.tar.zst").Add("assets/").Save();          // format and compression from the extension
+using var archive = Archive.Open("data.tar");                  // entries, random access when the source can seek
+```
+
+tar (ustar, pax, GNU, sparse files) is implemented, plain and as `.tar.zst`/`.tar.lz4`; the other containers plug into the same
+reader and writer interfaces. The model, the safety defaults and limits, and the tar coverage are in `docs/archive.md`.
 
 ## Layout
 
