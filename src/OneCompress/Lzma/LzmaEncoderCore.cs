@@ -61,8 +61,9 @@ public sealed partial class LzmaEncoderCore
     /// <summary>Creates an encoder.</summary>
     /// <param name="settings">The resolved settings (see <see cref="LzmaOptions.Resolve"/>).</param>
     /// <param name="sizeHint">The expected total input size when it is known, or -1. It only sizes memory: the window and the match finder never exceed what the input can use, and the output does not depend on it.</param>
+    /// <param name="unitSize">When the stream is cut into independent units (xz blocks, lzip members) of at most this many bytes, the unit size, otherwise 0. No match can reach across units, so a dictionary larger than a unit is not used and the tables are sized for the unit.</param>
     /// <exception cref="ArgumentOutOfRangeException">The settings were not produced by <see cref="LzmaOptions.Resolve"/>.</exception>
-    public LzmaEncoderCore(LzmaEncoderSettings settings, long sizeHint = -1)
+    public LzmaEncoderCore(LzmaEncoderSettings settings, long sizeHint = -1, long unitSize = 0)
     {
         if (settings.DictionarySize < LzmaProperties.MinimumDictionarySize || settings.Depth < 1)
         {
@@ -74,6 +75,12 @@ public sealed partial class LzmaEncoderCore
         _lpMask = (1 << settings.Lp) - 1;
         _pbMask = (1 << settings.Pb) - 1;
         long dict = settings.DictionarySize;
+        if (unitSize > 0)
+        {
+            dict = Math.Min(dict, Math.Max(unitSize, LzmaProperties.MinimumDictionarySize));
+        }
+
+        int hashDictionary = (int)dict;
         if (sizeHint >= 0)
         {
             // A dictionary larger than the whole input can't be used; the stream header still declares the requested size.
@@ -93,11 +100,11 @@ public sealed partial class LzmaEncoderCore
         int nice = settings.NiceLength;
         _finder = settings.MatchFinder switch
         {
-            LzmaMatchFinderKind.HashChain3 => new LzmaHashChainMatchFinder(3, _windowDictionary, nice, settings.Depth),
-            LzmaMatchFinderKind.HashChain4 => new LzmaHashChainMatchFinder(4, _windowDictionary, nice, settings.Depth),
-            LzmaMatchFinderKind.BinaryTree2 => new LzmaBinaryTreeMatchFinder(2, _windowDictionary, nice, settings.Depth),
-            LzmaMatchFinderKind.BinaryTree3 => new LzmaBinaryTreeMatchFinder(3, _windowDictionary, nice, settings.Depth),
-            _ => new LzmaBinaryTreeMatchFinder(4, _windowDictionary, nice, settings.Depth),
+            LzmaMatchFinderKind.HashChain3 => new LzmaHashChainMatchFinder(3, _windowDictionary, nice, settings.Depth, hashDictionary),
+            LzmaMatchFinderKind.HashChain4 => new LzmaHashChainMatchFinder(4, _windowDictionary, nice, settings.Depth, hashDictionary),
+            LzmaMatchFinderKind.BinaryTree2 => new LzmaBinaryTreeMatchFinder(2, _windowDictionary, nice, settings.Depth, hashDictionary),
+            LzmaMatchFinderKind.BinaryTree3 => new LzmaBinaryTreeMatchFinder(3, _windowDictionary, nice, settings.Depth, hashDictionary),
+            _ => new LzmaBinaryTreeMatchFinder(4, _windowDictionary, nice, settings.Depth, hashDictionary),
         };
         _probs = new ushort[LzmaModel.ProbabilityCount(settings.Lc, settings.Lp)];
         InitializeNormalParser();

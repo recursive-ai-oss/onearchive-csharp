@@ -51,7 +51,7 @@ public abstract class LzmaMatchFinder
     private protected readonly int[] _main;
     private protected int _cyclicPos;
 
-    private protected LzmaMatchFinder(int hashBytes, int dictionarySize, int niceLength, int depth)
+    private protected LzmaMatchFinder(int hashBytes, int dictionarySize, int niceLength, int depth, int hashDictionarySize)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(dictionarySize, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(niceLength, 2);
@@ -74,7 +74,9 @@ public abstract class LzmaMatchFinder
         }
         else
         {
-            int bits = 32 - BitOperations.LeadingZeroCount((uint)Math.Max(dictionarySize - 1, 1));
+            // The hash size follows the dictionary size the options ask for, not the window actually used, so the candidates (and
+            // therefore the output) never depend on how much input the caller announced.
+            int bits = 32 - BitOperations.LeadingZeroCount((uint)Math.Max((hashDictionarySize > 0 ? hashDictionarySize : dictionarySize) - 1, 1));
             _mainBits = Math.Clamp(bits, 16, 24);
             _main = new int[1 << _mainBits];
         }

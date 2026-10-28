@@ -18,9 +18,10 @@ public sealed class LzmaHashChainMatchFinder : LzmaMatchFinder
     /// <param name="dictionarySize">The largest match distance.</param>
     /// <param name="niceLength">The length at which a search stops, 2 to 273.</param>
     /// <param name="depth">The most chain steps per position, at least 1.</param>
+    /// <param name="hashDictionarySize">The dictionary size that sizes the hash tables when it differs from <paramref name="dictionarySize"/> (a window cut down for a short input keeps the tables of the full dictionary, so the matches found do not depend on the input length); 0 for <paramref name="dictionarySize"/>.</param>
     /// <exception cref="ArgumentOutOfRangeException">An argument is out of range.</exception>
-    public LzmaHashChainMatchFinder(int hashBytes, int dictionarySize, int niceLength, int depth)
-        : base(CheckHashBytes(hashBytes), dictionarySize, niceLength, depth)
+    public LzmaHashChainMatchFinder(int hashBytes, int dictionarySize, int niceLength, int depth, int hashDictionarySize = 0)
+        : base(CheckHashBytes(hashBytes), dictionarySize, niceLength, depth, hashDictionarySize)
     {
         _chain = new int[_cyclicSize];
     }

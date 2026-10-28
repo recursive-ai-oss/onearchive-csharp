@@ -36,15 +36,16 @@ public sealed class Lzma2Chunker
     /// <summary>Creates a chunker.</summary>
     /// <param name="settings">The resolved settings. <c>Lc + Lp</c> must be at most 4, as LZMA2 requires.</param>
     /// <param name="sizeHint">The expected input size when known, or -1; it only sizes memory.</param>
+    /// <param name="unitSize">The size of the independent units the stream is cut into by the caller (xz blocks), or 0; see <see cref="LzmaEncoderCore"/>.</param>
     /// <exception cref="ArgumentOutOfRangeException"><c>Lc + Lp</c> is above 4, or the settings are not resolved.</exception>
-    public Lzma2Chunker(LzmaEncoderSettings settings, long sizeHint = -1)
+    public Lzma2Chunker(LzmaEncoderSettings settings, long sizeHint = -1, long unitSize = 0)
     {
         if (settings.Lc + settings.Lp > 4)
         {
             throw new ArgumentOutOfRangeException(nameof(settings), "LZMA2 requires lc + lp to be at most 4.");
         }
 
-        _core = new LzmaEncoderCore(settings, sizeHint);
+        _core = new LzmaEncoderCore(settings, sizeHint, unitSize);
         DictionaryProperty = GetDictionaryProperty(settings.DictionarySize);
     }
 

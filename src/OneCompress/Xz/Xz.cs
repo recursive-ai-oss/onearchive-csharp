@@ -5,7 +5,7 @@ namespace RecursiveAI.OneCompress.Xz;
 
 /// <summary>One-call decompression of <c>.xz</c> data. Everything here is built on <see cref="XzDecoder"/>. A buffer may hold several streams, with padding between them; their outputs are joined.</summary>
 [Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
-public static class Xz
+public static partial class Xz
 {
     /// <summary>Decompresses a buffer holding one or more xz streams.</summary>
     /// <param name="source">The compressed data.</param>
