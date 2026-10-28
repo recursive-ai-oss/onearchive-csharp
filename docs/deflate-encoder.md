@@ -38,8 +38,8 @@ the mapping is by number.
 | 5 | lazy | 3 bytes, 15 bits | 12 | 48 | 24 | | 12 | |
 | 6 | lazy | 3 bytes, 15 bits | 20 | 64 | 64 | | 16 | |
 | 7 | lazy | 3 bytes, 15 bits | 48 | 100 | 100 | | 16 | |
-| 8 | lazy | 3 bytes, 15 bits | 128 | 160 | 200 | | 16 | |
-| 9 | lazy | 3 bytes, 15 bits | 512 | 258 | 258 | | 16 | |
+| 8 | lazy, look-ahead 2 | 3 bytes, 15 bits | 128 | 160 | 200 | | 16 | |
+| 9 | lazy, look-ahead 2 | 3 bytes, 15 bits | 512 | 258 | 258 | | 16 | |
 | 10 | optimal, binary tree | 4 bytes 16 bits + 3 bytes 16 bits | 24 | 64 | | | | 1 |
 | 11 | optimal | as 10 | 64 | 128 | | | | 2 |
 | 12 | optimal | as 10 | 256 | 258 | | | | 3 |
@@ -61,8 +61,14 @@ the mapping is by number.
 - Levels 2 and 3 are greedy: take the match found at a position, then insert the positions inside it into the finder: all of
   them when the match is at most `MaxLazy` long, otherwise only its last `Tail` positions. Level 1 does the same.
   Levels 2 to 9 also keep a table of the latest position per 3-byte hash (15 bits), consulted when no match was found yet.
-- Lazy (4 to 9): after finding a match shorter than `MaxLazy`, look at the next position; if its match is strictly longer, emit
-  one literal and carry the longer match forward. Repeat. Positions inside a taken match are inserted.
+- Lazy (4 to 9): after finding a match shorter than `MaxLazy`, look at the next position. Matches are compared by a score,
+  `4 * length - bsr(distance)` (`bsr` = index of the highest set bit; a nearer match costs fewer bits). The next position's match
+  replaces the current one when its length is at least the current length and its score is higher by more than 1: one literal is
+  emitted and the longer or nearer match is carried forward. A match of length 3 farther than 8192 is never taken (levels 2 and 3
+  keep 4096). Repeat. Positions inside a taken match are inserted. Levels 8 and 9 also look two positions ahead when the next
+  position did not replace the match: a match there that is longer and scores higher by more than 4 replaces it, with two literals
+  emitted. The search at the next position asks for a match as long as the current one (`length - 1` is the length to beat) so
+  that an equal-length nearer match is found.
 - Binary tree finder (10 to 12): a binary tree per 4-byte hash plus a 16-bit 3-byte table; the search follows the tree for at
   most `Chain` nodes, returning every candidate that is longer than the previous one (so lengths ascend and distances ascend).
 - A position with fewer than `Nice` bytes of input after it is searched but not inserted into the binary tree: its comparisons are cut

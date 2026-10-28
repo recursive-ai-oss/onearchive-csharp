@@ -135,23 +135,29 @@ public sealed class DeflateHashChainMatchFinder
         _nice = nice;
     }
 
-    // As FindLongestUnchecked, over the bound window: the longest match at position beyond best, or best.
+    // As FindLongestUnchecked, over the bound window: the longest match at position beyond best, or best. The tables are copied to
+    // locals first: the stores below go through references, which the compiler must assume could change any field, so a field would
+    // be loaded again (with its null check) after every store and on every turn of the candidate loop.
     internal int Find(int position, int best, int depth, out int distance)
     {
         byte[] data = _data;
+        int[] head = _head;
+        ushort[] previous = _previous;
         int maxLength = Math.Min(DeflateTables.MaxMatchLength, _end - position);
         uint value = DeflateEncRaw.Read32(data, position);
         int hash = (int)((value * 2654435761u) >> _shift);
-        int candidate = DeflateEncRaw.Get(_head, hash);
-        DeflateEncRaw.Set(_head, hash, position);
-        DeflateEncRaw.SetLink(_previous, position & WindowMask, (uint)(position - candidate) <= WindowMask + 1 ? (ushort)(position - candidate) : (ushort)0);
+        int candidate = DeflateEncRaw.Get(head, hash);
+        DeflateEncRaw.Set(head, hash, position);
+        DeflateEncRaw.SetLink(previous, position & WindowMask, (uint)(position - candidate) <= WindowMask + 1 ? (ushort)(position - candidate) : (ushort)0);
         distance = 0;
         int limit = Math.Max(_oldest, position - DeflateTables.WindowSize);
-        if (_shortHead is not null)
+        int nice = _nice;
+        int[]? shortHead = _shortHead;
+        if (shortHead is not null)
         {
             int shortHash = (int)(((value & 0xFFFFFF) * 2654435761u) >> (32 - ShortHashBits));
-            int shortCandidate = DeflateEncRaw.Get(_shortHead, shortHash);
-            DeflateEncRaw.Set(_shortHead, shortHash, position);
+            int shortCandidate = DeflateEncRaw.Get(shortHead, shortHash);
+            DeflateEncRaw.Set(shortHead, shortHash, position);
             if (best < DeflateTables.MinMatchLength && shortCandidate >= limit)
             {
                 int length = DeflateEncRaw.MatchLength(data, shortCandidate, position, maxLength);
@@ -168,7 +174,6 @@ public sealed class DeflateHashChainMatchFinder
             return best;
         }
 
-        int nice = _nice;
         while (candidate >= limit)
         {
             int offset = best > 3 ? best - 3 : 0;
@@ -191,7 +196,7 @@ public sealed class DeflateHashChainMatchFinder
                 break;
             }
 
-            int step = DeflateEncRaw.GetLink(_previous, candidate & WindowMask);
+            int step = DeflateEncRaw.GetLink(previous, candidate & WindowMask);
             if (step == 0)
             {
                 break;
@@ -232,12 +237,13 @@ public sealed class DeflateHashChainMatchFinder
     // no links are stored. Returns 0 when neither matches for at least 4 bytes.
     internal int FindFirstUnchecked(ReadOnlySpan<byte> data, int position, int maxLength, int oldestPosition, out int distance)
     {
+        int[] table = _head;
         uint value = DeflateEncRaw.Read32(data, position);
         int bucket = (int)((value * 2654435761u) >> _shift) & ~1;
-        int first = DeflateEncRaw.Get(_head, bucket);
-        int second = DeflateEncRaw.Get(_head, bucket + 1);
-        DeflateEncRaw.Set(_head, bucket + 1, first);
-        DeflateEncRaw.Set(_head, bucket, position);
+        int first = DeflateEncRaw.Get(table, bucket);
+        int second = DeflateEncRaw.Get(table, bucket + 1);
+        DeflateEncRaw.Set(table, bucket + 1, first);
+        DeflateEncRaw.Set(table, bucket, position);
         distance = 0;
         int limit = Math.Max(oldestPosition, position - DeflateTables.WindowSize);
         int best = 0;
@@ -262,6 +268,19 @@ public sealed class DeflateHashChainMatchFinder
         }
 
         return best;
+    }
+
+    // Positions first..last-1 of the data, entered as InsertFirstUnchecked would one at a time, with the table in a local.
+    internal void InsertFirstRange(byte[] data, int first, int last)
+    {
+        int[] table = _head;
+        int shift = _shift;
+        for (int position = first; position < last; position++)
+        {
+            int bucket = (int)((DeflateEncRaw.Read32(data, position) * 2654435761u) >> shift) & ~1;
+            DeflateEncRaw.Set(table, bucket + 1, DeflateEncRaw.Get(table, bucket));
+            DeflateEncRaw.Set(table, bucket, position);
+        }
     }
 
     internal void InsertFirstUnchecked(ReadOnlySpan<byte> data, int position)
