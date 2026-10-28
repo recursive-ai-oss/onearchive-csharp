@@ -33,5 +33,8 @@ internal static class FuzzTargets
         Lz4EncoderTargets.Block,
         ZstdSeekableTargets.Read,
         ZstdSeekableTargets.RoundTrip,
+        DeflateTargets.Raw,
+        DeflateTargets.ZLib,
+        DeflateTargets.GZip,
     ];
 }

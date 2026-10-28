@@ -25,13 +25,15 @@ for example one directory per git worktree.
 ## Preview codecs
 
 Zstandard and LZ4 are preview while their speed is below the reference tools'. Their compression ratio and
-byte-identical output are already at the target; speed is what is still being tuned. Their public types
+byte-identical output are already at the target; speed is what is still being tuned. The Deflate, zlib and gzip
+decoder is preview until it has been measured against the reference tools; its encoder is not written yet. Their public types
 carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
 
 | Codec | Diagnostic ID |
 |---|---|
 | Zstandard (including dictionary training and the seekable format) | `ONECOMPRESS001` |
 | LZ4 | `ONECOMPRESS002` |
+| Deflate, zlib and gzip (decoder) | `ONECOMPRESS003` |
 
 ```xml
 <PropertyGroup>

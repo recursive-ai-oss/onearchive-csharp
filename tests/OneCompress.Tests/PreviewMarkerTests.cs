@@ -3,12 +3,13 @@ using System.Reflection;
 
 namespace RecursiveAI.OneCompress.Tests;
 
-/// <summary>Every public zstd and LZ4 type carries the preview marker with its codec's diagnostic ID.</summary>
+/// <summary>Every public zstd, LZ4 and Deflate type carries the preview marker with its codec's diagnostic ID.</summary>
 public class PreviewMarkerTests
 {
     [Theory]
     [InlineData("RecursiveAI.OneCompress.Zstd", "ONECOMPRESS001")]
     [InlineData("RecursiveAI.OneCompress.Lz4", "ONECOMPRESS002")]
+    [InlineData("RecursiveAI.OneCompress.Deflate", "ONECOMPRESS003")]
     public void EveryPublicTypeIsExperimental(string ns, string id)
     {
         var assembly = typeof(OneCompressInfo).Assembly;
@@ -34,7 +35,8 @@ public class PreviewMarkerTests
         {
             if (!type.IsPublic) continue;
             if (type.Namespace is { } ns && (ns.EndsWith(".Zstd", StringComparison.Ordinal) || ns.Contains(".Zstd.", StringComparison.Ordinal)
-                || ns.EndsWith(".Lz4", StringComparison.Ordinal) || ns.Contains(".Lz4.", StringComparison.Ordinal))) continue;
+                || ns.EndsWith(".Lz4", StringComparison.Ordinal) || ns.Contains(".Lz4.", StringComparison.Ordinal)
+                || ns.EndsWith(".Deflate", StringComparison.Ordinal) || ns.Contains(".Deflate.", StringComparison.Ordinal))) continue;
             Assert.Null(type.GetCustomAttribute<ExperimentalAttribute>());
         }
     }
