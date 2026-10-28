@@ -212,7 +212,7 @@ RFC_LINES = None
 
 def main():
     global RFC_LINES
-    rfc = os.environ.get("RFC7932", "/x/alera/scratch/onearchive/csharp/cache/specs/rfc7932.txt")
+    rfc = os.environ.get("RFC7932")  # path to rfc7932.txt; fetched from the pinned URL when unset
     RFC_LINES = tables.load_rfc(rfc)
     os.makedirs(OUT, exist_ok=True)
     rows = []
