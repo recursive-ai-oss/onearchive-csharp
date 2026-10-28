@@ -6,7 +6,8 @@ namespace RecursiveAI.OneCompress.Tests.Checksums;
 
 /// <summary>
 /// Cross-checks against the checksums that reference command-line tools write into their own output. The tools are
-/// run as black boxes; a missing tool fails the test loudly.
+/// run as black boxes. A missing tool skips the test, unless ONEARCHIVE_INTEROP=1 asks for interop, in which case it
+/// fails loudly.
 /// </summary>
 [Trait("Category", "Interop")]
 public class ToolOracleTests
@@ -24,7 +25,18 @@ public class ToolOracleTests
             psi.ArgumentList.Add(a);
         }
 
-        using Process p = Process.Start(psi) ?? throw new InvalidOperationException($"cannot start {tool}");
+        Process? started;
+        try
+        {
+            started = Process.Start(psi);
+        }
+        catch (System.ComponentModel.Win32Exception) when (Environment.GetEnvironmentVariable("ONEARCHIVE_INTEROP") != "1")
+        {
+            Assert.Skip($"{tool} is not installed; set ONEARCHIVE_INTEROP=1 to require it");
+            throw;
+        }
+
+        using Process p = started ?? throw new InvalidOperationException($"cannot start {tool}");
         var output = new MemoryStream();
         Task copy = p.StandardOutput.BaseStream.CopyToAsync(output);
         Task err = p.StandardError.ReadToEndAsync();

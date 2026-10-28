@@ -1,0 +1,5 @@
+# Test vectors, dictionaries and reference outputs are compared byte for byte, so git must never
+# convert their line endings (it would on Windows checkouts with core.autocrlf).
+testdata/** -text
+# Shell scripts run under bash on every platform.
+*.sh text eol=lf
