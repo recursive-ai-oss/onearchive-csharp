@@ -67,6 +67,18 @@ public static class ArchiveDetector
             return ArchiveFormat.SevenZip;
         }
 
+        // ar(5): "!<arch>\n"; a thin archive ("!<thin>\n") is recognised so that the reader can say it is unsupported.
+        if (prefix.StartsWith("!<arch>\n"u8) || prefix.StartsWith("!<thin>\n"u8))
+        {
+            return ArchiveFormat.Ar;
+        }
+
+        // GNU cpio manual and POSIX cpio: the six-digit ASCII magic of the newc, crc and odc headers.
+        if (prefix.StartsWith("070701"u8) || prefix.StartsWith("070702"u8) || prefix.StartsWith("070707"u8))
+        {
+            return ArchiveFormat.Cpio;
+        }
+
         if (prefix.Length >= TarHeader.BlockSize && LooksLikeTar(prefix[..TarHeader.BlockSize]))
         {
             return ArchiveFormat.Tar;
@@ -128,6 +140,19 @@ public static class ArchiveDetector
             return (ArchiveFormat.Zip, ArchiveCompression.None);
         }
 
+        if (name.EndsWith(".a", StringComparison.Ordinal) || name.EndsWith(".ar", StringComparison.Ordinal) || name.EndsWith(".deb", StringComparison.Ordinal) || name.EndsWith(".udeb", StringComparison.Ordinal))
+        {
+            return (ArchiveFormat.Ar, ArchiveCompression.None);
+        }
+
+        foreach ((string suffix, ArchiveCompression c) in s_cpioSuffixes)
+        {
+            if (name.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                return (ArchiveFormat.Cpio, c);
+            }
+        }
+
         foreach ((string suffix, ArchiveCompression c) in s_tarSuffixes)
         {
             if (name.EndsWith(suffix, StringComparison.Ordinal))
@@ -146,6 +171,16 @@ public static class ArchiveDetector
 
         return (ArchiveFormat.Unknown, ArchiveCompression.None);
     }
+
+    private static readonly (string, ArchiveCompression)[] s_cpioSuffixes =
+    [
+        (".cpio", ArchiveCompression.None),
+        (".cpio.zst", ArchiveCompression.Zstd), (".cpio.zstd", ArchiveCompression.Zstd),
+        (".cpio.lz4", ArchiveCompression.Lz4),
+        (".cpio.gz", ArchiveCompression.Gzip),
+        (".cpio.bz2", ArchiveCompression.Bzip2),
+        (".cpio.xz", ArchiveCompression.Xz),
+    ];
 
     private static readonly (string, ArchiveCompression)[] s_tarSuffixes =
     [

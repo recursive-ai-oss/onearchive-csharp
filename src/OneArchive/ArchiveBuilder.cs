@@ -1,6 +1,8 @@
 using RecursiveAI.OneCompress.Deflate;
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
+using RecursiveAI.OneArchive.Ar;
+using RecursiveAI.OneArchive.Cpio;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Zip;
 
@@ -67,7 +69,7 @@ public sealed class ArchiveBuilder
             }
             else if (path is not null)
             {
-                throw new ArgumentException($"The extension of '{Path.GetFileName(path)}' names no archive format that can be written; use .tar, .tar.zst, .tar.lz4, .zip, .zst or .lz4, or set ArchiveCreateOptions.Format.", nameof(path));
+                throw new ArgumentException($"The extension of '{Path.GetFileName(path)}' names no archive format that can be written; use .tar, .tar.zst, .tar.lz4, .zip, .cpio, .a, .zst or .lz4, or set ArchiveCreateOptions.Format.", nameof(path));
             }
             else
             {
@@ -75,7 +77,7 @@ public sealed class ArchiveBuilder
             }
         }
 
-        if (format is not (ArchiveFormat.Tar or ArchiveFormat.Zip or ArchiveFormat.SingleStream))
+        if (format is not (ArchiveFormat.Tar or ArchiveFormat.Zip or ArchiveFormat.SingleStream or ArchiveFormat.Cpio or ArchiveFormat.Ar))
         {
             throw new ArchiveUnsupportedException("archive", $"writing the {format} format");
         }
@@ -328,6 +330,8 @@ public sealed class ArchiveBuilder
                 ArchiveFormat.Zip => new ZipWriter(sink, ZipOptions(), leaveOpen: leaveSink),
                 ArchiveFormat.SingleStream when lazyGzip => new SingleStreamWriter(e => OpenGzip(sink, e, leaveSink)),
                 ArchiveFormat.SingleStream => new SingleStreamWriter(top),
+                ArchiveFormat.Cpio => new CpioWriter(top, _options.Cpio, leaveOpen: top == sink && leaveSink),
+                ArchiveFormat.Ar => new ArWriter(top, _options.Ar, leaveOpen: top == sink && leaveSink),
                 _ => new TarWriter(top, _options.Tar, leaveOpen: top == sink && leaveSink),
             };
             try
@@ -335,6 +339,12 @@ public sealed class ArchiveBuilder
                 foreach (Item item in Ordered())
                 {
                     ct.ThrowIfCancellationRequested();
+                    if (_format == ArchiveFormat.Ar && item.Entry.Kind == ArchiveEntryKind.Directory)
+                    {
+                        // ar has no directories; the names of the files under it carry the path.
+                        continue;
+                    }
+
                     await WriteItemAsync(writer, item, async, ct).ConfigureAwait(false);
                 }
 

@@ -20,6 +20,12 @@ public enum ArchiveFormat
 
     /// <summary>7z (see <c>RecursiveAI.OneArchive.SevenZip</c>): read only for now.</summary>
     SevenZip = 4,
+
+    /// <summary>cpio (see <c>RecursiveAI.OneArchive.Cpio</c>): newc, crc and odc, read and write.</summary>
+    Cpio = 5,
+
+    /// <summary>ar (see <c>RecursiveAI.OneArchive.Ar</c>): common, GNU and BSD variants, read and write; also <c>.deb</c> packages.</summary>
+    Ar = 6,
 }
 
 /// <summary>A compression layer wrapped around a whole archive, as in <c>.tar.zst</c>.</summary>
