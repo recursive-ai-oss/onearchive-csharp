@@ -355,37 +355,38 @@ public sealed partial class DeflateEncoder
             + (o.GZipFileName is null ? 0 : o.GZipFileName.Length + 1)
             + (o.GZipComment is null ? 0 : o.GZipComment.Length + 1)
             + (o.GZipHeaderCrc ? 2 : 0);
-        byte[] header = new byte[size];
+        // Usually small; only a long name, comment or extra field needs a heap buffer, so a reused encoder does not allocate.
+        Span<byte> header = size <= 256 ? stackalloc byte[256].Slice(0, size) : new byte[size];
         header[0] = 0x1F;
         header[1] = 0x8B;
         header[2] = 8;
         header[3] = (byte)((o.GZipIsText ? 1 : 0) | (o.GZipHeaderCrc ? 2 : 0) | (o.GZipExtra.IsEmpty ? 0 : 4)
             | (o.GZipFileName is null ? 0 : 8) | (o.GZipComment is null ? 0 : 16));
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(4), o.GZipModificationTime);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(header.Slice(4), o.GZipModificationTime);
         header[8] = (byte)(o.Level >= 9 ? 2 : o.Level == 1 ? 4 : 0);
         header[9] = o.GZipOperatingSystem;
         int p = 10;
         if (!o.GZipExtra.IsEmpty)
         {
-            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(p), (ushort)o.GZipExtra.Length);
-            o.GZipExtra.Span.CopyTo(header.AsSpan(p + 2));
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(header.Slice(p), (ushort)o.GZipExtra.Length);
+            o.GZipExtra.Span.CopyTo(header.Slice(p + 2));
             p += 2 + o.GZipExtra.Length;
         }
 
         if (o.GZipFileName is not null)
         {
-            p += System.Text.Encoding.Latin1.GetBytes(o.GZipFileName, header.AsSpan(p)) + 1;
+            p += System.Text.Encoding.Latin1.GetBytes(o.GZipFileName, header.Slice(p)) + 1;
         }
 
         if (o.GZipComment is not null)
         {
-            p += System.Text.Encoding.Latin1.GetBytes(o.GZipComment, header.AsSpan(p)) + 1;
+            p += System.Text.Encoding.Latin1.GetBytes(o.GZipComment, header.Slice(p)) + 1;
         }
 
         if (o.GZipHeaderCrc)
         {
-            uint crc = Checksums.Crc32.Compute(header.AsSpan(0, p));
-            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(p), (ushort)crc);
+            uint crc = Checksums.Crc32.Compute(header.Slice(0, p));
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(header.Slice(p), (ushort)crc);
         }
 
         _writer.WriteBytes(header);
