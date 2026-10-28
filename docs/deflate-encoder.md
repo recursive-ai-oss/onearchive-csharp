@@ -65,6 +65,12 @@ the mapping is by number.
   one literal and carry the longer match forward. Repeat. Positions inside a taken match are inserted.
 - Binary tree finder (10 to 12): a binary tree per 4-byte hash plus a 16-bit 3-byte table; the search follows the tree for at
   most `Chain` nodes, returning every candidate that is longer than the previous one (so lengths ascend and distances ascend).
+- A position with fewer than `Nice` bytes of input after it is searched but not inserted into the binary tree: its comparisons are cut
+  short by the end of the data, bytes that agree up to the cut would be treated as equal for ever, and a flush followed by more
+  input could then make the tree report matches that are not there. (The hash chain finder has no ordering to break and inserts them.)
+- The optimal parser closes a block when the sequence buffer is within one run (16384 entries) of its nominal capacity of 65536
+  entries, whatever size the buffer really has, so a one-call encoder (whose buffers are sized to the input) and a streaming one
+  agree.
 - Positions near the end of the buffered input, where fewer than 4 bytes remain, are not hashed and find no match until more
   input arrives; at the end of the stream the remaining bytes are literals.
 

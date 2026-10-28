@@ -123,10 +123,18 @@ public sealed class DeflateBinaryTreeMatchFinder
         uint value = DeflateEncRaw.Read32(data, position);
         int hash = (int)((value * 2654435761u) >> _shift);
         int shortHash = (int)(((value & 0xFFFFFF) * 2654435761u) >> (32 - ShortHashBits));
+        // A position whose comparisons are cut short by the end of the data (fewer than niceLength bytes remain) is only searched,
+        // never inserted. Bytes that agree up to a cut that is not the nice length would be treated as equal for ever, but they
+        // may differ once more input arrives (after a flush), and the tree's ordering and the lengths it carries over between
+        // nodes would then be wrong: a match could be reported that is not there.
+        bool insert = maxLength >= niceLength;
         int current = DeflateEncRaw.Get(_head, hash);
-        DeflateEncRaw.Set(_head, hash, position);
         int shortCandidate = DeflateEncRaw.Get(_shortHead, shortHash);
-        DeflateEncRaw.Set(_shortHead, shortHash, position);
+        if (insert)
+        {
+            DeflateEncRaw.Set(_head, hash, position);
+            DeflateEncRaw.Set(_shortHead, shortHash, position);
+        }
         // The farthest candidate is 32767 back, not 32768: a node exactly one window back shares its tree slot with this position,
         // which is being rewritten as the walk goes.
         int limit = Math.Max(Math.Max(oldestPosition, 0), position - DeflateTables.WindowSize + 1);
@@ -155,8 +163,12 @@ public sealed class DeflateBinaryTreeMatchFinder
         {
             if (current < limit || depth-- <= 0)
             {
-                DeflateEncRaw.Set(_sons, leftSlot, Null);
-                DeflateEncRaw.Set(_sons, rightSlot, Null);
+                if (insert)
+                {
+                    DeflateEncRaw.Set(_sons, leftSlot, Null);
+                    DeflateEncRaw.Set(_sons, rightSlot, Null);
+                }
+
                 break;
             }
 
@@ -173,21 +185,33 @@ public sealed class DeflateBinaryTreeMatchFinder
             if (length >= cap)
             {
                 // Same bytes as the node for as far as anyone will look: take over its place in the tree.
-                DeflateEncRaw.Set(_sons, leftSlot, DeflateEncRaw.Get(_sons, node));
-                DeflateEncRaw.Set(_sons, rightSlot, DeflateEncRaw.Get(_sons, node + 1));
+                if (insert)
+                {
+                    DeflateEncRaw.Set(_sons, leftSlot, DeflateEncRaw.Get(_sons, node));
+                    DeflateEncRaw.Set(_sons, rightSlot, DeflateEncRaw.Get(_sons, node + 1));
+                }
+
                 break;
             }
 
             if (DeflateEncRaw.Byte(data, current + length) < DeflateEncRaw.Byte(data, position + length))
             {
-                DeflateEncRaw.Set(_sons, leftSlot, current);
+                if (insert)
+                {
+                    DeflateEncRaw.Set(_sons, leftSlot, current);
+                }
+
                 leftSlot = node + 1;
                 leftLength = length;
                 current = DeflateEncRaw.Get(_sons, leftSlot);
             }
             else
             {
-                DeflateEncRaw.Set(_sons, rightSlot, current);
+                if (insert)
+                {
+                    DeflateEncRaw.Set(_sons, rightSlot, current);
+                }
+
                 rightSlot = node;
                 rightLength = length;
                 current = DeflateEncRaw.Get(_sons, rightSlot);

@@ -116,6 +116,82 @@ public class DeflateEncoderTests
         }
     }
 
+    // Short random runs and copies from a few thousand bytes back: many matches of every length, which is what stresses a match finder.
+    private static byte[] Matchy(int seed, int size)
+    {
+        var random = new Random(seed);
+        var output = new List<byte>(size + 64);
+        while (output.Count < size)
+        {
+            if (output.Count < 10 || random.Next(3) == 0)
+            {
+                for (int i = random.Next(1, 20); i > 0; i--)
+                {
+                    output.Add((byte)random.Next(256));
+                }
+            }
+            else
+            {
+                int length = random.Next(3, 60);
+                int distance = random.Next(1, Math.Min(output.Count, 3000));
+                for (int i = 0; i < length; i++)
+                {
+                    output.Add(output[^distance]);
+                }
+            }
+        }
+
+        return output.GetRange(0, size).ToArray();
+    }
+
+    // The one-call path sizes its buffers to the input; the optimal parser once closed a block per run when the sequence buffer was
+    // that small, so a short input compressed differently in one call than through the stream.
+    [Theory]
+    [InlineData(10)]
+    [InlineData(11)]
+    [InlineData(12)]
+    public void ShortInputGivesTheSameBytesInOneCallAndThroughTheStream(int level)
+    {
+        foreach (int size in new[] { 3200, 7000, 20_000 })
+        {
+            byte[] half = Matchy(level, size / 2);
+            byte[] data = [.. half, .. half]; // the second half is one long match (and its continuation), which ends a parse run early
+            var options = new DeflateOptions { Level = level };
+            byte[] whole = Deflate.Deflate.Compress(data, options);
+            var encoder = new DeflateEncoder(DeflateFormat.Raw, options);
+            var buffer = new byte[DeflateEncoder.GetMaxCompressedLength(DeflateFormat.Raw, size)];
+            encoder.Compress(data, buffer, out _, out int written, DeflateFlush.Finish);
+            Assert.True(whole.AsSpan().SequenceEqual(buffer.AsSpan(0, written)), $"level {level} size {size}");
+        }
+    }
+
+    // The binary-tree finder (levels 10 to 12) used to insert positions whose comparisons were cut short by the end of the data;
+    // after a flush and more input, the tree then claimed matches that were not there. It showed in about one stream in 200,
+    // so many small streams with flushes between the writes are tried.
+    [Theory]
+    [InlineData(10, DeflateFlush.Sync)]
+    [InlineData(12, DeflateFlush.Full)]
+    public void RepeatedFlushesAtOptimalLevelsStayDecodable(int level, DeflateFlush mode)
+    {
+        for (int seed = 0; seed < 400; seed++)
+        {
+            int size = 6000 + (seed * 37 % 6000);
+            int step = 700 + (seed * 53 % 1500);
+            byte[] data = Matchy(seed, size);
+            var encoder = new DeflateEncoder(DeflateFormat.Raw, new DeflateOptions { Level = level });
+            var compressed = new List<byte>();
+            var buffer = new byte[1 << 16];
+            for (int offset = 0; offset < data.Length; offset += step)
+            {
+                int take = Math.Min(step, data.Length - offset);
+                encoder.Compress(data.AsSpan(offset, take), buffer, out _, out int written, offset + take == data.Length ? DeflateFlush.Finish : mode);
+                compressed.AddRange(buffer.AsSpan(0, written).ToArray());
+            }
+
+            Assert.True(data.AsSpan().SequenceEqual(Deflate.Deflate.Decompress(compressed.ToArray())), $"level {level} seed {seed}");
+        }
+    }
+
     [Theory]
     [InlineData(DeflateFlush.Sync)]
     [InlineData(DeflateFlush.Full)]
