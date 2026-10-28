@@ -56,8 +56,8 @@ internal static class DeflateFastLoop
         int count = br.BitCount;
         int ip = br.Position;
         int op = dp;
-        uint[] literals = literalTable.FastEntries;
-        uint[] distances = distanceTable.Entries;
+        ReadOnlySpan<uint> literals = literalTable.FastEntries;
+        ReadOnlySpan<uint> distances = distanceTable.Entries;
         if (literalTable.PrimaryBits != LiteralPrimaryBits || distanceTable.PrimaryBits != DistancePrimaryBits || literalTable.FastEntries.Length == 0)
         {
             return FastResult.Exhausted;
@@ -101,22 +101,23 @@ internal static class DeflateFastLoop
                 op += (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
 
                 // The refill left at least 56 bits and this code used at most 15, so two more codes found directly in the first-level
-                // table (at most 10 bits each) can be decoded before the next refill. They are decoded without a branch: an entry
-                // that is not a literal gets a zero mask, so it consumes no bits and advances the output by nothing (its two stray
-                // bytes are overwritten by the next write), and the loop's next turn decodes it. Which of the first symbols are
-                // literals is hard to predict, which makes a branch per literal the costliest part of the loop.
+                // table (at most 10 bits each) can be decoded before the next refill. Anything else is left for the loop's next turn.
                 e = DeflateRaw.Get(literals, (int)(bits & LiteralMask));
-                uint mask = (uint)((int)(e << 16) >> 31);
-                bits >>= (int)(e & mask);
-                count -= (int)(e & mask);
-                DeflateRaw.Write16(dst, op, (ushort)(e >> DeflateHuffmanEntry.ValueShift));
-                op += (int)(((e >> DeflateHuffmanEntry.ExtraShift) & 15) & mask);
-                e = DeflateRaw.Get(literals, (int)(bits & LiteralMask));
-                mask = (uint)((int)(e << 16) >> 31);
-                bits >>= (int)(e & mask);
-                count -= (int)(e & mask);
-                DeflateRaw.Write16(dst, op, (ushort)(e >> DeflateHuffmanEntry.ValueShift));
-                op += (int)(((e >> DeflateHuffmanEntry.ExtraShift) & 15) & mask);
+                if ((e & FastLiteralFlag) != 0)
+                {
+                    bits >>= (int)e;
+                    count -= (int)e;
+                    DeflateRaw.Write16(dst, op, (ushort)(e >> DeflateHuffmanEntry.ValueShift));
+                    op += (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
+                    e = DeflateRaw.Get(literals, (int)(bits & LiteralMask));
+                    if ((e & FastLiteralFlag) != 0)
+                    {
+                        bits >>= (int)e;
+                        count -= (int)e;
+                        DeflateRaw.Write16(dst, op, (ushort)(e >> DeflateHuffmanEntry.ValueShift));
+                        op += (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
+                    }
+                }
 
                 if (ip > inputLimit || op > outputLimit)
                 {

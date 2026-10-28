@@ -26,6 +26,17 @@ internal static class DeflateRaw
 #endif
     }
 
+    /// <summary>As <see cref="Get(uint[], int)"/> over a span of the table, which keeps the table's address in a register across a loop.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint Get(ReadOnlySpan<uint> entries, int index)
+    {
+#if CHECKED
+        return entries[index];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetReference(entries), (nint)(uint)index);
+#endif
+    }
+
     /// <summary>Reads eight bytes at <paramref name="index"/> as a little-endian integer. The caller guarantees <c>index + 8 &lt;= span.Length</c> (the loop runs only while that holds).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Read64(ReadOnlySpan<byte> span, int index)
