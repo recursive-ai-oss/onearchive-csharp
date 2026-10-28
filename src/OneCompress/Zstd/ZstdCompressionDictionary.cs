@@ -9,7 +9,9 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// </summary>
 /// <remarks>
 /// The search tables that match finders build over the content are made on first use for each parameter set and kept, so the
-/// first frame at a new level pays for them and later frames do not. A dictionary is immutable from the caller's view and may
+/// first frame at a new level pays for them and later frames do not. A dictionary keeps at most 128 MiB of these tables (more only
+/// while a single parameter set needs more); when it is used at many settings, the least recently used sets are dropped and rebuilt
+/// if needed again, which costs time but never changes the output. A dictionary is immutable from the caller's view and may
 /// be shared by any number of encoders on any number of threads.
 /// </remarks>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "This is the Zstandard format's own term; the type is not a collection.")]
@@ -19,6 +21,7 @@ public sealed class ZstdCompressionDictionary
     private readonly object _indexLock = new();
     private ZstdDictionaryIndex[] _indexes = [];
     private ZstdChainDictionaryIndex[] _chainIndexes = [];
+    private long _tick;
 
     private ZstdCompressionDictionary(
         uint id,
@@ -142,6 +145,7 @@ public sealed class ZstdCompressionDictionary
         {
             if (index.Matches(minMatch, hashLog, chainLog, doubleHash))
             {
+                index.Touch(ref _tick);
                 return index;
             }
         }
@@ -152,15 +156,18 @@ public sealed class ZstdCompressionDictionary
             {
                 if (index.Matches(minMatch, hashLog, chainLog, doubleHash))
                 {
+                    index.Touch(ref _tick);
                     return index;
                 }
             }
 
             var built = ZstdDictionaryIndex.Build(_content, minMatch, hashLog, chainLog, doubleHash);
+            built.Touch(ref _tick);
             var list = new ZstdDictionaryIndex[_indexes.Length + 1];
             _indexes.CopyTo(list, 0);
             list[^1] = built;
             Volatile.Write(ref _indexes, list);
+            Trim(built);
             return built;
         }
     }
@@ -172,6 +179,7 @@ public sealed class ZstdCompressionDictionary
         {
             if (index.Matches(minMatch, hashLog, chainLog))
             {
+                index.Touch(ref _tick);
                 return index;
             }
         }
@@ -182,16 +190,80 @@ public sealed class ZstdCompressionDictionary
             {
                 if (index.Matches(minMatch, hashLog, chainLog))
                 {
+                    index.Touch(ref _tick);
                     return index;
                 }
             }
 
             var built = ZstdChainDictionaryIndex.Build(_content, minMatch, hashLog, chainLog);
+            built.Touch(ref _tick);
             var list = new ZstdChainDictionaryIndex[_chainIndexes.Length + 1];
             _chainIndexes.CopyTo(list, 0);
             list[^1] = built;
             Volatile.Write(ref _chainIndexes, list);
+            Trim(built);
             return built;
+        }
+    }
+
+    /// <summary>The bytes of search tables a dictionary keeps for later frames; older sets are dropped (and rebuilt if asked for again).</summary>
+    internal const long IndexBudget = 128L << 20;
+
+    /// <summary>Gets the bytes of search tables currently kept.</summary>
+    internal long CachedIndexBytes
+    {
+        get
+        {
+            lock (_indexLock)
+            {
+                return _indexes.Sum(static i => i.Bytes) + _chainIndexes.Sum(static i => i.Bytes);
+            }
+        }
+    }
+
+    // Each parameter set (level, source size class, window) can need tables of its own, so a long-lived dictionary used at many
+    // settings would otherwise keep all of them. Drop the least recently used sets, never the one just built. An encoder that
+    // still holds a dropped set keeps using it; dropping only changes when tables are rebuilt, never the output.
+    private void Trim(object keep)
+    {
+        while (true)
+        {
+            long total = 0;
+            long oldest = long.MaxValue;
+            object? victim = null;
+            foreach (ZstdDictionaryIndex i in _indexes)
+            {
+                total += i.Bytes;
+                if (!ReferenceEquals(i, keep) && i.LastUsed < oldest)
+                {
+                    oldest = i.LastUsed;
+                    victim = i;
+                }
+            }
+
+            foreach (ZstdChainDictionaryIndex i in _chainIndexes)
+            {
+                total += i.Bytes;
+                if (!ReferenceEquals(i, keep) && i.LastUsed < oldest)
+                {
+                    oldest = i.LastUsed;
+                    victim = i;
+                }
+            }
+
+            if (total <= IndexBudget || victim is null)
+            {
+                return;
+            }
+
+            if (victim is ZstdDictionaryIndex fast)
+            {
+                Volatile.Write(ref _indexes, _indexes.Where(i => !ReferenceEquals(i, fast)).ToArray());
+            }
+            else
+            {
+                Volatile.Write(ref _chainIndexes, _chainIndexes.Where(i => !ReferenceEquals(i, victim)).ToArray());
+            }
         }
     }
 }
@@ -217,6 +289,15 @@ internal sealed class ZstdChainDictionaryIndex
 
     /// <summary>Gets, for the position <c>p</c>, at index <c>p &amp; mask</c>, the previous position with the same hash.</summary>
     public uint[] Chain { get; }
+
+    private long _lastUsed;
+
+    /// <summary>Gets the memory the tables hold.</summary>
+    public long Bytes => (Head.Length + (long)Chain.Length) * sizeof(uint);
+
+    public long LastUsed => Volatile.Read(ref _lastUsed);
+
+    public void Touch(ref long tick) => Volatile.Write(ref _lastUsed, Interlocked.Increment(ref tick));
 
     public bool Matches(int minMatch, int hashLog, int chainLog) => _minMatch == minMatch && _hashLog == hashLog && _chainLog == chainLog;
 
@@ -261,6 +342,15 @@ internal sealed class ZstdDictionaryIndex
 
     /// <summary>The short-hash table of the double-hash strategy.</summary>
     public uint[]? Secondary { get; }
+
+    private long _lastUsed;
+
+    /// <summary>Gets the memory the tables hold.</summary>
+    public long Bytes => (Primary.Length + (long)(Secondary?.Length ?? 0)) * sizeof(uint);
+
+    public long LastUsed => Volatile.Read(ref _lastUsed);
+
+    public void Touch(ref long tick) => Volatile.Write(ref _lastUsed, Interlocked.Increment(ref tick));
 
     public bool Matches(int minMatch, int hashLog, int chainLog, bool doubleHash) =>
         _minMatch == minMatch && _hashLog == hashLog && _doubleHash == doubleHash && (!doubleHash || _chainLog == chainLog);
