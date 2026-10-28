@@ -94,8 +94,15 @@ public class DeflateInteropTests
                 yield return new Case(file, minigzip, $"{minigzip}-{l}", [$"-{l}"]);
             }
 
+            // zlib's minigzip takes only the filtered and Huffman-only strategy flags; it exits without reading input on
+            // -R and -F, which zlib-ng's minigzip accepts.
             foreach ((string flag, string name) in new[] { ("-f", "filtered"), ("-h", "huffman"), ("-R", "rle"), ("-F", "fixed") })
             {
+                if (minigzip == "minigzip-zlib" && flag is "-R" or "-F")
+                {
+                    continue;
+                }
+
                 yield return new Case(file, minigzip, $"{minigzip}-{name}", [flag]);
             }
         }
