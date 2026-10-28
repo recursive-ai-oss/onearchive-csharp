@@ -4,6 +4,9 @@ using RecursiveAI.OneCompress;
 using RecursiveAI.OneCompress.BZip2;
 using RecursiveAI.OneCompress.Deflate;
 using RecursiveAI.OneCompress.Lz4;
+using RecursiveAI.OneCompress.Lzip;
+using RecursiveAI.OneCompress.Lzma;
+using RecursiveAI.OneCompress.Xz;
 using RecursiveAI.OneCompress.Zstd;
 using RecursiveAI.OneCompress.Checksums;
 
@@ -323,6 +326,22 @@ catch (UnauthorizedAccessException)
 }
 catch (PlatformNotSupportedException)
 {
+}
+
+// The LZMA family: each encoder at a fast and a normal preset, read back by this library's decoders (300 bytes of text, repeated).
+byte[] lzmaInput = [.. text, .. text, .. text, .. text];
+foreach (int preset in new[] { 1, 6 })
+{
+    var lzmaOptions = new LzmaOptions { Preset = preset };
+    byte[] lzma2 = Lzma2.Compress(lzmaInput, out byte lzma2Dictionary, lzmaOptions);
+    if (!Lzma.Decompress(Lzma.Compress(lzmaInput, lzmaOptions)).AsSpan().SequenceEqual(lzmaInput)
+        || !Lzma2.Decompress(lzma2, lzma2Dictionary).AsSpan().SequenceEqual(lzmaInput)
+        || !Xz.Decompress(Xz.Compress(lzmaInput, new XzCompressionOptions { Lzma = lzmaOptions, Check = XzCheck.Sha256 })).AsSpan().SequenceEqual(lzmaInput)
+        || !Lzip.Decompress(Lzip.Compress(lzmaInput, new LzipOptions { Level = preset })).AsSpan().SequenceEqual(lzmaInput))
+    {
+        Console.Error.WriteLine("lzma family round trip failed");
+        return 1;
+    }
 }
 
 Console.WriteLine("ok: " + archive);
