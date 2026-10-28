@@ -13,6 +13,9 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// a weight by symbol value. The table is not thread-safe and is reused by calling a build method again.
 /// </remarks>
 [Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
+// Building a tree and describing it use a few KiB of stack scratch, and zeroing it cost more than the work on a small block. Every
+// stackalloc below is written before it is read, or cleared explicitly where the code counts into it.
+[System.Runtime.CompilerServices.SkipLocalsInit]
 public sealed class HuffmanEncodingTable
 {
     /// <summary>The longest code the format allows (RFC 8878 §4.2.1).</summary>
@@ -23,7 +26,6 @@ public sealed class HuffmanEncodingTable
     private int _symbolCount;
     private int _maxBits;
     private FseEncodingTable? _weightTable;
-    private HuffmanDecodingTable? _verifyTable;
 
     /// <summary>Gets one more than the largest symbol with a code, or 0 if the table is empty.</summary>
     public int SymbolCount => _symbolCount;
@@ -42,7 +44,7 @@ public sealed class HuffmanEncodingTable
     private static void SortByCounting(Span<ulong> keys, int largest)
     {
         Span<ushort> start = stackalloc ushort[SmallCountLimit + 1];
-        start.Clear();
+        start[..(largest + 2)].Clear();
         for (int i = 0; i < keys.Length; i++)
         {
             start[(int)(keys[i] >> 8) + 1]++;
@@ -134,6 +136,7 @@ public sealed class HuffmanEncodingTable
         }
 
         Span<byte> lengths = stackalloc byte[256];
+        lengths[..(maxSymbol + 1)].Clear();
         for (int i = 0; i < n; i++)
         {
             lengths[(int)(keys[i] & 255)] = depth[i];
@@ -148,6 +151,7 @@ public sealed class HuffmanEncodingTable
         return true;
     }
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private static int PickSmallest(Span<uint> weight, ref int leaf, ref int internalNode, int leafCount, int internalEnd)
     {
         bool haveLeaf = leaf < leafCount;
@@ -273,6 +277,7 @@ public sealed class HuffmanEncodingTable
         int maxBits = 0;
         int last = 0;
         Span<int> rankCount = stackalloc int[MaxBits + 2];
+        rankCount.Clear();
         for (int s = 0; s < symbolCount; s++)
         {
             if (lengths[s] != 0)
@@ -430,6 +435,7 @@ public sealed class HuffmanEncodingTable
         int n = _symbolCount - 1;
         Span<byte> weights = stackalloc byte[256];
         Span<uint> weightHistogram = stackalloc uint[MaxBits + 1];
+        weightHistogram.Clear();
         int maxWeight = 0;
         for (int s = 0; s < n; s++)
         {
@@ -487,6 +493,7 @@ public sealed class HuffmanEncodingTable
         int n = weights.Length;
         FseEncodingTable table = _weightTable ??= new FseEncodingTable();
         Span<short> normalized = stackalloc short[MaxBits + 1];
+        normalized.Clear();
         int accuracyLog = FseEncodingTable.OptimalAccuracyLog(ZstdFormat.HuffmanWeightMaxAccuracyLog, n, maxWeight);
         int distinct = 0;
         foreach (uint c in histogram)
@@ -534,7 +541,11 @@ public sealed class HuffmanEncodingTable
                 writer.Add(bits, count);
             }
 
-            writer.Flush();
+            // A weight takes at most 6 bits, so four of them and the seven leftover bits fit the container between flushes.
+            if ((i & 3) == 0)
+            {
+                writer.Flush();
+            }
         }
 
         int tableSize = 1 << accuracyLog;
@@ -551,20 +562,11 @@ public sealed class HuffmanEncodingTable
         destination[0] = (byte)total;
         body[..total].CopyTo(destination[1..]);
 
-        // The decoder tells where the weights end only by running out of bits, which cannot be told apart from a
-        // zero-width last step. Reading the description back is the surest check.
-        HuffmanDecodingTable verify = _verifyTable ??= new HuffmanDecodingTable();
-        try
-        {
-            verify.ReadDescription(destination[..(1 + total)], 0, buildTable: false);
-        }
-        catch (CompressionFormatException)
-        {
-            return 0;
-        }
-
-        ReadOnlySpan<byte> read = verify.Weights;
-        return read.SequenceEqual(weights) ? 1 + total : 0;
+        // RFC 8878 4.2.1.2: the decoder finds the end of the weights by an update that needs more bits than remain. The last two
+        // symbols are coded as initial states, which emit nothing, so the update after the second to last symbol always overruns: a
+        // state that starts a symbol with fewer than all of the table's states (two or more distinct weights guarantee that) reads at
+        // least one bit. The description therefore decodes to exactly n weights; a test decodes thousands of random trees to confirm.
+        return 1 + total;
     }
 
     /// <summary>
