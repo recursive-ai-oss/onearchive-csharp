@@ -69,6 +69,7 @@ public sealed class ZstdBlockWriter
     }
     private readonly uint[] _histogram4 = new uint[4 * 256];
     private readonly uint[] _literalHistogram = new uint[256];
+    private readonly byte[] _symbolList = new byte[256];
     private readonly uint[][] _codeHistogram = [new uint[64], new uint[64], new uint[64]];
     private readonly byte[] _description = new byte[160];
     private readonly short[][] _normalizedByKind = [new short[64], new short[64], new short[64]];
@@ -300,15 +301,7 @@ public sealed class ZstdBlockWriter
         }
 
         uint[] histogram = _literalHistogram;
-        int maxSymbol = Histogram(literals, histogram);
-        int distinct = 0;
-        for (int s = 0; s <= maxSymbol; s++)
-        {
-            if (histogram[s] != 0)
-            {
-                distinct++;
-            }
-        }
+        int maxSymbol = Histogram(literals, histogram, out int distinct, out ReadOnlySpan<byte> symbols);
 
         if (distinct == 1)
         {
@@ -330,7 +323,8 @@ public sealed class ZstdBlockWriter
         // dearer than that, building a tree cannot pay. Small blocks with a dictionary, which is most of what the fast levels
         // see, skip the tree build this way.
         int previousCost = int.MaxValue;
-        if (_previousHuffman is not null && _previousHuffman.TryEncodedBits(histogram, maxSymbol, out long previousBits))
+        long previousBits = 0;
+        if (_previousHuffman is not null && (symbols.IsEmpty ? _previousHuffman.TryEncodedBits(histogram, maxSymbol, out previousBits) : _previousHuffman.TryEncodedBits(histogram, symbols, out previousBits)))
         {
             int streamBytes = StreamBytes(previousBits, singleStream, n);
             previousCost = CompressedHeaderSize(n, streamBytes, singleStream) + streamBytes;
@@ -496,30 +490,36 @@ public sealed class ZstdBlockWriter
         return bytes;
     }
 
-    private int Histogram(ReadOnlySpan<byte> data, uint[] histogram)
+    // Counts the bytes of a block of literals. Small blocks also list the distinct symbols in order of first appearance, so the
+    // work that follows (is the previous tree usable, how many symbols are there) visits only the symbols that occur instead of
+    // all 256 counters; for those blocks the 256-counter sweeps were most of the time spent on literals.
+    private int Histogram(ReadOnlySpan<byte> data, uint[] histogram, out int distinct, out ReadOnlySpan<byte> symbols)
     {
         if (data.Length < 1024)
         {
-            // Small blocks: one table, no merge.
             Array.Clear(histogram);
+            byte[] list = _symbolList;
+            int count = 0;
+            int top = 0;
             foreach (byte value in data)
             {
-                histogram[value]++;
-            }
-
-            int top = 0;
-            for (int s = 255; s > 0; s--)
-            {
-                if (histogram[s] != 0)
+                if (histogram[value]++ == 0)
                 {
-                    top = s;
-                    break;
+                    list[count++] = value;
+                    if (value > top)
+                    {
+                        top = value;
+                    }
                 }
             }
 
+            distinct = count;
+            symbols = list.AsSpan(0, count);
             return top;
         }
 
+        symbols = default;
+        distinct = 0;
         uint[] h4 = _histogram4;
         Array.Clear(h4);
         int i = 0;
@@ -544,13 +544,12 @@ public sealed class ZstdBlockWriter
             if (c != 0)
             {
                 max = s;
+                distinct++;
             }
         }
 
         return max;
     }
-
-    // ---- Sequences section (RFC 8878 §3.1.1.3.2) ----
 
     private enum Mode
     {
