@@ -281,4 +281,62 @@ public class DeflateEncoderTests
             }
         }
     }
+
+    [Theory]
+    [InlineData(DeflateFormat.Raw)]
+    [InlineData(DeflateFormat.ZLib)]
+    [InlineData(DeflateFormat.GZip)]
+    public async Task EncoderStreamWritesWhatTheEncoderWrites(DeflateFormat format)
+    {
+        byte[] data = DeflateTestData.Text(15, 250_000);
+        var options = new DeflateOptions { Level = 5 };
+        byte[] expected = Compress(format, data, options);
+
+        var sync = new MemoryStream();
+        using (var s = new DeflateEncoderStream(sync, format, options, leaveOpen: true))
+        {
+            for (int offset = 0; offset < data.Length; offset += 7777)
+            {
+                s.Write(data, offset, Math.Min(7777, data.Length - offset));
+            }
+        }
+
+        Assert.True(expected.AsSpan().SequenceEqual(sync.ToArray()));
+
+        var asyncOut = new MemoryStream();
+        await using (var s = new DeflateEncoderStream(asyncOut, format, options, leaveOpen: true))
+        {
+            await s.WriteAsync(data.AsMemory(0, 100_000), TestContext.Current.CancellationToken);
+            await s.FlushAsync(TestContext.Current.CancellationToken);
+            await s.WriteAsync(data.AsMemory(100_000), TestContext.Current.CancellationToken);
+        }
+
+        Assert.True(data.AsSpan().SequenceEqual(BclDecompress(format, asyncOut.ToArray())));
+    }
+
+    [Fact]
+    public void EmptyStreamsAreValid()
+    {
+        foreach (DeflateFormat format in Formats)
+        {
+            byte[] compressed = Compress(format, [], DeflateOptions.Default);
+            Assert.Empty(Decompress(format, compressed));
+            Assert.Empty(BclDecompress(format, compressed));
+        }
+    }
+
+    [Fact]
+    public void ArgumentsAreChecked()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new DeflateEncoder(DeflateFormat.Raw, new DeflateOptions { Level = 13 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new DeflateEncoder(DeflateFormat.Raw, new DeflateOptions { Level = -1 }));
+        Assert.Throws<ArgumentException>(() => new DeflateEncoder(DeflateFormat.GZip, new DeflateOptions { Dictionary = new byte[] { 1 } }));
+        Assert.Throws<ArgumentException>(() => new DeflateEncoder(DeflateFormat.GZip, new DeflateOptions { GZipFileName = "a\0b" }));
+        var encoder = new DeflateEncoder(DeflateFormat.Raw);
+        var buffer = new byte[100];
+        Assert.Equal(OperationStatus.Done, encoder.Compress([], buffer, out _, out _, DeflateFlush.Finish));
+        Assert.Throws<InvalidOperationException>(() => encoder.Compress(new byte[] { 1 }, buffer, out _, out _, DeflateFlush.None));
+        encoder.Reset();
+        Assert.Equal(OperationStatus.NeedMoreData, encoder.Compress(new byte[] { 1 }, buffer, out _, out _, DeflateFlush.None));
+    }
 }

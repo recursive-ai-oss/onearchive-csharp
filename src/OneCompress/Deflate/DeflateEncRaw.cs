@@ -23,7 +23,7 @@ internal static class DeflateEncRaw
 #endif
     }
 
-    /// <summary>Writes <c>table[index]</c>. The same bound as <see cref="Get"/>.</summary>
+    /// <summary>Writes <c>table[index]</c>. The same bound as <see cref="Get(int[], int)"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Set(int[] table, int index, int value)
     {
@@ -31,6 +31,83 @@ internal static class DeflateEncRaw
         table[index] = value;
 #else
         Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(table), (nint)(uint)index) = value;
+#endif
+    }
+
+    /// <summary>Reads <c>table[index]</c>. The caller guarantees <c>index &lt; table.Length</c>: symbol numbers index tables sized for their alphabet, and the entry counter stays below the buffer's capacity because the parser checks it after every entry.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint Get(uint[] table, int index)
+    {
+#if CHECKED
+        return table[index];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(table), (nint)(uint)index);
+#endif
+    }
+
+    /// <summary>Writes <c>table[index]</c>. The same bound as <see cref="Get(uint[], int)"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Set(uint[] table, int index, uint value)
+    {
+#if CHECKED
+        table[index] = value;
+#else
+        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(table), (nint)(uint)index) = value;
+#endif
+    }
+
+    /// <summary>Adds one to <c>table[index]</c>. The same bound as <see cref="Get(uint[], int)"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Increment(uint[] table, int index)
+    {
+#if CHECKED
+        table[index]++;
+#else
+        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(table), (nint)(uint)index)++;
+#endif
+    }
+
+    /// <summary>Reads <c>table[index]</c>. The caller guarantees <c>index &lt; table.Length</c> (a symbol, length or distance slot from the fixed tables).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte Get(byte[] table, int index)
+    {
+#if CHECKED
+        return table[index];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(table), (nint)(uint)index);
+#endif
+    }
+
+    /// <summary>Stores eight bytes at <paramref name="index"/> little-endian. The caller guarantees <c>index + 8 &lt;= buffer.Length</c>: the writer reserves the block's size plus a margin before writing it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Write64(byte[] buffer, int index, ulong value)
+    {
+#if CHECKED
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(index, 8), value);
+#else
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(buffer), (nint)(uint)index), BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value));
+#endif
+    }
+
+    /// <summary>Reads <c>links[index]</c>. The caller guarantees <c>index &lt; links.Length</c>: positions are masked to the window size, which is the table's length.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetLink(ushort[] links, int index)
+    {
+#if CHECKED
+        return links[index];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(links), (nint)(uint)index);
+#endif
+    }
+
+    /// <summary>Writes <c>links[index]</c>. The same bound as <see cref="GetLink"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SetLink(ushort[] links, int index, ushort value)
+    {
+#if CHECKED
+        links[index] = value;
+#else
+        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(links), (nint)(uint)index) = value;
 #endif
     }
 

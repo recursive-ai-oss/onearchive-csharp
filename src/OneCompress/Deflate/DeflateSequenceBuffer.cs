@@ -22,7 +22,6 @@ public sealed class DeflateSequenceBuffer
     private readonly uint[] _literalLengthFrequencies = new uint[LiteralLengthSymbolCount + 2];
     private readonly uint[] _distanceFrequencies = new uint[32];
     private int _count;
-    private int _inputLength;
 
     /// <summary>Creates a buffer that holds up to <paramref name="capacity"/> entries.</summary>
     /// <param name="capacity">The most literals and matches one block holds; at least 1.</param>
@@ -40,8 +39,21 @@ public sealed class DeflateSequenceBuffer
     /// <summary>Gets the most entries the buffer holds.</summary>
     public int Capacity => _sequences.Length;
 
-    /// <summary>Gets the number of input bytes the entries cover.</summary>
-    public int InputLength => _inputLength;
+    /// <summary>Gets the number of input bytes the entries cover (found by adding up the entries, so it costs time proportional to <see cref="Count"/>).</summary>
+    public int InputLength
+    {
+        get
+        {
+            long total = 0;
+            for (int i = 0; i < _count; i++)
+            {
+                uint length = _sequences[i] & 0x1FF;
+                total += length == 0 ? 1 : length;
+            }
+
+            return (int)total;
+        }
+    }
 
     /// <summary>Gets the entries.</summary>
     public ReadOnlySpan<uint> Sequences => _sequences.AsSpan(0, _count);
@@ -52,6 +64,15 @@ public sealed class DeflateSequenceBuffer
     /// <summary>Gets the counts per distance symbol (0..29).</summary>
     public ReadOnlySpan<uint> DistanceFrequencies => _distanceFrequencies.AsSpan(0, DistanceSymbolCount);
 
+    // The parsers keep the entry count in a local while they run, and store it back through these before they call anything else.
+    internal uint[] Words => _sequences;
+
+    internal int CountValue
+    {
+        get => _count;
+        set => _count = value;
+    }
+
     internal uint[] LiteralLengthCounts => _literalLengthFrequencies;
 
     internal uint[] DistanceCounts => _distanceFrequencies;
@@ -60,7 +81,6 @@ public sealed class DeflateSequenceBuffer
     public void Clear()
     {
         _count = 0;
-        _inputLength = 0;
         Array.Clear(_literalLengthFrequencies);
         Array.Clear(_distanceFrequencies);
         _literalLengthFrequencies[DeflateTables.EndOfBlockSymbol] = 1;
@@ -103,7 +123,6 @@ public sealed class DeflateSequenceBuffer
     {
         _sequences[_count++] = (uint)value << 9;
         _literalLengthFrequencies[value]++;
-        _inputLength++;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -112,27 +131,26 @@ public sealed class DeflateSequenceBuffer
         _sequences[_count++] = (uint)length | ((uint)(distance - 1) << 9);
         _literalLengthFrequencies[257 + DeflateSymbols.LengthSlot[length]]++;
         _distanceFrequencies[DeflateSymbols.DistanceSlot(distance)]++;
-        _inputLength += length;
     }
 }
 
 /// <summary>
-/// Decides where a Deflate block should end by watching how the mix of literals and match lengths drifts. It compares each batch of
-/// entries with everything seen since the block began and asks for a split when the mix differs enough that a new Huffman code
-/// would pay for its header.
+/// Decides where a Deflate block should end by watching how the mix of literals and match lengths drifts. At each call it
+/// compares the entries added since the last call with everything seen since the block began, and asks for a split when the mix
+/// differs enough that a new Huffman code would pay for its header.
 /// </summary>
-/// <remarks>The measure is integer arithmetic on counts, so the decision depends only on the entries given.</remarks>
+/// <remarks>The measure is integer arithmetic on counts, so the decision depends only on the counts given.</remarks>
 public sealed class DeflateBlockSplitter
 {
     private const int ClassCount = 11;
 
-    private readonly uint[] _block = new uint[ClassCount];
-    private readonly uint[] _batch = new uint[ClassCount];
-    private int _blockTotal;
+    private readonly ulong[] _previous = new ulong[ClassCount];
+    private readonly ulong[] _current = new ulong[ClassCount];
+    private ulong _previousTotal;
 
     /// <summary>Creates a splitter.</summary>
     /// <param name="minBlockEntries">No split is requested before the block holds this many entries. The default is 4096.</param>
-    /// <param name="thresholdPerMille">The difference between the batch's mix and the block's mix (the sum of absolute differences of class shares, 0 to 2000) above which a split is requested. The default is 450.</param>
+    /// <param name="thresholdPerMille">The difference between the new entries' mix and the block's mix (the sum of absolute differences of class shares, 0 to 2000) above which a split is requested. The default is 450.</param>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range.</exception>
     public DeflateBlockSplitter(int minBlockEntries = 4096, int thresholdPerMille = 450)
     {
@@ -148,64 +166,72 @@ public sealed class DeflateBlockSplitter
     /// <summary>Gets the split threshold in thousandths.</summary>
     public int ThresholdPerMille { get; }
 
-    /// <summary>Forgets the current block; call when a new block begins.</summary>
+    /// <summary>Forgets the current block; call when a new block begins (the counts then start again from zero).</summary>
     public void Reset()
     {
-        Array.Clear(_block);
-        _blockTotal = 0;
+        Array.Clear(_previous);
+        _previousTotal = 0;
     }
 
-    /// <summary>Takes the next batch of entries of the current block.</summary>
-    /// <param name="batch">Entries in the form <see cref="DeflateSequenceBuffer.Sequences"/> holds them; at least one.</param>
-    /// <returns>True when the block should end after this batch (and the splitter is reset); false when the batch joined the block.</returns>
-    public bool Observe(ReadOnlySpan<uint> batch)
+    /// <summary>Takes the counts of the current block so far.</summary>
+    /// <param name="literalLengthFrequencies">The block's counts per literal/length symbol so far, as <see cref="DeflateSequenceBuffer.LiteralLengthFrequencies"/> holds them (at least 286 values).</param>
+    /// <returns>True when the block should end now (and the splitter is reset); false when it should go on.</returns>
+    /// <exception cref="ArgumentException">Fewer than 286 counts were given.</exception>
+    public bool Observe(ReadOnlySpan<uint> literalLengthFrequencies)
     {
-        if (batch.IsEmpty)
+        if (literalLengthFrequencies.Length < DeflateSequenceBuffer.LiteralLengthSymbolCount)
+        {
+            throw new ArgumentException("Counts for 286 symbols are needed.", nameof(literalLengthFrequencies));
+        }
+
+        // Classes: the literals in eight groups by value, then matches of length up to 5, 6 to 9, and longer.
+        Array.Clear(_current);
+        ulong total = 0;
+        for (int group = 0; group < 8; group++)
+        {
+            ulong sum = 0;
+            foreach (uint f in literalLengthFrequencies.Slice(group * 32, 32))
+            {
+                sum += f;
+            }
+
+            _current[group] = sum;
+            total += sum;
+        }
+
+        for (int slot = 0; slot < 29; slot++)
+        {
+            ulong f = literalLengthFrequencies[257 + slot];
+            _current[slot < 3 ? 8 : slot < 7 ? 9 : 10] += f;
+            total += f;
+        }
+
+        ulong batchTotal = total - _previousTotal;
+        if (batchTotal == 0)
         {
             return false;
         }
 
-        Array.Clear(_batch);
-        foreach (uint word in batch)
-        {
-            uint length = word & 0x1FF;
-            int cls;
-            if (length == 0)
-            {
-                cls = (int)((word >> 9) & 0xFF) >> 5;
-            }
-            else
-            {
-                cls = length <= 5 ? 8 : length <= 9 ? 9 : 10;
-            }
-
-            _batch[cls]++;
-        }
-
-        if (_blockTotal >= MinBlockEntries)
+        if (_previousTotal >= (ulong)MinBlockEntries)
         {
             ulong difference = 0;
-            ulong batchTotal = (ulong)batch.Length;
             for (int i = 0; i < ClassCount; i++)
             {
-                ulong a = (ulong)_block[i] * batchTotal;
-                ulong b = (ulong)_batch[i] * (ulong)_blockTotal;
+                ulong batch = _current[i] - _previous[i];
+                ulong a = _previous[i] * batchTotal;
+                ulong b = batch * _previousTotal;
                 difference += a > b ? a - b : b - a;
             }
 
-            if (difference * 1000 > (ulong)ThresholdPerMille * batchTotal * (ulong)_blockTotal)
+            if (difference * 1000 > (ulong)ThresholdPerMille * batchTotal * _previousTotal)
             {
                 Reset();
                 return true;
             }
         }
 
-        for (int i = 0; i < ClassCount; i++)
-        {
-            _block[i] += _batch[i];
-        }
-
-        _blockTotal += batch.Length;
+        Array.Copy(_current, _previous, ClassCount);
+        _previousTotal = total;
         return false;
     }
 }

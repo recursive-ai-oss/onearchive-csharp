@@ -49,6 +49,8 @@ public sealed class DeflateBlockWriter
     private readonly byte[] _tokenSymbols = new byte[DeflateSequenceBuffer.LiteralLengthSymbolCount + DeflateSequenceBuffer.DistanceSymbolCount];
     private readonly byte[] _tokenExtras = new byte[DeflateSequenceBuffer.LiteralLengthSymbolCount + DeflateSequenceBuffer.DistanceSymbolCount];
     private readonly uint[] _lengthComposite = new uint[DeflateTables.MaxMatchLength + 1];
+    private readonly uint[] _literalInfo = new uint[256];
+    private readonly uint[] _distanceInfo = new uint[DeflateSequenceBuffer.DistanceSymbolCount];
     private byte[] _buffer;
     private int _writePosition;
     private int _readPosition;
@@ -179,7 +181,12 @@ public sealed class DeflateBlockWriter
     public void WriteBlock(DeflateSequenceBuffer sequences, ReadOnlySpan<byte> input, bool isFinal, DeflateBlockKind kind = DeflateBlockKind.Auto)
     {
         ArgumentNullException.ThrowIfNull(sequences);
-        bool haveInput = input.Length == sequences.InputLength;
+        WriteBlock(sequences, input, input.Length == sequences.InputLength, isFinal, kind);
+    }
+
+    // The encoder knows that its input covers the sequences exactly, so it skips the check that adds the entries up.
+    internal void WriteBlock(DeflateSequenceBuffer sequences, ReadOnlySpan<byte> input, bool haveInput, bool isFinal, DeflateBlockKind kind)
+    {
         if (kind == DeflateBlockKind.Stored && !haveInput)
         {
             throw new ArgumentException("Stored blocks need the input bytes the sequences stand for.", nameof(input));
@@ -288,7 +295,8 @@ public sealed class DeflateBlockWriter
     // Writes the sequences and the end of block with the codes in _literalCodes/_literalLengths and the distance arrays.
     private void WriteSequences(ReadOnlySpan<uint> sequences)
     {
-        // For every match length, its symbol's code with the extra bits attached, and the total bit count above bit 24.
+        // One table per kind of symbol, each entry holding what a single load needs: a literal's code (low 16 bits) and length;
+        // a match length's code with its extra bits attached (low 24 bits) and the total bit count; a distance slot's code and length.
         ReadOnlySpan<ushort> lengthBase = DeflateTables.LengthBase;
         ReadOnlySpan<byte> lengthExtra = DeflateTables.LengthExtraBits;
         for (int length = DeflateTables.MinMatchLength; length <= DeflateTables.MaxMatchLength; length++)
@@ -300,48 +308,71 @@ public sealed class DeflateBlockWriter
             _lengthComposite[length] = code | ((uint)(codeLength + lengthExtra[slot]) << 24);
         }
 
+        for (int symbol = 0; symbol < 256; symbol++)
+        {
+            _literalInfo[symbol] = _literalCodes[symbol] | ((uint)_literalLengths[symbol] << 16);
+        }
+
+        for (int slot = 0; slot < DeflateSequenceBuffer.DistanceSymbolCount; slot++)
+        {
+            _distanceInfo[slot] = _distanceCodes[slot] | ((uint)_distanceLengths[slot] << 16);
+        }
+
         ReadOnlySpan<ushort> distanceBase = DeflateTables.DistanceBase;
         ReadOnlySpan<byte> distanceExtra = DeflateTables.DistanceExtraBits;
         byte[] buffer = _buffer;
+        uint[] literalInfo = _literalInfo;
+        uint[] lengthComposite = _lengthComposite;
+        uint[] distanceInfo = _distanceInfo;
         int position = _writePosition;
         ulong accumulator = _accumulator;
         int bits = _bitCount;
-        foreach (uint word in sequences)
+        for (int i = 0; i < sequences.Length; i++)
         {
-            int length = (int)(word & 0x1FF);
+            // Bounds: every index below is a literal byte, a length 3..258, or a distance slot 0..29, all inside the tables above;
+            // the buffer was sized for this block with a margin of Slack bytes past the last byte written. The accumulator is
+            // emptied four bytes at a time whenever it holds 32 bits, so it never needs more than 31 + 28 bits of room.
+            uint word = sequences[i];
+            uint length = word & 0x1FF;
             if (length == 0)
             {
-                int literal = (int)(word >> 9);
-                accumulator |= (ulong)_literalCodes[literal] << bits;
-                bits += _literalLengths[literal];
+                uint info = DeflateEncRaw.Get(literalInfo, (int)(word >> 9));
+                accumulator |= (ulong)(info & 0xFFFF) << bits;
+                bits += (int)(info >> 16);
             }
             else
             {
-                uint composite = _lengthComposite[length];
+                uint composite = DeflateEncRaw.Get(lengthComposite, (int)length);
                 accumulator |= (ulong)(composite & 0xFFFFFF) << bits;
                 bits += (int)(composite >> 24);
+                if (bits >= 32)
+                {
+                    DeflateEncRaw.Write64(buffer, position, accumulator);
+                    position += 4;
+                    accumulator >>= 32;
+                    bits -= 32;
+                }
+
                 int distance = (int)(word >> 9) + 1;
                 int slot = DeflateSymbols.DistanceSlot(distance);
-                int codeLength = _distanceLengths[slot];
-                ulong distanceBits = _distanceCodes[slot] | ((ulong)(uint)(distance - distanceBase[slot]) << codeLength);
-                // Flush first: a length composite (up to 20 bits) plus a distance composite (up to 28) can pass 56.
-                BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(position), accumulator);
-                position += bits >> 3;
-                accumulator >>= bits & ~7;
-                bits &= 7;
-                accumulator |= distanceBits << bits;
+                uint info = DeflateEncRaw.Get(distanceInfo, slot);
+                int codeLength = (int)(info >> 16);
+                accumulator |= ((ulong)(info & 0xFFFF) | ((ulong)(uint)(distance - distanceBase[slot]) << codeLength)) << bits;
                 bits += codeLength + distanceExtra[slot];
             }
 
-            BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(position), accumulator);
-            position += bits >> 3;
-            accumulator >>= bits & ~7;
-            bits &= 7;
+            if (bits >= 32)
+            {
+                DeflateEncRaw.Write64(buffer, position, accumulator);
+                position += 4;
+                accumulator >>= 32;
+                bits -= 32;
+            }
         }
 
         accumulator |= (ulong)_literalCodes[DeflateTables.EndOfBlockSymbol] << bits;
         bits += _literalLengths[DeflateTables.EndOfBlockSymbol];
-        BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(position), accumulator);
+        DeflateEncRaw.Write64(buffer, position, accumulator);
         position += bits >> 3;
         accumulator >>= bits & ~7;
         bits &= 7;

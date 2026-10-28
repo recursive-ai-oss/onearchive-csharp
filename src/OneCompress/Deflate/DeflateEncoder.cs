@@ -40,7 +40,6 @@ public sealed partial class DeflateEncoder
     private int _fill;
     private int _blockStart;
     private int _oldest;
-    private int _batchStart;
     private int _checkAt = CheckInterval;
     private Checksums.Crc32 _crc;
     private Checksums.Adler32 _adler;
@@ -155,7 +154,6 @@ public sealed partial class DeflateEncoder
         _fill = 0;
         _blockStart = 0;
         _oldest = 0;
-        _batchStart = 0;
         _checkAt = CheckInterval;
         _crc = default;
         _adler = default;
@@ -476,13 +474,12 @@ public sealed partial class DeflateEncoder
         }
         else
         {
-            _writer.WriteBlock(_sequences, _window.AsSpan(_blockStart, _position - _blockStart), isFinal, kind);
+            _writer.WriteBlock(_sequences, _window.AsSpan(_blockStart, _position - _blockStart), haveInput: true, isFinal, kind);
         }
 
         _sequences.Clear();
         _splitter.Reset();
         _blockStart = _position;
-        _batchStart = 0;
         _checkAt = CheckInterval;
     }
 
@@ -496,13 +493,12 @@ public sealed partial class DeflateEncoder
             return;
         }
 
-        if (_splitter.Observe(_sequences.Sequences.Slice(_batchStart)))
+        if (_splitter.Observe(_sequences.LiteralLengthFrequencies))
         {
             CloseBlock(isFinal: false);
             return;
         }
 
-        _batchStart = _sequences.Count;
         _checkAt = Math.Min(_sequences.Count + CheckInterval, _sequences.Capacity);
     }
 
@@ -526,6 +522,10 @@ public sealed partial class DeflateEncoder
                 else if (_options.Strategy == DeflateStrategy.RunLength)
                 {
                     ParseRuns(limit);
+                }
+                else if (_parameters.Chain == 1)
+                {
+                    ParseFastest(limit);
                 }
                 else
                 {

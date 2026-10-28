@@ -88,7 +88,7 @@ public sealed class DeflateBinaryTreeMatchFinder
     /// <param name="position">The position; <c>position + 4</c> must not pass the buffer's end.</param>
     /// <param name="maxLength">The longest match to look for (at most 258 and at most the bytes left after <paramref name="position"/>), at least 4.</param>
     /// <param name="depth">The most tree nodes to visit.</param>
-    /// <param name="niceLength">Stop descending at a node that matches this many bytes.</param>
+    /// <param name="niceLength">Stop descending at a node that matches this many bytes, and report no match longer than this (except a 3-byte-hash candidate, which is measured in full); extend a match that reaches it to learn its full length.</param>
     /// <param name="oldestPosition">Candidates before this position are ignored.</param>
     /// <param name="lengths">Receives the match lengths, strictly increasing; at least <see cref="MaxMatches"/> long.</param>
     /// <param name="distances">Receives the nearest distance for each length; at least <see cref="MaxMatches"/> long.</param>
@@ -124,7 +124,9 @@ public sealed class DeflateBinaryTreeMatchFinder
         DeflateEncRaw.Set(_head, hash, position);
         int shortCandidate = DeflateEncRaw.Get(_shortHead, shortHash);
         DeflateEncRaw.Set(_shortHead, shortHash, position);
-        int limit = Math.Max(Math.Max(oldestPosition, 0), position - DeflateTables.WindowSize);
+        // The farthest candidate is 32767 back, not 32768: a node exactly one window back shares its tree slot with this position,
+        // which is being rewritten as the walk goes.
+        int limit = Math.Max(Math.Max(oldestPosition, 0), position - DeflateTables.WindowSize + 1);
         int count = 0;
         int best = 2;
         if (lengths is not null && shortCandidate >= limit)
@@ -139,6 +141,9 @@ public sealed class DeflateBinaryTreeMatchFinder
             }
         }
 
+        // Every comparison stops at the nice length, so strings that agree that far count as equal and the tree stays consistently
+        // ordered; a caller that wants the full length of a match this long extends it itself.
+        int cap = Math.Min(maxLength, niceLength);
         int leftSlot = 2 * (position & WindowMask);
         int rightSlot = leftSlot + 1;
         int leftLength = 0;
@@ -153,7 +158,7 @@ public sealed class DeflateBinaryTreeMatchFinder
             }
 
             int length = Math.Min(leftLength, rightLength);
-            length += DeflateEncRaw.MatchLength(data, current + length, position + length, maxLength - length);
+            length += DeflateEncRaw.MatchLength(data, current + length, position + length, cap - length);
             int node = 2 * (current & WindowMask);
             if (length > best && lengths is not null)
             {
@@ -162,7 +167,7 @@ public sealed class DeflateBinaryTreeMatchFinder
                 distances![count++] = position - current;
             }
 
-            if (length >= maxLength || length >= niceLength)
+            if (length >= cap)
             {
                 // Same bytes as the node for as far as anyone will look: take over its place in the tree.
                 DeflateEncRaw.Set(_sons, leftSlot, DeflateEncRaw.Get(_sons, node));

@@ -36,5 +36,6 @@ internal static class FuzzTargets
         DeflateTargets.Raw,
         DeflateTargets.ZLib,
         DeflateTargets.GZip,
+        DeflateEncoderTargets.RoundTrip,
     ];
 }

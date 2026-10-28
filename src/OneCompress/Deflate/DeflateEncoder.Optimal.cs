@@ -163,8 +163,11 @@ public sealed partial class DeflateEncoder
                         matchCount += found;
                         if (s.ScratchLengths[found - 1] >= p.Nice)
                         {
-                            longLength = s.ScratchLengths[found - 1];
+                            // The search stops comparing at the nice length; see how far this match really goes.
+                            int reached = s.ScratchLengths[found - 1];
                             longDistance = s.ScratchDistances[found - 1];
+                            int most = Math.Min(DeflateTables.MaxMatchLength, available);
+                            longLength = reached + DeflateEncRaw.MatchLength(window, i - longDistance + reached, i + reached, most - reached);
                             break;
                         }
                     }
