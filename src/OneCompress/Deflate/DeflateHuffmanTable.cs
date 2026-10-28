@@ -100,6 +100,7 @@ public enum DeflateAlphabet
 public sealed class DeflateHuffmanTable
 {
     private readonly int _primaryBits;
+    private readonly bool _deflate64;
     private uint[] _entries;
     private uint[] _fast = [];
     private readonly int[] _subtableOffset;
@@ -110,7 +111,15 @@ public sealed class DeflateHuffmanTable
     /// <param name="alphabet">The alphabet whose codes the table decodes.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="alphabet"/> is not a defined value.</exception>
     public DeflateHuffmanTable(DeflateAlphabet alphabet)
+        : this(alphabet, false)
     {
+    }
+
+    // With deflate64 the table gives symbol 285 and distance symbols 30 and 31 the meanings of the Deflate64 variant of the format
+    // (see Deflate64Tables); every other symbol keeps its RFC 1951 meaning.
+    internal DeflateHuffmanTable(DeflateAlphabet alphabet, bool deflate64)
+    {
+        _deflate64 = deflate64;
         Alphabet = alphabet;
         switch (alphabet)
         {
@@ -324,7 +333,7 @@ public sealed class DeflateHuffmanTable
     // longer than the (primary - l1) first-level bits that follow it, the first-level index alone decides both symbols.
     private void BuildFast(int size)
     {
-        if (Alphabet != DeflateAlphabet.LiteralLength)
+        if (Alphabet != DeflateAlphabet.LiteralLength || _deflate64)
         {
             return;
         }
@@ -396,6 +405,11 @@ public sealed class DeflateHuffmanTable
                     return DeflateHuffmanEntry.Pack(DeflateSymbolKind.EndOfBlock, 0, 0, length);
                 }
 
+                if (_deflate64 && symbol == 285)
+                {
+                    return DeflateHuffmanEntry.Pack(DeflateSymbolKind.Length, Deflate64.Deflate64Tables.LengthBase[28], Deflate64.Deflate64Tables.LengthExtraBits[28], length);
+                }
+
                 if (symbol <= 285)
                 {
                     return DeflateHuffmanEntry.Pack(DeflateSymbolKind.Length, DeflateTables.LengthBase[symbol - 257], DeflateTables.LengthExtraBits[symbol - 257], length);
@@ -403,6 +417,11 @@ public sealed class DeflateHuffmanTable
 
                 return DeflateHuffmanEntry.Pack(DeflateSymbolKind.Invalid, 0, 0, length);
             case DeflateAlphabet.Distance:
+                if (_deflate64 && symbol < Deflate64.Deflate64Tables.DistanceSymbolCount)
+                {
+                    return DeflateHuffmanEntry.Pack(DeflateSymbolKind.Distance, Deflate64.Deflate64Tables.DistanceBase[symbol], Deflate64.Deflate64Tables.DistanceExtraBits[symbol], length);
+                }
+
                 return symbol < 30
                     ? DeflateHuffmanEntry.Pack(DeflateSymbolKind.Distance, DeflateTables.DistanceBase[symbol], DeflateTables.DistanceExtraBits[symbol], length)
                     : DeflateHuffmanEntry.Pack(DeflateSymbolKind.Invalid, 0, 0, length);

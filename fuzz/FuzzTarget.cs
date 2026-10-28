@@ -37,6 +37,8 @@ internal static class FuzzTargets
         DeflateTargets.ZLib,
         DeflateTargets.GZip,
         BZip2Targets.Decode,
+        Deflate64Targets.Decode,
+        Deflate64Targets.RoundTrip,
         LzmaTargets.Lzma,
         LzmaTargets.Xz,
         LzmaTargets.Lzip,

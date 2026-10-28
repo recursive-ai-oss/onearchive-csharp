@@ -1,0 +1,69 @@
+== E1 7-Zip -tzip -mm=Deflate64 output parses under the hypothesised parameters (and not under plain Deflate)
+E1     text200k    -mx1 method=9 ver=21 flags=0x0000 csize=70644 | d64 params: True maxlen=20 maxdist=65534 len285=0 dist30/31=4566 hdist=[32] | deflate params: fails (distance symbol 30)
+E1     text200k    -mx3 method=9 ver=21 flags=0x0000 csize=70644 | d64 params: True maxlen=20 maxdist=65534 len285=0 dist30/31=4566 hdist=[32] | deflate params: fails (distance symbol 30)
+E1     text200k    -mx5 method=9 ver=21 flags=0x0000 csize=62095 | d64 params: True maxlen=21 maxdist=65484 len285=0 dist30/31=2412 hdist=[32] | deflate params: fails (distance symbol 30)
+E1     text200k    -mx7 method=9 ver=21 flags=0x0000 csize=60626 | d64 params: True maxlen=22 maxdist=65534 len285=0 dist30/31=2586 hdist=[29, 31, 32] | deflate params: fails (distance symbol 30)
+E1     text200k    -mx9 method=9 ver=21 flags=0x0000 csize=60500 | d64 params: True maxlen=22 maxdist=65534 len285=0 dist30/31=2586 hdist=[23, 25, 27, 29, 31, 32] | deflate params: fails (distance symbol 30)
+E1     farmatches  -mx1 method=9 ver=21 flags=0x0000 csize=73730 | d64 params: True maxlen=257 maxdist=60902 len285=0 dist30/31=87 hdist=[32] | deflate params: fails (distance symbol 30)
+E1     farmatches  -mx3 method=9 ver=21 flags=0x0000 csize=73730 | d64 params: True maxlen=257 maxdist=60902 len285=0 dist30/31=87 hdist=[32] | deflate params: fails (distance symbol 30)
+E1     farmatches  -mx5 method=9 ver=21 flags=0x0000 csize=73720 | d64 params: True maxlen=257 maxdist=53000 len285=0 dist30/31=78 hdist=[32] | deflate params: fails (distance symbol 31)
+E1     farmatches  -mx7 method=9 ver=21 flags=0x0000 csize=73699 | d64 params: True maxlen=257 maxdist=53000 len285=0 dist30/31=78 hdist=[32] | deflate params: fails (distance symbol 31)
+E1     farmatches  -mx9 method=9 ver=21 flags=0x0000 csize=73673 | d64 params: True maxlen=257 maxdist=53000 len285=0 dist30/31=78 hdist=[29, 32] | deflate params: fails (distance symbol 31)
+E1     longruns    -mx1 method=9 ver=21 flags=0x0000 csize=2213 | d64 params: True maxlen=257 maxdist=2 len285=0 dist30/31=0 hdist=[2] | deflate params: True
+E1     longruns    -mx3 method=9 ver=21 flags=0x0000 csize=2213 | d64 params: True maxlen=257 maxdist=2 len285=0 dist30/31=0 hdist=[2] | deflate params: True
+E1     longruns    -mx5 method=9 ver=21 flags=0x0000 csize=2213 | d64 params: True maxlen=257 maxdist=2 len285=0 dist30/31=0 hdist=[2] | deflate params: True
+E1     longruns    -mx7 method=9 ver=21 flags=0x0000 csize=2213 | d64 params: True maxlen=257 maxdist=2 len285=0 dist30/31=0 hdist=[2] | deflate params: True
+E1     longruns    -mx9 method=9 ver=21 flags=0x0000 csize=2187 | d64 params: True maxlen=257 maxdist=2 len285=0 dist30/31=0 hdist=[2] | deflate params: True
+E1     random20k   -mx1 method=0 ver=10 flags=0x0000 csize=20000 | d64 params: ERR stored length maxlen=None maxdist=None len285=0 dist30/31=0 hdist=[] | deflate params: fails (stored length)
+E1     random20k   -mx3 method=0 ver=10 flags=0x0000 csize=20000 | d64 params: ERR stored length maxlen=None maxdist=None len285=0 dist30/31=0 hdist=[] | deflate params: fails (stored length)
+E1     random20k   -mx5 method=0 ver=10 flags=0x0000 csize=20000 | d64 params: ERR stored length maxlen=None maxdist=None len285=0 dist30/31=0 hdist=[] | deflate params: fails (stored length)
+E1     random20k   -mx7 method=0 ver=10 flags=0x0000 csize=20000 | d64 params: ERR stored length maxlen=None maxdist=None len285=0 dist30/31=0 hdist=[] | deflate params: fails (stored length)
+E1     random20k   -mx9 method=0 ver=10 flags=0x0000 csize=20000 | d64 params: ERR stored length maxlen=None maxdist=None len285=0 dist30/31=0 hdist=[] | deflate params: fails (stored length)
+== E2 distance codes 30 and 31: crafted streams (stored block of random bytes, then one fixed-Huffman match)
+E2     dist 32769 = symbol 30 + 14 extra bits (0)                     -> accepted (output identical)
+E2     dist 40000 = symbol 30 + 14 extra bits (7231)                  -> accepted (output identical)
+E2     dist 49152 = symbol 30 + 14 extra bits (16383)                 -> accepted (output identical)
+E2     dist 49153 = symbol 31 + 14 extra bits (0)                     -> accepted (output identical)
+E2     dist 60000 = symbol 31 + 14 extra bits (10847)                 -> accepted (output identical)
+E2     dist 65535 = symbol 31 + 14 extra bits (16382)                 -> accepted (output identical)
+E2     dist 65536 = symbol 31 + 14 extra bits (16383)                 -> accepted (output identical)
+E2c    control: dist 42769 = symbol 30 with 13 extra bits             -> rejected (exit 2): ERROR: Data Error : x.bin
+E2c    control: dist 42769 = symbol 30 with 15 extra bits             -> rejected (exit 2): ERROR: CRC Failed : x.bin
+E2c    control: dist 40000 = symbol 30 but only 30000 bytes of history -> rejected (exit 2): ERROR: Data Error : x.bin
+E2d    dist 32768 via symbol 29 (plain Deflate code) still works      -> accepted (output identical)
+== E3 length code 285 and the other length codes
+E3     length 258 = symbol 285 + 16 extra bits (255)                  -> accepted (output identical)
+E3     length 259 = symbol 285 + 16 extra bits (256)                  -> accepted (output identical)
+E3     length 1000 = symbol 285 + 16 extra bits (997)                 -> accepted (output identical)
+E3     length 40000 = symbol 285 + 16 extra bits (39997)              -> accepted (output identical)
+E3     length 65538 = symbol 285 + 16 extra bits (65535)              -> accepted (output identical)
+E3c    control: length 258 = symbol 285 with no extra bits            -> rejected (exit 2): ERROR: Data Error : x.bin
+E3d    length 257 = symbol 284 + 5 extra bits (30)                    -> accepted (output identical)
+E3d    length 258 = symbol 284 + 5 extra bits (31)                    -> accepted (output identical)
+E3d    length 227 = symbol 284 + 5 extra bits (0)                     -> accepted (output identical)
+== E4 window size
+E4     distance 65536 with exactly 65536 bytes of history             -> accepted (output identical)
+E4c    control: distance 65536 with 65535 bytes of history            -> rejected (exit 2): ERROR: Data Error : x.bin
+== E5 dynamic blocks: HLIT / HDIST limits and use of distance symbols 30 and 31
+E5     dynamic HLIT=258 HDIST=2 (plain Deflate-sized, sanity)         -> accepted (output identical)
+E5     dynamic HLIT=258 HDIST=30                                      -> accepted (output identical)
+E5     dynamic HLIT=258 HDIST=31                                      -> accepted (output identical)
+E5     dynamic HLIT=258 HDIST=32                                      -> accepted (output identical)
+E5     dynamic HLIT=286                                               -> accepted (output identical)
+E5     dynamic HLIT=287                                               -> accepted (output identical)
+E5     dynamic HLIT=288                                               -> accepted (output identical)
+E5     dynamic uses distance symbol 30 (HDIST=31, 40000 bytes history) -> accepted (output identical)
+E5     dynamic uses distance symbol 31 (HDIST=32, 60000 bytes history) -> accepted (output identical)
+== E6 symbols that stay invalid
+E6     fixed block uses literal/length symbol 286                     -> rejected (exit 2): ERROR: Data Error : x.bin
+E6     fixed block uses literal/length symbol 287                     -> rejected (exit 2): ERROR: Data Error : x.bin
+E6     block type 3                                                   -> rejected (exit 2): ERROR: Data Error : x.bin
+E6     single empty fixed block (03 00)                               -> accepted (output identical)
+E6     fixed block: distance symbol 30 with 14 extra bits=0 but only 1 byte of history -> rejected (exit 2): ERROR: Data Error : x.bin
+== E7 what 7-Zip writes around the stream
+E7     empty file with -mm=Deflate64: method=0 ver=10 flags=0x0000 csize=0 usize=0
+E7     -mx=1 local: method=9 version-needed=21 flags=0x0000 extra-len=0 | central: made-by=831 version-needed=21 flags=0x0000 method=9
+E7     -mx=9 local: method=9 version-needed=21 flags=0x0000 extra-len=0 | central: made-by=831 version-needed=21 flags=0x0000 method=9
+== E5b symbols 286 and 287 given code lengths in a dynamic block but never used
+E5b    dynamic HLIT=287, symbol 286 has a code length, unused         -> accepted (output identical)
+E5b    dynamic HLIT=288, symbol 287 has a code length, unused         -> accepted (output identical)

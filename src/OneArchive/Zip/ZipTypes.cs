@@ -13,7 +13,7 @@ public enum ZipMethod : ushort
     /// <summary>Deflate (RFC 1951).</summary>
     Deflate = 8,
 
-    /// <summary>Deflate64. Listed, not yet supported.</summary>
+    /// <summary>Deflate64 (APPNOTE 5.6): Deflate with a 64 KiB window and longer matches.</summary>
     Deflate64 = 9,
 
     /// <summary>bzip2. Listed, not yet supported.</summary>
@@ -175,10 +175,10 @@ public enum ZipDataDescriptorMode
 [Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZipWriterOptions
 {
-    /// <summary>Gets the method for file entries with content. Default <see cref="ZipMethod.Deflate"/>. Store, Deflate and Zstd can be written. Directories, links and empty files are stored.</summary>
+    /// <summary>Gets the method for file entries with content. Default <see cref="ZipMethod.Deflate"/>. Store, Deflate, Deflate64 and Zstd can be written. Directories, links and empty files are stored.</summary>
     public ZipMethod Method { get; init; } = ZipMethod.Deflate;
 
-    /// <summary>Gets the compression level in the numbering of the reference tool. Default <see langword="null"/>: Deflate 6, Zstandard 3.</summary>
+    /// <summary>Gets the compression level in the numbering of the reference tool. Default <see langword="null"/>: Deflate 6, Deflate64 6, Zstandard 3. Deflate64 has levels 0 to 9; higher values mean 9.</summary>
     public int? Level { get; init; }
 
     /// <summary>Gets when zip64 structures are used. Default <see cref="ZipZip64Mode.Auto"/>.</summary>

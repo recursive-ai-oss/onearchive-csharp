@@ -4,6 +4,7 @@ using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneCompress;
 using RecursiveAI.OneCompress.Checksums;
 using RecursiveAI.OneCompress.Deflate;
+using RecursiveAI.OneCompress.Deflate64;
 using RecursiveAI.OneCompress.Zstd;
 
 namespace RecursiveAI.OneArchive.Zip;
@@ -166,6 +167,7 @@ internal sealed class ZipEntryStream : Stream
     private readonly ExpansionMeter _meter;
     private readonly ZipReader _owner;
     private readonly DeflateDecoder? _deflate;
+    private readonly Deflate64Decoder? _deflate64;
     private readonly ZstdDecoder? _zstd;
     private readonly ZipLzmaDecoder? _lzma;
     private readonly RecursiveAI.OneCompress.Xz.XzDecoder? _xz;
@@ -198,6 +200,9 @@ internal sealed class ZipEntryStream : Stream
                 break;
             case ZipMethod.Deflate:
                 _deflate = new DeflateDecoder(DeflateFormat.Raw, new DeflateDecompressionOptions { MaxOutputSize = long.MaxValue });
+                break;
+            case ZipMethod.Deflate64:
+                _deflate64 = new Deflate64Decoder(new Deflate64DecompressionOptions { MaxOutputSize = long.MaxValue });
                 break;
             case ZipMethod.BZip2:
                 _bzip2 = new RecursiveAI.OneCompress.BZip2.BZip2Decoder(new RecursiveAI.OneCompress.BZip2.BZip2DecompressionOptions { MaxOutputSize = long.MaxValue });
@@ -351,6 +356,10 @@ internal sealed class ZipEntryStream : Stream
             if (_deflate is not null)
             {
                 status = _deflate.Decompress(src, dest.Span[..cap], out consumed, out written);
+            }
+            else if (_deflate64 is not null)
+            {
+                status = _deflate64.Decompress(src, dest.Span[..cap], out consumed, out written);
             }
             else if (_bzip2 is not null)
             {
