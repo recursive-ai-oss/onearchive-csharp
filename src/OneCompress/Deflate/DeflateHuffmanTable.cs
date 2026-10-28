@@ -104,6 +104,7 @@ public sealed class DeflateHuffmanTable
     private uint[] _fast = [];
     private readonly int[] _subtableOffset;
     private readonly byte[] _subtableBits;
+    private readonly int[] _longPrefixes;
 
     /// <summary>Creates an empty table for an alphabet. Until <see cref="TryBuild"/> succeeds every lookup is <see cref="DeflateSymbolKind.Invalid"/>.</summary>
     /// <param name="alphabet">The alphabet whose codes the table decodes.</param>
@@ -131,6 +132,7 @@ public sealed class DeflateHuffmanTable
 
         _subtableOffset = new int[1 << _primaryBits];
         _subtableBits = new byte[1 << _primaryBits];
+        _longPrefixes = new int[1 << _primaryBits];
         Array.Fill(_entries, DeflateHuffmanEntry.Pack(DeflateSymbolKind.Invalid, 0, 0, 1));
     }
 
@@ -223,31 +225,39 @@ public sealed class DeflateHuffmanTable
         }
 
         // Size the table: the first level, plus a second-level table for every first-level prefix that has codes longer than it.
+        // Only those prefixes are visited afterwards (a list of them is kept), so a block without long codes, or with few, does not
+        // walk all of the first level. _subtableBits is all zero between builds.
         int primary = _primaryBits;
         int primarySize = 1 << primary;
-        Array.Clear(_subtableBits);
-        Span<int> nextForSizing = stackalloc int[DeflateTables.MaxCodeLength + 2];
-        next.CopyTo(nextForSizing);
-        for (int symbol = 0; symbol < codeLengths.Length; symbol++)
+        int longPrefixCount = 0;
+        int size = primarySize;
+        if (HasLongerThan(count, primary))
         {
-            int length = codeLengths[symbol];
-            if (length > primary)
+            Span<int> nextForSizing = stackalloc int[DeflateTables.MaxCodeLength + 2];
+            next.CopyTo(nextForSizing);
+            for (int symbol = 0; symbol < codeLengths.Length; symbol++)
             {
-                int reversed = ReverseBits(nextForSizing[length]++, length);
-                int prefix = reversed & (primarySize - 1);
-                int bits = length - primary;
-                if (bits > _subtableBits[prefix])
+                int length = codeLengths[symbol];
+                if (length > primary)
                 {
-                    _subtableBits[prefix] = (byte)bits;
+                    int reversed = ReverseBits(nextForSizing[length]++, length);
+                    int prefix = reversed & (primarySize - 1);
+                    int bits = length - primary;
+                    if (_subtableBits[prefix] == 0)
+                    {
+                        _longPrefixes[longPrefixCount++] = prefix;
+                    }
+
+                    if (bits > _subtableBits[prefix])
+                    {
+                        _subtableBits[prefix] = (byte)bits;
+                    }
                 }
             }
-        }
 
-        int size = primarySize;
-        for (int prefix = 0; prefix < primarySize; prefix++)
-        {
-            if (_subtableBits[prefix] != 0)
+            for (int k = 0; k < longPrefixCount; k++)
             {
+                int prefix = _longPrefixes[k];
                 _subtableOffset[prefix] = size;
                 size += 1 << _subtableBits[prefix];
             }
@@ -258,13 +268,17 @@ public sealed class DeflateHuffmanTable
             _entries = new uint[size];
         }
 
-        Array.Fill(_entries, DeflateHuffmanEntry.Pack(DeflateSymbolKind.Invalid, 0, 0, 1), 0, size);
-        for (int prefix = 0; prefix < primarySize; prefix++)
+        // A complete code gives every first-level index and every second-level slot an entry below; only an incomplete one (a lone
+        // one-bit code, or no codes) leaves some to fill.
+        if (left > 0)
         {
-            if (_subtableBits[prefix] != 0)
-            {
-                _entries[prefix] = DeflateHuffmanEntry.Pack(DeflateSymbolKind.Link, _subtableOffset[prefix], _subtableBits[prefix], primary);
-            }
+            Array.Fill(_entries, DeflateHuffmanEntry.Pack(DeflateSymbolKind.Invalid, 0, 0, 1), 0, size);
+        }
+
+        for (int k = 0; k < longPrefixCount; k++)
+        {
+            int prefix = _longPrefixes[k];
+            _entries[prefix] = DeflateHuffmanEntry.Pack(DeflateSymbolKind.Link, _subtableOffset[prefix], _subtableBits[prefix], primary);
         }
 
         for (int symbol = 0; symbol < codeLengths.Length; symbol++)
@@ -296,6 +310,11 @@ public sealed class DeflateHuffmanTable
             }
         }
 
+        for (int k = 0; k < longPrefixCount; k++)
+        {
+            _subtableBits[_longPrefixes[k]] = 0;
+        }
+
         problem = null;
         BuildFast(size);
         return true;
@@ -315,7 +334,8 @@ public sealed class DeflateHuffmanTable
             _fast = new uint[_entries.Length];
         }
 
-        const uint LiteralBits = (uint)DeflateSymbolKind.Literal << DeflateHuffmanEntry.KindShift;
+        // The fast table's kind bits are one flag per kind (see DeflateFastLoop): literal 8, length 4, link 2, end of block 1.
+        const uint LiteralBits = 8u << DeflateHuffmanEntry.KindShift;
         int primary = _primaryBits;
         for (int i = 0; i < size; i++)
         {
@@ -335,8 +355,28 @@ public sealed class DeflateHuffmanTable
                 }
             }
 
+            if (((e >> DeflateHuffmanEntry.KindShift) & 15) != 8)
+            {
+                // Invalid 0, literal 8, length 4, end of block 1, link 2 (one nibble per DeflateSymbolKind value, 0 to 6).
+                uint flag = (0x0201480u >> (int)(4 * ((e >> DeflateHuffmanEntry.KindShift) & 15))) & 15;
+                e = (e & ~(15u << DeflateHuffmanEntry.KindShift)) | (flag << DeflateHuffmanEntry.KindShift);
+            }
+
             _fast[i] = e;
         }
+    }
+
+    private static bool HasLongerThan(ReadOnlySpan<int> count, int length)
+    {
+        for (int i = length + 1; i < count.Length; i++)
+        {
+            if (count[i] != 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Clear() => Array.Fill(_entries, DeflateHuffmanEntry.Pack(DeflateSymbolKind.Invalid, 0, 0, 1), 0, 1 << _primaryBits);

@@ -32,9 +32,9 @@ the mapping is by number.
 |---|---|---|---|---|---|---|---|---|
 | 0 | stored blocks of at most 65535 bytes | | | | | | | |
 | 1 | greedy, one probe, 2-way bucket | 4 bytes, 17 bits | 1 | 32 | 32 | 4 | | |
-| 2 | greedy | 3 bytes, 15 bits | 6 | 40 | 32 | 4 | | |
-| 3 | greedy | 3 bytes, 15 bits | 12 | 48 | 48 | 4 | | |
-| 4 | lazy | 3 bytes, 15 bits | 8 | 32 | 16 | | 8 | |
+| 2 | greedy | 4 bytes, 15 bits | 12 | 40 | 32 | 4 | | |
+| 3 | greedy | 4 bytes, 15 bits | 24 | 48 | 48 | 4 | | |
+| 4 | lazy | 4 bytes, 15 bits | 8 | 32 | 16 | | 8 | |
 | 5 | lazy | 3 bytes, 15 bits | 12 | 48 | 24 | | 12 | |
 | 6 | lazy | 3 bytes, 15 bits | 20 | 64 | 64 | | 16 | |
 | 7 | lazy | 3 bytes, 15 bits | 48 | 100 | 100 | | 16 | |
@@ -60,7 +60,14 @@ the mapping is by number.
   cleared) and takes the longest, ties to the newer.
 - Levels 2 and 3 are greedy: take the match found at a position, then insert the positions inside it into the finder: all of
   them when the match is at most `MaxLazy` long, otherwise only its last `Tail` positions. Level 1 does the same.
-  Levels 2 to 9 also keep a table of the latest position per 3-byte hash (15 bits), consulted when no match was found yet.
+  Levels 5 to 9 also keep a table of the latest position per 3-byte hash (15 bits), consulted when no match was found yet; levels 2
+  to 4 hash 4 bytes only, find no 3-byte matches, and so skip that table (a measured trade: the table costs a store and a load
+  per position, and at these levels the 3-byte matches it finds are few and mostly too far to pay).
+- Dry spells (levels 1 to 7): the parser counts the positions it searched in a row without finding a match (a match resets the
+  count; bytes it steps over are not counted). Once the count exceeds 16, each further failed search is followed by
+  `(count - 16) / 8` bytes emitted as literals without searching or entering them in the finder (never past the end of the run being
+  parsed, and never past the point where the sequence buffer must be checked), so data that does not compress costs little time.
+  The count restarts for every call of the parser, as the other parser state does.
 - Lazy (4 to 9): after finding a match shorter than `MaxLazy`, look at the next position. Matches are compared by a score,
   `4 * length - bsr(distance)` (`bsr` = index of the highest set bit; a nearer match costs fewer bits). The next position's match
   replaces the current one when its length is at least the current length and its score is higher by more than 1: one literal is
