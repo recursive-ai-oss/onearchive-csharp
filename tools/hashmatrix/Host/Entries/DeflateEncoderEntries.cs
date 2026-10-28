@@ -34,8 +34,8 @@ internal static class DeflateEncoderEntries
             }
 
             // Streaming: odd-sized writes with a sync flush and a full flush between them, drained through a small buffer.
-            Matrix.Add("deflate-enc", $"raw-level{l}-flushes", (input, _) => Streamed(input, l, DeflateFormat.Raw, default));
-            Matrix.Add("deflate-enc", $"zlib-level{l}-flushes", (input, _) => Streamed(input, l, DeflateFormat.ZLib, default));
+            Matrix.Add("deflate-enc", $"raw-level{l}-flushes", (input, _) => Streamed(input, l, DeflateFormat.Raw, null));
+            Matrix.Add("deflate-enc", $"zlib-level{l}-flushes", (input, _) => Streamed(input, l, DeflateFormat.ZLib, null));
 
             // A preset dictionary: the first 20000 bytes of the 64 KiB text input.
             Matrix.Add("deflate-enc", $"raw-level{l}-dict", (input, _) => Deflate.Compress(input, new DeflateOptions { Level = l, Dictionary = Dictionary() }));
@@ -58,7 +58,7 @@ internal static class DeflateEncoderEntries
 
     private static byte[] Dictionary() => Inputs.Get("text-64k").AsSpan(0, 20000).ToArray();
 
-    private static byte[] Streamed(ReadOnlySpan<byte> input, int level, DeflateFormat format, byte[] dictionary)
+    private static byte[] Streamed(ReadOnlySpan<byte> input, int level, DeflateFormat format, byte[]? dictionary)
     {
         var encoder = new DeflateEncoder(format, new DeflateOptions { Level = level, Dictionary = dictionary });
         var output = new List<byte>();
