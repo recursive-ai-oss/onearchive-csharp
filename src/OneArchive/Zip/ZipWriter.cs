@@ -222,9 +222,9 @@ public sealed class ZipWriter : ArchiveWriter
                 defaultMode = (UnixFileMode)0b110_100_100;
                 p.Size = entry.Size;
                 p.Method = entry.Size == 0 ? ZipMethod.Store : _options.Method;
-                if (p.Method is not (ZipMethod.Store or ZipMethod.Deflate or ZipMethod.Deflate64 or ZipMethod.Zstd))
+                if (p.Method is not (ZipMethod.Store or ZipMethod.Deflate or ZipMethod.Deflate64 or ZipMethod.BZip2 or ZipMethod.Zstd))
                 {
-                    throw new ArchiveUnsupportedException(ZipFormat.Name, $"writing the {p.Method} method (store, deflate, deflate64 and zstd can be written)");
+                    throw new ArchiveUnsupportedException(ZipFormat.Name, $"writing the {p.Method} method (store, deflate, deflate64, bzip2 and zstd can be written)");
                 }
 
                 break;
@@ -262,6 +262,11 @@ public sealed class ZipWriter : ArchiveWriter
         if (method == ZipMethod.Deflate64)
         {
             return new Deflate64Stream(sink, new Deflate64Options { Level = Math.Min(level ?? Deflate64Options.DefaultLevel, 9) }, leaveOpen: true);
+        }
+
+        if (method == ZipMethod.BZip2)
+        {
+            return new RecursiveAI.OneCompress.BZip2.BZip2Stream(sink, new RecursiveAI.OneCompress.BZip2.BZip2Options { Level = Math.Clamp(level ?? RecursiveAI.OneCompress.BZip2.BZip2Options.DefaultLevel, 1, 9) }, leaveOpen: true);
         }
 
         Stream stream = method == ZipMethod.Zstd
@@ -405,7 +410,7 @@ public sealed class ZipWriter : ArchiveWriter
             throw new ArgumentException("The entry's extra fields are longer than 65535 bytes.", nameof(entry));
         }
 
-        ushort needed = p.Method switch { ZipMethod.Zstd => 63, ZipMethod.Deflate => 20, ZipMethod.Deflate64 => 21, _ => 10 };
+        ushort needed = p.Method switch { ZipMethod.Zstd => 63, ZipMethod.Deflate => 20, ZipMethod.Deflate64 => 21, ZipMethod.BZip2 => 46, _ => 10 };
         if (p.Kind == ArchiveEntryKind.Directory || p.Descriptor)
         {
             needed = Math.Max(needed, (ushort)20);

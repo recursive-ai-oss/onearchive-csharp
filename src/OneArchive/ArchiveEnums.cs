@@ -44,7 +44,7 @@ public enum ArchiveCompression
     /// <summary>gzip (<c>.gz</c>). Read and written.</summary>
     Gzip = 3,
 
-    /// <summary>bzip2 (<c>.bz2</c>). Read; writing is not available yet.</summary>
+    /// <summary>bzip2 (<c>.bz2</c>). Read and written.</summary>
     Bzip2 = 4,
 
     /// <summary>xz (<c>.xz</c>). Detected, but not yet supported.</summary>

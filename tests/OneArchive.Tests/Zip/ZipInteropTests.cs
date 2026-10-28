@@ -113,6 +113,7 @@ public class ZipInteropTests
     [Theory]
     [InlineData(ZipMethod.Store)]
     [InlineData(ZipMethod.Deflate)]
+    [InlineData(ZipMethod.BZip2)]
     public void InfoZipAndSevenZipAndBsdtarReadOurZip(ZipMethod method)
     {
         Enabled();
@@ -355,6 +356,30 @@ public class ZipInteropTests
         Sh("mkdir gnu bsd && tar xzf ours.tar.gz -C gnu && " + BsdTar + " xzf ours.tgz -C bsd", temp.Root);
         AssertSame(tree, temp.Combine("gnu"));
         AssertSame(tree, temp.Combine("bsd"));
+    }
+
+    [Fact]
+    public void ReferenceToolsReadOurBzip2AndTarBz2()
+    {
+        Enabled();
+        using var temp = new TempDir();
+        string tree = temp.Combine("tree");
+        Tree(tree);
+        byte[] data = ZipTests.Text(400_000, 25);
+        File.WriteAllBytes(temp.Combine("doc.txt"), data);
+        foreach (int level in new[] { 1, 5, 9 })
+        {
+            Archive.Create(temp.Combine($"ours{level}.txt.bz2"), new ArchiveCreateOptions { CompressionLevel = level }).Add(temp.Combine("doc.txt")).Save();
+        }
+
+        Sh("for l in 1 5 9; do bzip2 -t ours$l.txt.bz2 && bzip2 -dc ours$l.txt.bz2 | cmp - doc.txt; done", temp.Root);
+        Archive.Create(temp.Combine("ours.tar.bz2")).Add(tree, "").Save();
+        Archive.Create(temp.Combine("ours.tbz2")).Add(tree, "").Save();
+        Sh("mkdir gnu bsd && tar xjf ours.tar.bz2 -C gnu && " + BsdTar + " xjf ours.tbz2 -C bsd", temp.Root);
+        AssertSame(tree, temp.Combine("gnu"));
+        AssertSame(tree, temp.Combine("bsd"));
+        Archive.Extract(temp.Combine("ours.tar.bz2"), temp.Combine("back"));
+        AssertSame(tree, temp.Combine("back"));
     }
 
     [Fact]

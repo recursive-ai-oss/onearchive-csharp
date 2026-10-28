@@ -258,6 +258,25 @@ catch (CompressionFormatException e) when (e.IsTruncated)
 {
 }
 
+// bzip2 compression: the one-liner, the span encoder and the write-mode stream agree and decode back.
+byte[] bzip2Text = System.Text.Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat("block sorting, move to front, huffman. ", 500)));
+byte[] bzip2Packed = BZip2.Compress(bzip2Text, new BZip2Options { Level = 2 });
+var bzip2Sink = new MemoryStream();
+using (var bzip2Writer = new BZip2Stream(bzip2Sink, new BZip2Options { Level = 2 }, leaveOpen: true))
+{
+    bzip2Writer.Write(bzip2Text);
+}
+
+byte[] bzip2Span = new byte[bzip2Packed.Length + 16];
+var bzip2Encoder = new BZip2Encoder(new BZip2Options { Level = 2 });
+bzip2Encoder.Compress(bzip2Text, bzip2Span, out _, out int bzip2SpanWritten, isFinalBlock: true);
+if (!BZip2.Decompress(bzip2Packed).AsSpan().SequenceEqual(bzip2Text) || !bzip2Sink.ToArray().AsSpan().SequenceEqual(bzip2Packed)
+    || !bzip2Span.AsSpan(0, bzip2SpanWritten).SequenceEqual(bzip2Packed))
+{
+    Console.Error.WriteLine("bzip2 compression failed");
+    return 1;
+}
+
 // One checksum from each family, so the trimmer keeps (and analyses) the vector paths.
 ReadOnlySpan<byte> check = "123456789"u8;
 if (Crc32.Compute(check) != 0xCBF43926u || Crc64.Compute(check) != 0x995DC9BBDF1939FAUL || Adler32.Compute(check) != 0x091E01DEu)

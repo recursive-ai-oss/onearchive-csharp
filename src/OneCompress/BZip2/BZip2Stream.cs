@@ -12,7 +12,9 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// the end of the data only after a complete stream: an inner stream that ends inside a stream, or that is empty, raises
 /// <see cref="CompressionFormatException"/> with <see cref="CompressionFormatException.IsTruncated"/> set. Bytes after the last stream that do
 /// not start another one raise <see cref="CompressionFormatException"/> unless <see cref="BZip2DecompressionOptions.AllowTrailingData"/> is set.</para>
-/// <para>Writing is not supported by this version: <see cref="CanWrite"/> is false.</para>
+/// <para>Compressing (the constructor that takes <see cref="BZip2Options"/>): bytes written are collected into a block, which is sorted and written to the inner stream
+/// when it is full or the stream is disposed, so output appears in steps of up to a block (about <c>level × 100 000</c> input bytes). <see cref="Flush()"/> passes on what is already coded
+/// and does not end the block, because a bzip2 block cannot be ended early without changing the output; disposing finishes the stream. Output depends only on the bytes written and the level.</para>
 /// </remarks>
 [Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2Stream : Stream
@@ -24,6 +26,7 @@ public sealed class BZip2Stream : Stream
     private readonly bool _leaveOpen;
     private readonly BZip2Decoder _decoder;
     private readonly BZip2DecompressionOptions _options;
+    private readonly BZip2Encoder? _encoder;
     private byte[]? _input;
     private int _inputStart;
     private int _inputEnd;
@@ -51,14 +54,35 @@ public sealed class BZip2Stream : Stream
         _input = ArrayPool<byte>.Shared.Rent(InputBufferSize);
     }
 
+    /// <summary>Creates a stream that compresses to <paramref name="stream"/>.</summary>
+    /// <param name="stream">A writable stream that receives the compressed data.</param>
+    /// <param name="options">The level; <see langword="null"/> for <see cref="BZip2Options.Default"/>.</param>
+    /// <param name="leaveOpen">True to leave <paramref name="stream"/> open when this stream is disposed.</param>
+    /// <exception cref="ArgumentException"><paramref name="stream"/> cannot be written.</exception>
+    public BZip2Stream(Stream stream, BZip2Options? options, bool leaveOpen = false)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        if (!stream.CanWrite)
+        {
+            throw new ArgumentException("The stream must be writable.", nameof(stream));
+        }
+
+        _options = BZip2DecompressionOptions.Default;
+        _decoder = new BZip2Decoder(_options);
+        _encoder = new BZip2Encoder(options);
+        _inner = stream;
+        _leaveOpen = leaveOpen;
+        _input = ArrayPool<byte>.Shared.Rent(InputBufferSize);
+    }
+
     /// <inheritdoc />
-    public override bool CanRead => _input is not null;
+    public override bool CanRead => _input is not null && _encoder is null;
 
     /// <inheritdoc />
     public override bool CanSeek => false;
 
     /// <inheritdoc />
-    public override bool CanWrite => false;
+    public override bool CanWrite => _input is not null && _encoder is not null;
 
     /// <inheritdoc />
     public override long Length => throw new NotSupportedException();
@@ -73,6 +97,38 @@ public sealed class BZip2Stream : Stream
     /// <inheritdoc />
     public override void Flush()
     {
+        if (_encoder is null || _input is null || _finished)
+        {
+            return;
+        }
+
+        OperationStatus status;
+        do
+        {
+            status = _encoder.Flush(_input, out int written);
+            _inner.Write(_input, 0, written);
+        }
+        while (status == OperationStatus.DestinationTooSmall);
+        _inner.Flush();
+    }
+
+    /// <inheritdoc cref="Flush()" />
+    public override async Task FlushAsync(CancellationToken cancellationToken)
+    {
+        if (_encoder is null || _input is null || _finished)
+        {
+            return;
+        }
+
+        OperationStatus status;
+        do
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            status = _encoder.Flush(_input, out int written);
+            await _inner.WriteAsync(_input.AsMemory(0, written), cancellationToken).ConfigureAwait(false);
+        }
+        while (status == OperationStatus.DestinationTooSmall);
+        await _inner.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -82,7 +138,71 @@ public sealed class BZip2Stream : Stream
     public override void SetLength(long value) => throw new NotSupportedException();
 
     /// <inheritdoc />
-    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+        ValidateBufferArguments(buffer, offset, count);
+        Write(buffer.AsSpan(offset, count));
+    }
+
+    /// <inheritdoc />
+    /// <exception cref="NotSupportedException">The stream decompresses.</exception>
+    public override void Write(ReadOnlySpan<byte> buffer)
+    {
+        byte[] output = GetInput();
+        if (_encoder is null)
+        {
+            throw new NotSupportedException();
+        }
+
+        while (true)
+        {
+            OperationStatus status = _encoder.Compress(buffer, output, out int consumed, out int written);
+            buffer = buffer[consumed..];
+            if (written > 0)
+            {
+                _inner.Write(output, 0, written);
+            }
+
+            if (status != OperationStatus.DestinationTooSmall && buffer.IsEmpty)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        ValidateBufferArguments(buffer, offset, count);
+        return WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+    }
+
+    /// <inheritdoc />
+    /// <exception cref="NotSupportedException">The stream decompresses.</exception>
+    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        byte[] output = GetInput();
+        if (_encoder is null)
+        {
+            throw new NotSupportedException();
+        }
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            OperationStatus status = _encoder.Compress(buffer.Span, output, out int consumed, out int written);
+            buffer = buffer[consumed..];
+            if (written > 0)
+            {
+                await _inner.WriteAsync(output.AsMemory(0, written), cancellationToken).ConfigureAwait(false);
+            }
+
+            if (status != OperationStatus.DestinationTooSmall && buffer.IsEmpty)
+            {
+                return;
+            }
+        }
+    }
 
     /// <inheritdoc />
     public override int Read(byte[] buffer, int offset, int count)
@@ -96,6 +216,11 @@ public sealed class BZip2Stream : Stream
     public override int Read(Span<byte> buffer)
     {
         byte[] input = GetInput();
+        if (_encoder is not null)
+        {
+            throw new NotSupportedException();
+        }
+
         if (buffer.IsEmpty)
         {
             return 0;
@@ -129,6 +254,11 @@ public sealed class BZip2Stream : Stream
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         byte[] input = GetInput();
+        if (_encoder is not null)
+        {
+            throw new NotSupportedException();
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         if (buffer.IsEmpty)
         {
@@ -228,9 +358,19 @@ public sealed class BZip2Stream : Stream
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
-        if (disposing && ReleaseBuffer() && !_leaveOpen)
+        if (disposing && _input is not null)
         {
-            _inner.Dispose();
+            try
+            {
+                FinishEncoding();
+            }
+            finally
+            {
+                if (ReleaseBuffer() && !_leaveOpen)
+                {
+                    _inner.Dispose();
+                }
+            }
         }
 
         base.Dispose(disposing);
@@ -239,12 +379,57 @@ public sealed class BZip2Stream : Stream
     /// <inheritdoc />
     public override async ValueTask DisposeAsync()
     {
-        if (ReleaseBuffer() && !_leaveOpen)
+        if (_input is not null)
         {
-            await _inner.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await FinishEncodingAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                if (ReleaseBuffer() && !_leaveOpen)
+                {
+                    await _inner.DisposeAsync().ConfigureAwait(false);
+                }
+            }
         }
 
         await base.DisposeAsync().ConfigureAwait(false);
+    }
+
+    // Compressing: end the stream (the last block, the end marker) and pass it on.
+    private void FinishEncoding()
+    {
+        if (_encoder is null || _input is null || _finished)
+        {
+            return;
+        }
+
+        _finished = true;
+        OperationStatus status;
+        do
+        {
+            status = _encoder.Compress(default, _input, out _, out int written, isFinalBlock: true);
+            _inner.Write(_input, 0, written);
+        }
+        while (status == OperationStatus.DestinationTooSmall);
+    }
+
+    private async ValueTask FinishEncodingAsync()
+    {
+        if (_encoder is null || _input is null || _finished)
+        {
+            return;
+        }
+
+        _finished = true;
+        OperationStatus status;
+        do
+        {
+            status = _encoder.Compress(default, _input, out _, out int written, isFinalBlock: true);
+            await _inner.WriteAsync(_input.AsMemory(0, written)).ConfigureAwait(false);
+        }
+        while (status == OperationStatus.DestinationTooSmall);
     }
 
     private bool ReleaseBuffer()
