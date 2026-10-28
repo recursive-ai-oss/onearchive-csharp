@@ -53,7 +53,7 @@ None open. F2's 16 extra bits and F4's 14 are fixed by E2 and E3 together with t
 49153 + 16383 = 65536. Details not tested (and so not relied on): behaviour of 7-Zip when a stream continues past its final
 block, and a Deflate64 stream in a gzip or zlib wrapper (not a format we offer).
 
-## Decisions beyond the experiments [Agent default]
+## Choices beyond the experiments
 
 - The decoder follows 7-Zip's acceptance in F9 (HLIT up to 288, HDIST up to 32) because the interoperability target is 7-Zip's
   decoder; the encoder stays inside the narrower range.
