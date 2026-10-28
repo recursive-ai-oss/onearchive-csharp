@@ -52,7 +52,7 @@ public sealed class LzmaBinaryTreeMatchFinder : LzmaMatchFinder
 
         int lenLimit = Math.Min(available, LzmaModel.MaxMatchLength);
         CheckWindow(buffer, position, lenLimit);
-        PrefetchAhead(buffer, position, available, cp);
+        PrefetchAhead(buffer, position, available, cp, _son, 2);
         int cur = UpdateHashes(buffer, position, out int c2, out int c3);
         int count = 0;
         int maxLen = AddShortMatches(buffer, position, lenLimit, c2, c3, matches, ref count);
@@ -74,66 +74,10 @@ public sealed class LzmaBinaryTreeMatchFinder : LzmaMatchFinder
 
         int lenLimit = Math.Min(available, LzmaModel.MaxMatchLength);
         CheckWindow(buffer, position, lenLimit);
-        PrefetchAhead(buffer, position, available, cp);
+        PrefetchAhead(buffer, position, available, cp, _son, 2);
         int cur = UpdateHashes(buffer, position, out _, out _);
         int count = 0;
         Walk(buffer, position, cp, cur, lenLimit, int.MaxValue, default, ref count, record: false);
-    }
-
-    // Memory hints for positions the finder will reach soon: the hash buckets of a position far ahead, and, for a position a few
-    // steps ahead (whose buckets were fetched earlier), the node its bucket holds, so that the first step of its tree walk finds
-    // that node's links and data in cache. The buckets can change before the position is reached; a stale hint only wastes a fetch.
-    // Nothing here changes any table or result.
-    private void PrefetchAhead(byte[] buffer, int position, int available, int cp)
-    {
-        const int Far = 16;
-        const int Near = 6;
-        if (_hashBytes < 3 || available < Far + 4)
-        {
-            return;
-        }
-
-        uint far = Read32(buffer, position + Far);
-        uint near = Read32(buffer, position + Near);
-        uint hf;
-        uint hn;
-        if (_hashBytes == 4)
-        {
-            hf = HashOf(far, _mainBits);
-            hn = HashOf(near, _mainBits);
-        }
-        else
-        {
-            hf = HashOf(far & 0xFFFFFF, _mainBits);
-            hn = HashOf(near & 0xFFFFFF, _mainBits);
-        }
-
-        LzmaMatchRaw.PrefetchLink(_main, (int)hf);
-        int node = _main[hn];
-        if (node > 0)
-        {
-            int slot = cp + Near - (position + Near - node);
-            if (slot < 0)
-            {
-                slot += _cyclicSize;
-            }
-            else if (slot >= _cyclicSize)
-            {
-                slot -= _cyclicSize;
-            }
-
-            LzmaMatchRaw.PrefetchByte(buffer, node);
-            LzmaMatchRaw.PrefetchLink(_son, 2 * slot);
-        }
-    }
-
-    // The walk reads buffer[position .. position + lenLimit] without bounds checks.
-    private static void CheckWindow(byte[] buffer, int position, int lenLimit)
-    {
-        if (position < 0 || lenLimit < 0 || (long)position + lenLimit >= buffer.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(position), "The position and the available length must lie inside the buffer.");
-        }
     }
 
     private protected override void ResetLinks() => Array.Clear(_son);

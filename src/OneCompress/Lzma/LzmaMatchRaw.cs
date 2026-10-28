@@ -71,4 +71,19 @@ internal static class LzmaMatchRaw
         }
 #endif
     }
+
+    /// <summary>
+    /// Four bytes at <paramref name="index"/> as a little-endian integer. The caller guarantees <c>index + 4 &lt;= buffer.Length</c>
+    /// (the entry points have checked the window).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint Read32(byte[] buffer, int index)
+    {
+#if CHECKED
+        return System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(index));
+#else
+        uint value = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(buffer), (nint)(uint)index));
+        return BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value);
+#endif
+    }
 }

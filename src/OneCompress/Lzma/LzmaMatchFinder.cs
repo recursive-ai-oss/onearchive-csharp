@@ -155,7 +155,7 @@ public abstract class LzmaMatchFinder
     private protected static uint HashOf(uint value, int bits) => (value * 2654435761u) >> (32 - bits);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private protected static uint Read32(byte[] buffer, int index) => BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(index));
+    private protected static uint Read32(byte[] buffer, int index) => LzmaMatchRaw.Read32(buffer, index);
 
     // The number of equal bytes at a and b, at most limit, given that the first `start` bytes are known to be equal.
     private protected static int CommonLength(byte[] buffer, int a, int b, int start, int limit)
@@ -184,26 +184,29 @@ public abstract class LzmaMatchFinder
     // candidate; `d2` and `d3` are the earlier positions of the short hashes (0 for none).
     private protected int UpdateHashes(byte[] buffer, int position, out int c2, out int c3)
     {
+        // The callers have run CheckWindow, so buffer[position .. position + 3] exist whenever the hash covers that many bytes;
+        // each table index is masked or shifted down to its table's size.
         c3 = 0;
         if (_hashBytes == 2)
         {
-            uint v2 = (uint)(buffer[position] | (buffer[position + 1] << 8));
-            int old = _hash2[v2];
-            _hash2[v2] = position;
+            uint v2 = (uint)(LzmaMatchRaw.B(buffer, position) | (LzmaMatchRaw.B(buffer, position + 1) << 8));
+            ref int slot2 = ref LzmaMatchRaw.L(_hash2, (int)v2);
+            int old = slot2;
+            slot2 = position;
             c2 = 0;
             return old;
         }
 
         uint v = Read32(buffer, position);
-        int h2 = (int)(v & 0xFFFF);
-        c2 = _hash2[h2];
-        _hash2[h2] = position;
+        ref int slotH2 = ref LzmaMatchRaw.L(_hash2, (int)(v & 0xFFFF));
+        c2 = slotH2;
+        slotH2 = position;
         uint hm;
         if (_hashBytes == 4)
         {
-            uint h3 = HashOf(v & 0xFFFFFF, Hash3Bits);
-            c3 = _hash3![h3];
-            _hash3[h3] = position;
+            ref int slotH3 = ref LzmaMatchRaw.L(_hash3!, (int)HashOf(v & 0xFFFFFF, Hash3Bits));
+            c3 = slotH3;
+            slotH3 = position;
             hm = HashOf(v, _mainBits);
         }
         else
@@ -211,9 +214,67 @@ public abstract class LzmaMatchFinder
             hm = HashOf(v & 0xFFFFFF, _mainBits);
         }
 
-        int cur = _main[hm];
-        _main[hm] = position;
+        ref int slotM = ref LzmaMatchRaw.L(_main, (int)hm);
+        int cur = slotM;
+        slotM = position;
         return cur;
+    }
+
+    // The searches read buffer[position .. position + lenLimit] and the hash functions four bytes at position, without bounds
+    // checks; this is the one check that makes that safe.
+    private protected static void CheckWindow(byte[] buffer, int position, int lenLimit)
+    {
+        if (position < 0 || lenLimit < 0 || (long)position + lenLimit >= buffer.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(position), "The position and the available length must lie inside the buffer.");
+        }
+    }
+
+    // Memory hints for positions the finder will reach soon: the hash buckets of a position far ahead, and, for a position a few
+    // steps ahead (whose buckets were fetched earlier), the node its bucket holds, so that the first step of its tree walk finds
+    // that node's links and data in cache. The buckets can change before the position is reached; a stale hint only wastes a fetch.
+    // Nothing here changes any table or result.
+    private protected void PrefetchAhead(byte[] buffer, int position, int available, int cp, int[] links, int stride)
+    {
+        const int Far = 16;
+        const int Near = 6;
+        if (_hashBytes < 3 || available < Far + 4)
+        {
+            return;
+        }
+
+        uint far = Read32(buffer, position + Far);
+        uint near = Read32(buffer, position + Near);
+        uint hf;
+        uint hn;
+        if (_hashBytes == 4)
+        {
+            hf = HashOf(far, _mainBits);
+            hn = HashOf(near, _mainBits);
+        }
+        else
+        {
+            hf = HashOf(far & 0xFFFFFF, _mainBits);
+            hn = HashOf(near & 0xFFFFFF, _mainBits);
+        }
+
+        LzmaMatchRaw.PrefetchLink(_main, (int)hf);
+        int node = _main[hn];
+        if (node > 0)
+        {
+            int slot = cp + Near - (position + Near - node);
+            if (slot < 0)
+            {
+                slot += _cyclicSize;
+            }
+            else if (slot >= _cyclicSize)
+            {
+                slot -= _cyclicSize;
+            }
+
+            LzmaMatchRaw.PrefetchByte(buffer, node);
+            LzmaMatchRaw.PrefetchLink(links, stride * slot);
+        }
     }
 
     // Adds the 2- and 3-byte candidates of the short hashes and returns the longest length found so far (1 if none).
