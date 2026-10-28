@@ -8,6 +8,9 @@ namespace RecursiveAI.OneCompress.Tests;
 /// and reuse pattern must not make the process grow. The default run is short enough for every build; set
 /// <c>ONEARCHIVE_SOAK_FRAMES</c> for a longer one.
 /// </summary>
+// Run alone: the heap size it watches is process-wide, so other tests allocating at the same time would look like growth.
+[CollectionDefinition("Zstd soak", DisableParallelization = true)]
+[Collection("Zstd soak")]
 public class ZstdSoakTests(Xunit.ITestOutputHelper output)
 {
     private static byte[] Text(int seed, int length)

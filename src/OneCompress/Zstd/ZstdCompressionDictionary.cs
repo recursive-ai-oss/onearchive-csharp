@@ -329,8 +329,9 @@ internal sealed class ZstdDictionaryIndex
     private readonly int _chainLog;
     private readonly bool _doubleHash;
 
-    private ZstdDictionaryIndex(int minMatch, int hashLog, int chainLog, bool doubleHash, uint[] primary, uint[]? secondary)
+    private ZstdDictionaryIndex(int minMatch, int hashLog, int chainLog, bool doubleHash, bool tagged, uint[] primary, uint[]? secondary)
     {
+        Tagged = tagged;
         _minMatch = minMatch;
         _hashLog = hashLog;
         _chainLog = chainLog;
@@ -338,6 +339,14 @@ internal sealed class ZstdDictionaryIndex
         Primary = primary;
         Secondary = secondary;
     }
+
+    /// <summary>
+    /// Whether table entries carry a tag in their top eight bits: a hash of the four bytes at the position (see
+    /// <see cref="ZstdFastMatchFinder.Tag"/>), with the position in the low 24 bits. A search compares the tag before it reads the
+    /// dictionary content, so a slot that holds some other bytes costs no second memory access. Dictionaries of 16 MiB and more
+    /// are not tagged.
+    /// </summary>
+    public bool Tagged { get; }
 
     /// <summary>The table of the fast strategy, or the long-hash table of the double-hash strategy; entries are content positions, 0 for empty.</summary>
     public uint[] Primary { get; }
@@ -357,30 +366,35 @@ internal sealed class ZstdDictionaryIndex
     public bool Matches(int minMatch, int hashLog, int chainLog, bool doubleHash) =>
         _minMatch == minMatch && _hashLog == hashLog && _doubleHash == doubleHash && (!doubleHash || _chainLog == chainLog);
 
+    private static uint Entry(ReadOnlySpan<byte> data, int position, bool tagged) =>
+        tagged ? (uint)position | ZstdFastMatchFinder.Tag(System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(data[position..])) : (uint)position;
+
     public static ZstdDictionaryIndex Build(byte[] content, int minMatch, int hashLog, int chainLog, bool doubleHash)
     {
         // Every position gets an entry (later positions replace earlier ones that hash alike): the dictionary is digested once,
         // so the cost is paid once, and the more positions known the more of the dictionary a frame can use.
         ReadOnlySpan<byte> data = content;
+        bool tagged = data.Length < (1 << 24);
         if (!doubleHash)
         {
             var table = new uint[1 << hashLog];
             for (int i = 1; i + 8 <= data.Length; i++)
             {
-                table[ZstdFastMatchFinder.Hash(data, i, minMatch, hashLog)] = (uint)i;
+                table[ZstdFastMatchFinder.Hash(data, i, minMatch, hashLog)] = Entry(data, i, tagged);
             }
 
-            return new ZstdDictionaryIndex(minMatch, hashLog, chainLog, false, table, null);
+            return new ZstdDictionaryIndex(minMatch, hashLog, chainLog, false, tagged, table, null);
         }
 
         var longTable = new uint[1 << hashLog];
         var shortTable = new uint[1 << chainLog];
         for (int i = 1; i + 8 <= data.Length; i++)
         {
-            longTable[ZstdFastMatchFinder.Hash(data, i, 8, hashLog)] = (uint)i;
-            shortTable[ZstdFastMatchFinder.Hash(data, i, minMatch, chainLog)] = (uint)i;
+            uint entry = Entry(data, i, tagged);
+            longTable[ZstdFastMatchFinder.Hash(data, i, 8, hashLog)] = entry;
+            shortTable[ZstdFastMatchFinder.Hash(data, i, minMatch, chainLog)] = entry;
         }
 
-        return new ZstdDictionaryIndex(minMatch, hashLog, chainLog, true, longTable, shortTable);
+        return new ZstdDictionaryIndex(minMatch, hashLog, chainLog, true, tagged, longTable, shortTable);
     }
 }

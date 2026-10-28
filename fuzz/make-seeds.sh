@@ -14,7 +14,7 @@ out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
          zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
-         deflate-decode zlib-decode gzip-decode bzip2-decode tar-read archive-open tar-roundtrip; do
+         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode tar-read archive-open tar-roundtrip; do
   mkdir -p "$out/$t"
 done
 
@@ -100,6 +100,9 @@ for p in "$payloads"/*; do
     { printf "\\x$(printf %02x $((lv + n % 5)))\\x$(printf %02x $((n * 7 % 256)))\\x$(printf %02x $((8 + n % 8)))"; head -c 8000 "$p"; } > "$out/zstd-encode-roundtrip/$b-$lv"
   done
   { printf '\x05\x00\x00\x00'; head -c 6000 "$p"; } > "$out/lz4-encode-frame/$b"
+  for lv in 1 6 12; do # level byte, format and strategy flags, piece and output sizes, flush plan
+    { printf "\x$(printf %02x $lv)\x$(printf %02x $((n * 5 % 128)))\x$(printf %02x $((n * 3 % 256)))\x$(printf %02x $((n * 11 % 256)))\x$(printf %02x $((n % 8)))"; head -c 6000 "$p"; } > "$out/deflate-encode-roundtrip/$b-$lv"
+  done
   { printf '\x01\x00\x00\x00'; head -c 6000 "$p"; } > "$out/lz4-encode-block/$b"
   { printf "\\x$(printf %02x $((n % 4)))\\x$(printf %02x $((n * 5 % 8)))\\x02\\x03\\x04\\x40"; head -c 9000 "$p"; } > "$out/zstd-train-roundtrip/$b"
 done

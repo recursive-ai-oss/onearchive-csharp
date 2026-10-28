@@ -94,6 +94,9 @@ install_zlib-ng() {
   PATH="$T/bin:$PATH" cmake --build out --target minigzip -j "$JOBS" >/dev/null \
     || PATH="$T/bin:$PATH" cmake --build out -j "$JOBS" >/dev/null
   mkdir -p "$p/bin"
+  # The library and header too, for the in-memory benchmark program in tools/deflate-bench.
+  PATH="$T/bin:$PATH" cmake --build out -j "$JOBS" >/dev/null 2>&1 || true
+  PATH="$T/bin:$PATH" cmake --install out >/dev/null 2>&1 || true
   f="$(find out -name 'minigzip*' -type f -perm -u+x | head -1)"
   [ -n "$f" ] || { echo "zlib-ng: minigzip was not built" >&2; return 1; }
   cp "$f" "$p/bin/minigzip"

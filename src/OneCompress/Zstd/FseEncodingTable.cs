@@ -345,6 +345,29 @@ public sealed class FseEncodingTable
     internal bool Contains(int symbol) => symbol < _symbolCount && _normalized[symbol] != 0;
 
     /// <summary>
+    /// The same price as <see cref="Cost(ReadOnlySpan{uint}, int)"/>, visiting only the symbols named in <paramref name="present"/> (bit s
+    /// set when symbol s occurs) instead of every counter up to the largest symbol. Small blocks have few distinct symbols.
+    /// </summary>
+    internal int CostOfPresent(uint[] histogram, ulong present)
+    {
+        int[] costs = _symbolCosts ??= BuildSymbolCosts();
+        long cost = 0;
+        while (present != 0)
+        {
+            int s = System.Numerics.BitOperations.TrailingZeroCount(present);
+            present &= present - 1;
+            if ((uint)s >= (uint)costs.Length || costs[s] < 0)
+            {
+                return int.MaxValue;
+            }
+
+            cost += (long)histogram[s] * costs[s];
+        }
+
+        return cost > int.MaxValue ? int.MaxValue : (int)cost;
+    }
+
+    /// <summary>
     /// Prices a histogram under this table in 1/256 bit units (the cost of the symbols only, not of any extra bits).
     /// </summary>
     /// <param name="histogram">How often each symbol occurs.</param>
