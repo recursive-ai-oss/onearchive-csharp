@@ -120,6 +120,26 @@ SHA-256 in `tools/corpora.sha256`:
   Dictionaries are trained on seed 1 and benchmarked on seed 2, per (game, kind). Rows for these payload sets
   (ratio against dictionary size, speed on small frames) are defined when the dictionary codecs land.
 
+## Deflate, zlib and gzip
+
+The references for this family have no in-process benchmark mode, so `tools/deflate-bench/refbench.c` (built by
+`tools/deflate-bench/build.sh` against the pinned libdeflate and zlib-ng installs) drives their public APIs as a
+black box on a file held in memory and times only the library call:
+
+- `libdeflate enc <level>`: one-shot gzip compression into a buffer sized by the library's bound. Our side compresses the
+  same file in one call (`DeflateBench enc <file> <level>`), levels 1 to 12.
+- `zlibng enc <level>`: streaming deflate fed in 64 KiB pieces. Our side feeds the same pieces through the encoder
+  (`--stream`), levels 1 to 9.
+- `dec`: decompression of the other tool's own gzip output; ours is `DeflateBench dec`, at levels 1, 6, 9 and 12 of
+  each reference (zlib-ng up to 9).
+
+Both sides use the best of N passes after warm-up (N is `--reps`, default 5). The gzip wrapper is included on both
+sides, so sizes compare directly. `tools/deflate-bench/bar.sh --mode oneshot|stream|decode` prints one row per file and
+level with sizes, MB/s of uncompressed data, the time ratio (the reference's MB/s divided by ours),
+peak resident memory of each process, and pass or FAIL against the usual limits (size at most 1.01, time at most 1.15).
+The row header records CPU, core count, SDK and load before and after. Corpora are silesia.tar and enwik8 for the
+bar; the Canterbury and single Silesia files are used for direction.
+
 ## Running
 
 ```

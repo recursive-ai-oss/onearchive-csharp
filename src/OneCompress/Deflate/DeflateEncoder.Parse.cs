@@ -25,7 +25,7 @@ internal readonly struct LevelParameters
     /// <summary>A match this long ends the search.</summary>
     public int Nice { get; init; }
 
-    /// <summary>Greedy: matches longer than this skip hashing their interior. Lazy: a match this long is taken without looking one byte further.</summary>
+    /// <summary>Greedy: a match longer than this enters only its last <see cref="Tail"/> positions into the finder. Lazy: a match this long is taken without looking one byte further.</summary>
     public int MaxLazy { get; init; }
 
     /// <summary>Optimal parsing: how many times a run is parsed, re-pricing from the previous pass.</summary>
@@ -34,12 +34,15 @@ internal readonly struct LevelParameters
     /// <summary>A previous match at least this long cuts the next search's chain to a quarter.</summary>
     public int Good { get; init; }
 
+    /// <summary>Greedy: inside a match longer than <see cref="MaxLazy"/>, only the last this many positions are entered into the finder.</summary>
+    public int Tail { get; init; }
+
     public static LevelParameters For(int level) => level switch
     {
         0 => new() { Mode = ParseMode.Stored },
-        1 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 4, Chain = 1, Nice = 32, MaxLazy = 8 },
-        2 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 4, Chain = 4, Nice = 32, MaxLazy = 16 },
-        3 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 3, Chain = 8, Nice = 48, MaxLazy = 32 },
+        1 => new() { Mode = ParseMode.Greedy, HashBits = 17, HashBytes = 4, Chain = 1, Nice = 32, MaxLazy = 32, Tail = 4 },
+        2 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 3, Chain = 6, Nice = 40, MaxLazy = 32, Tail = 4 },
+        3 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 48, Tail = 4 },
         4 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 8, Nice = 32, MaxLazy = 16, Good = 8 },
         5 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 24, Good = 12 },
         6 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 20, Nice = 64, MaxLazy = 64, Good = 16 },
@@ -172,10 +175,15 @@ public sealed partial class DeflateEncoder
             {
                 PutMatch(words, literalCounts, distanceCounts, ref count, length, distance);
                 int end = position + length;
-                if (length <= p.MaxLazy)
                 {
                     int last = Math.Min(end, insertEnd);
-                    for (int q = position + 1; q < last; q++)
+                    int first = position + 1;
+                    if (length > p.MaxLazy)
+                    {
+                        first = Math.Max(first, end - p.Tail);
+                    }
+
+                    for (int q = first; q < last; q++)
                     {
                         finder.InsertBound(q);
                     }
@@ -232,10 +240,15 @@ public sealed partial class DeflateEncoder
             {
                 PutMatch(words, literalCounts, distanceCounts, ref count, length, distance);
                 int end = position + length;
-                if (length <= p.MaxLazy)
                 {
                     int last = Math.Min(end, insertEnd);
-                    for (int q = position + 1; q < last; q++)
+                    int first = position + 1;
+                    if (length > p.MaxLazy)
+                    {
+                        first = Math.Max(first, end - p.Tail);
+                    }
+
+                    for (int q = first; q < last; q++)
                     {
                         finder.InsertFirstUnchecked(window, q);
                     }

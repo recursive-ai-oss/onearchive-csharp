@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Intrinsics;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
@@ -70,9 +71,23 @@ public sealed class DeflateHashChainMatchFinder
         }
     }
 
-    private static void SlideTable(int[] table, int delta)
+    // Same result with or without vector hardware: table[i] = max(table[i] - delta, Null) (the subtraction cannot overflow, since
+    // every entry is at least Null and delta is below 2^30).
+    internal static void SlideTable(int[] table, int delta)
     {
-        for (int i = 0; i < table.Length; i++)
+        int i = 0;
+        if (Vector256.IsHardwareAccelerated && table.Length >= Vector256<int>.Count)
+        {
+            Vector256<int> d = Vector256.Create(delta);
+            Vector256<int> floor = Vector256.Create(Null);
+            for (; i + Vector256<int>.Count <= table.Length; i += Vector256<int>.Count)
+            {
+                Vector256<int> v = Vector256.Create(table.AsSpan(i, Vector256<int>.Count));
+                Vector256.Max(v - d, floor).CopyTo(table.AsSpan(i, Vector256<int>.Count));
+            }
+        }
+
+        for (; i < table.Length; i++)
         {
             int value = table[i] - delta;
             table[i] = value < Null ? Null : value;

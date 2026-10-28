@@ -60,6 +60,17 @@ internal static class DeflateRaw
 #endif
     }
 
+    /// <summary>Stores eight bytes at <paramref name="index"/>. The caller guarantees <c>index + 8 &lt;= span.Length</c> (the fast loop's output margin).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Write64(Span<byte> span, int index, ulong value)
+    {
+#if CHECKED
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(index, 8), value);
+#else
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), (nint)(uint)index), BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value));
+#endif
+    }
+
     /// <summary>
     /// Copies eight bytes from <paramref name="source"/> to <paramref name="destination"/> within one buffer. The caller guarantees both
     /// ranges are inside the buffer (the loop keeps a margin of the longest match plus 8 bytes) and, for overlapping data, that the source
