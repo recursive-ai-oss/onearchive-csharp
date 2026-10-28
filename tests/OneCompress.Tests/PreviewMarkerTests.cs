@@ -10,6 +10,7 @@ public class PreviewMarkerTests
     [InlineData("RecursiveAI.OneCompress.Zstd", "ONECOMPRESS001")]
     [InlineData("RecursiveAI.OneCompress.Lz4", "ONECOMPRESS002")]
     [InlineData("RecursiveAI.OneCompress.Deflate", "ONECOMPRESS003")]
+    [InlineData("RecursiveAI.OneCompress.BZip2", "ONECOMPRESS004")]
     public void EveryPublicTypeIsExperimental(string ns, string id)
     {
         var assembly = typeof(OneCompressInfo).Assembly;

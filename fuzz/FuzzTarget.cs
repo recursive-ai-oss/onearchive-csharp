@@ -36,6 +36,7 @@ internal static class FuzzTargets
         DeflateTargets.Raw,
         DeflateTargets.ZLib,
         DeflateTargets.GZip,
+        BZip2Targets.Decode,
         ArchiveTargets.TarRead,
         ArchiveTargets.Open,
         ArchiveTargets.TarRoundTrip,
