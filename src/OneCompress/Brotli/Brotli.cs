@@ -3,9 +3,9 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
-/// <summary>One-call brotli decompression (RFC 7932).</summary>
+/// <summary>One-call brotli compression and decompression (RFC 7932).</summary>
 /// <remarks>
-/// <para>These methods are built on <see cref="BrotliDecoder"/>. They decode exactly one stream: the input must be a complete brotli
+/// <para>Compression is built on <see cref="BrotliEncoder"/> and decompression on <see cref="BrotliDecoder"/>. The decompression methods decode exactly one stream: the input must be a complete brotli
 /// stream, and bytes after its last meta-block raise <see cref="CompressionFormatException"/> unless
 /// <see cref="BrotliDecompressionOptions.AllowTrailingData"/> is set.</para>
 /// <para>Nothing the stream declares is trusted: the window is checked against
@@ -16,6 +16,58 @@ namespace RecursiveAI.OneCompress.Brotli;
 [Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Brotli
 {
+    /// <summary>Compresses data to a complete brotli stream.</summary>
+    /// <param name="source">The data.</param>
+    /// <param name="options">The quality and window; <see langword="null"/> for <see cref="BrotliOptions.Default"/> (quality 11, 22 window bits).</param>
+    /// <returns>The compressed stream.</returns>
+    public static byte[] Compress(ReadOnlySpan<byte> source, BrotliOptions? options = null)
+    {
+        var encoder = new BrotliEncoder(options);
+        var result = new List<byte[]>();
+        byte[] chunk = new byte[(int)Math.Min(Math.Max(source.Length / 2, 4096), 1 << 20)];
+        int consumed = 0;
+        long total = 0;
+        while (true)
+        {
+            OperationStatus status = encoder.Compress(source.Slice(consumed), chunk, out int c, out int w, isFinalBlock: true);
+            consumed += c;
+            if (w > 0)
+            {
+                result.Add(chunk.AsSpan(0, w).ToArray());
+                total += w;
+            }
+
+            if (status == OperationStatus.Done)
+            {
+                break;
+            }
+        }
+
+        byte[] output = new byte[total];
+        int at = 0;
+        foreach (byte[] part in result)
+        {
+            part.CopyTo(output, at);
+            at += part.Length;
+        }
+
+        return output;
+    }
+
+    /// <summary>Compresses data to a complete brotli stream in a buffer the caller provides.</summary>
+    /// <param name="source">The data.</param>
+    /// <param name="destination">Receives the compressed stream; <see cref="BrotliEncoder.GetMaxCompressedLength"/> bytes always suffice.</param>
+    /// <param name="bytesWritten">The number of bytes written; 0 when the method returns false.</param>
+    /// <param name="options">The quality and window; <see langword="null"/> for <see cref="BrotliOptions.Default"/>.</param>
+    /// <returns>True if the whole stream fits in <paramref name="destination"/>.</returns>
+    public static bool TryCompress(ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten, BrotliOptions? options = null)
+    {
+        var encoder = new BrotliEncoder(options);
+        OperationStatus status = encoder.Compress(source, destination, out _, out int written, isFinalBlock: true);
+        bytesWritten = status == OperationStatus.Done ? written : 0;
+        return status == OperationStatus.Done;
+    }
+
     /// <summary>Decompresses a complete brotli stream.</summary>
     /// <param name="source">The compressed stream.</param>
     /// <param name="options">Limits and settings; <see langword="null"/> for the defaults.</param>
