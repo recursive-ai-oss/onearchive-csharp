@@ -74,7 +74,7 @@ off the CRC check for that stream.
 
 ## Not done yet
 
-PPMd, BCJ2, AES and Deflate64 coders; writing.
+PPMd, BCJ2, AES and Deflate64 coders. Writing is in `7z-writer.md`.
 
 ## Zip entries (methods 14 and 95)
 

@@ -191,4 +191,7 @@ public sealed class ArchiveCreateOptions
 
     /// <summary>Gets the zip writing options (<see cref="CompressionLevel"/>, when set, overrides <see cref="ZipWriterOptions.Level"/>). Default: the zip defaults (Deflate).</summary>
     public ZipWriterOptions? Zip { get; init; }
+
+    /// <summary>Gets the 7z writing options (<see cref="CompressionLevel"/>, when set, overrides <see cref="SevenZipWriterOptions.Level"/>). Default: the 7z defaults (LZMA2, level 5, solid).</summary>
+    public SevenZipWriterOptions? SevenZip { get; init; }
 }

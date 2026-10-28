@@ -318,6 +318,25 @@ using (var arReader = new RecursiveAI.OneArchive.Ar.ArReader(new MemoryStream(ar
     }
 }
 
+// 7z written (LZMA2 with an x86 filter, then Deflate non-solid) and read back.
+foreach (var sevenZipOptions in new[] { new RecursiveAI.OneArchive.SevenZip.SevenZipWriterOptions { Filter = RecursiveAI.OneArchive.SevenZip.SevenZipFilter.X86 }, new RecursiveAI.OneArchive.SevenZip.SevenZipWriterOptions { Method = RecursiveAI.OneArchive.SevenZip.SevenZipMethod.Deflate, Solid = false } })
+{
+    var sevenZip = new MemoryStream();
+    using (var sevenZipWriter = new RecursiveAI.OneArchive.SevenZip.SevenZipWriter(sevenZip, sevenZipOptions, leaveOpen: true))
+    {
+        sevenZipWriter.WriteEntry(new ArchiveEntry { Name = "a/b.txt", Size = 11 }, "hello hello"u8.ToArray());
+        sevenZipWriter.WriteEntry(new ArchiveEntry { Name = "empty", Size = 0 }, (Stream?)null);
+    }
+
+    using var sevenZipReader = new RecursiveAI.OneArchive.SevenZip.SevenZipReader(new MemoryStream(sevenZip.ToArray()));
+    using var sevenZipText = new StreamReader(sevenZipReader.OpenEntryStream(sevenZipReader.Items[0]));
+    if (sevenZipReader.Items.Count != 2 || sevenZipText.ReadToEnd() != "hello hello")
+    {
+        Console.Error.WriteLine("7z round trip failed");
+        return 1;
+    }
+}
+
 var zstTar = new MemoryStream();
 Archive.Create(zstTar, new ArchiveCreateOptions { Compression = ArchiveCompression.Zstd, LeaveOpen = true })
     .Add(new ArchiveEntry { Name = "a.txt", Size = 3 }, "abc"u8.ToArray()).Save();
