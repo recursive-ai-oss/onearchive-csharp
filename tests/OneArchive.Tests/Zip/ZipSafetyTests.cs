@@ -199,6 +199,20 @@ public class ZipSafetyTests
     }
 
     [Fact]
+    public void Deflate64ExpansionBombIsStoppedByTheRatioLimit()
+    {
+        using var temp = new TempDir();
+        var raw = new RawZip();
+        byte[] zeros = new byte[200 << 20];
+        raw.Add(new RawZip.Entry { Name = "zeros", Method = 9, Data = RecursiveAI.OneCompress.Deflate64.Deflate64.Compress(zeros), Plain = zeros });
+        byte[] zip = raw.Finish();
+        Assert.True(zip.Length < 100_000, $"{zip.Length}");
+        var ex = Assert.Throws<CompressionLimitException>(() => Extract(zip, temp.Combine("t")));
+        Assert.Contains("MaxExpansionRatio", ex.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(temp.Combine("t/zeros")));
+    }
+
+    [Fact]
     public void DataDescriptorEntriesCannotHideASizeBomb()
     {
         var raw = new RawZip();

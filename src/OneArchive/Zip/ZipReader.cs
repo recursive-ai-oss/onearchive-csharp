@@ -682,7 +682,7 @@ public sealed class ZipReader : ArchiveReader
             throw new ArchiveUnsupportedException(ZipFormat.Name, $"encrypted entries ('{Printable(e.Name)}')");
         }
 
-        if (e.Method is not (ZipMethod.Store or ZipMethod.Deflate or ZipMethod.BZip2 or ZipMethod.Zstd or ZipMethod.Lzma or ZipMethod.Xz))
+        if (e.Method is not (ZipMethod.Store or ZipMethod.Deflate or ZipMethod.Deflate64 or ZipMethod.BZip2 or ZipMethod.Zstd or ZipMethod.Lzma or ZipMethod.Xz))
         {
             throw new ArchiveUnsupportedException(ZipFormat.Name, $"compression method {(int)e.Method} ({ZipFormat.MethodName((int)e.Method)}) of entry '{Printable(e.Name)}'");
         }
@@ -959,7 +959,7 @@ public sealed class ZipReader : ArchiveReader
             throw new ArchiveUnsupportedException(ZipFormat.Name, $"encrypted entries ('{Printable(r.Name)}')");
         }
 
-        if (r.Method is not ((ushort)ZipMethod.Store or (ushort)ZipMethod.Deflate or (ushort)ZipMethod.BZip2 or (ushort)ZipMethod.Zstd or (ushort)ZipMethod.Lzma or (ushort)ZipMethod.Xz))
+        if (r.Method is not ((ushort)ZipMethod.Store or (ushort)ZipMethod.Deflate or (ushort)ZipMethod.Deflate64 or (ushort)ZipMethod.BZip2 or (ushort)ZipMethod.Zstd or (ushort)ZipMethod.Lzma or (ushort)ZipMethod.Xz))
         {
             throw new ArchiveUnsupportedException(ZipFormat.Name, $"compression method {r.Method} ({ZipFormat.MethodName(r.Method)}) of entry '{Printable(r.Name)}'");
         }

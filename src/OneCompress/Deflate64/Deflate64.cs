@@ -10,6 +10,39 @@ namespace RecursiveAI.OneCompress.Deflate64;
 [Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Deflate64
 {
+    /// <summary>Gets the most bytes <see cref="Compress"/> can produce for input of <paramref name="inputLength"/> bytes.</summary>
+    /// <param name="inputLength">The input size.</param>
+    /// <returns>The bound.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="inputLength"/> is negative or too large.</exception>
+    public static long GetMaxCompressedLength(long inputLength) => Deflate64Encoder.GetMaxCompressedLength(inputLength);
+
+    /// <summary>Compresses a buffer to one raw Deflate64 stream (the data of a zip entry with method 9).</summary>
+    /// <param name="source">The data; may be empty (the result is then a two-byte stream).</param>
+    /// <param name="options">The level; <see langword="null"/> for <see cref="Deflate64Options.Default"/>.</param>
+    /// <returns>The compressed bytes.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The level is outside 0 to 9.</exception>
+    public static byte[] Compress(ReadOnlySpan<byte> source, Deflate64Options? options = null)
+    {
+        byte[] buffer = new byte[GetMaxCompressedLength(source.Length)];
+        TryCompress(source, buffer, out int written, options);
+        return buffer.AsSpan(0, written).ToArray();
+    }
+
+    /// <summary>Compresses a buffer into a caller-supplied buffer.</summary>
+    /// <param name="source">The data.</param>
+    /// <param name="destination">Receives the stream; <see cref="GetMaxCompressedLength"/> bytes always suffice.</param>
+    /// <param name="bytesWritten">The number of bytes written, or 0 when the destination is too small.</param>
+    /// <param name="options">The level; <see langword="null"/> for the default.</param>
+    /// <returns>True on success; false when <paramref name="destination"/> is too small.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The level is outside 0 to 9.</exception>
+    public static bool TryCompress(ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten, Deflate64Options? options = null)
+    {
+        var encoder = new Deflate64Encoder(options);
+        OperationStatus status = encoder.Compress(source, destination, out _, out int written, isFinalBlock: true);
+        bytesWritten = status == OperationStatus.Done ? written : 0;
+        return status == OperationStatus.Done;
+    }
+
     /// <summary>Decompresses a buffer holding one raw Deflate64 stream.</summary>
     /// <param name="source">The compressed data. It must end where the stream ends unless <see cref="Deflate64DecompressionOptions.AllowTrailingData"/> is set.</param>
     /// <param name="options">Limits; <see langword="null"/> for <see cref="Deflate64DecompressionOptions.Default"/>.</param>

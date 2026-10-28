@@ -27,7 +27,7 @@ internal static class DeflateEncoderTargets
     }
 
     // Turns fuzzer bytes into compressible data: bytes below 0x80 start a literal run taken from the input, the rest are copies.
-    private static byte[] Expand(ReadOnlySpan<byte> program, int limit)
+    internal static byte[] Expand(ReadOnlySpan<byte> program, int limit)
     {
         var output = new List<byte>(Math.Min(limit, program.Length * 4));
         int i = 0;

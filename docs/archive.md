@@ -257,7 +257,7 @@ are those of PKWARE's APPNOTE 6.3.10; its text is not reproduced here.
   A symbolic link's target is its data (UTF-8 when valid, else Latin-1), read when the directory is loaded, at most `4 * MaxPathLength` bytes.
 - **Times.** NTFS field 0x000a (100 ns) wins over the extended timestamp 0x5455 (Unix seconds; modification, access, creation), which wins
   over the DOS date and time, read as UTC (the fields carry no zone); an impossible DOS value is no time.
-- **Methods.** 0 store, 8 deflate, 12 bzip2, 93 zstd (4.4.5). Anything else, and encrypted entries (bit 0, bit 6 or method 99), are listed and raise
+- **Methods.** 0 store, 8 deflate, 9 deflate64 (raw stream, `Deflate64Decoder`, see `deflate64-decoder.md`), 12 bzip2, 93 zstd (4.4.5). Anything else, and encrypted entries (bit 0, bit 6 or method 99), are listed and raise
   `ArchiveUnsupportedException` naming the method when opened. Zip64 extra fields (0x0001) hold exactly the values whose header field is
   saturated, in the order size, compressed size, offset, disk; a short field is an error.
 
@@ -267,9 +267,9 @@ Everything not listed is as APPNOTE says. The same entries and options give the 
 
 - **Layout**: for each entry a local header, the data, and for descriptor entries the descriptor; then the central directory, the zip64
   end record and locator if needed, and the end record. "Version made by" is `0x033F` (Unix, 6.3); "version needed" is 10 (store), 20
-  (deflate, directories and descriptor entries), 63 (zstd), at least 45 with zip64. Compression method per entry: `ZipWriterOptions.Method`
+  (deflate, directories and descriptor entries), 21 (deflate64; at least 20 for directories and descriptor entries, as for deflate), 63 (zstd), at least 45 with zip64. Compression method per entry: `ZipWriterOptions.Method`
   (default deflate); directories, symbolic links and empty files are stored. Hard links, devices and FIFOs are
-  `ArchiveUnsupportedException`. Deflate entries are raw Deflate at `Level` (default 6, 0-12, through `DeflateEncoderStream`); zstd entries are one frame at `Level` (default 3) with the content size and no frame checksum (the zip CRC-32
+  `ArchiveUnsupportedException`. Deflate entries are raw Deflate at `Level` (default 6, 0-12, through `DeflateEncoderStream`); deflate64 entries are a raw Deflate64 stream at `Level` (default 6, 0-9; higher values mean 9; `Deflate64Stream`); zstd entries are one frame at `Level` (default 3) with the content size and no frame checksum (the zip CRC-32
   covers the data).
 - **Names**: UTF-8, bit 11 set when any byte is not ASCII (name or comment); directories get a trailing `/`. An empty name or NUL is an
   `ArgumentException`; names and comments are at most 65535 bytes.

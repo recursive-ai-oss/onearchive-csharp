@@ -3,6 +3,7 @@ using RecursiveAI.OneArchive;
 using RecursiveAI.OneCompress;
 using RecursiveAI.OneCompress.BZip2;
 using RecursiveAI.OneCompress.Deflate;
+using RecursiveAI.OneCompress.Deflate64;
 using RecursiveAI.OneCompress.Lz4;
 using RecursiveAI.OneCompress.Lzip;
 using RecursiveAI.OneCompress.Lzma;
@@ -314,6 +315,22 @@ using (var arReader = new RecursiveAI.OneArchive.Ar.ArReader(new MemoryStream(ar
     if (arEntry is null || arEntry.Name.Length != 42 || arEntry.Size != 3 || arReader.GetNextEntry() is not null || Archive.Open(new MemoryStream(arBytes.ToArray())).Format != ArchiveFormat.Ar)
     {
         Console.Error.WriteLine("ar round trip failed");
+        return 1;
+    }
+}
+
+// Deflate64: a level-6 stream of 70,000 bytes with a far repeat, through the one-liners, the streams and the span decoder.
+byte[] deflate64Input = new byte[70_000];
+new Random(3).NextBytes(deflate64Input.AsSpan(0, 40_000));
+deflate64Input.AsSpan(0, 20_000).CopyTo(deflate64Input.AsSpan(50_000));
+byte[] deflate64Data = Deflate64.Compress(deflate64Input);
+using (var deflate64Stream = new Deflate64Stream(new MemoryStream(deflate64Data)))
+{
+    var result = new MemoryStream();
+    deflate64Stream.CopyTo(result);
+    if (!Deflate64.Decompress(deflate64Data).AsSpan().SequenceEqual(deflate64Input) || !result.ToArray().AsSpan().SequenceEqual(deflate64Input))
+    {
+        Console.Error.WriteLine("deflate64 round trip failed");
         return 1;
     }
 }

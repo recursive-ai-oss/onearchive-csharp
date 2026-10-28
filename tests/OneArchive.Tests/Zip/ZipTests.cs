@@ -288,6 +288,8 @@ public class ZipTests
     [Theory]
     [InlineData(ZipMethod.Store, true)]
     [InlineData(ZipMethod.Store, false)]
+    [InlineData(ZipMethod.Deflate64, true)]
+    [InlineData(ZipMethod.Deflate64, false)]
     [InlineData(ZipMethod.Zstd, true)]
     [InlineData(ZipMethod.Zstd, false)]
     public void WriterOutputReadsBackSeekableAndForwardOnly(ZipMethod method, bool seekableOutput)

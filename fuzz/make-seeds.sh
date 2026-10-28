@@ -14,7 +14,7 @@ out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
          zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
-         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip bzip2-decode lzma-decode xz-decode lzip-decode lzma-encode-roundtrip xz-encode-roundtrip tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read sevenzip-read cpio-read ar-read cpio-roundtrip ar-roundtrip; do
+         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip deflate64-decode deflate64-encode-roundtrip bzip2-decode lzma-decode xz-decode lzip-decode lzma-encode-roundtrip xz-encode-roundtrip tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read sevenzip-read cpio-read ar-read cpio-roundtrip ar-roundtrip; do
   mkdir -p "$out/$t"
 done
 
@@ -82,6 +82,15 @@ done
 if command -v pigz >/dev/null; then
   for p in "$payloads"/*; do { printf '\x00'; pigz -q -z -6 -c "$p"; } > "$out/zlib-decode/ref-pigz-$(basename "$p")" || true; done
 fi
+
+# Deflate64: the vectors (a leading option byte: 0 means no trailing data and a 16 MiB output limit) and the round-trip recipes
+# (level, flags, write size, output size, flush plan, then the program that expands into data).
+for f in $(small "$root"/testdata/deflate64/vectors/*.d64); do { printf '\x00'; cat "$f"; } > "$out/deflate64-decode/$(basename "$f")"; done
+n=0
+for p in "$payloads"/*; do
+  n=$((n + 1)); lv=$((n % 10))
+  { printf "\x$(printf %02x $lv)\x00\x$(printf %02x $((n * 3 % 256)))\x$(printf %02x $((n * 11 % 256)))\x$(printf %02x $((n % 256)))"; head -c 6000 "$p"; } > "$out/deflate64-encode-roundtrip/$(basename "$p")-$lv"
+done
 
 # bzip2: the vectors, and the tool's own output over the payloads at three levels. The first
 # byte is the option byte of the target (0: verify checksums, no trailing data).

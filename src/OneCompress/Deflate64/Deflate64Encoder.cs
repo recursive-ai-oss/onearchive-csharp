@@ -131,7 +131,7 @@ public sealed partial class Deflate64Encoder
 
             if (_finished)
             {
-                if (!source.IsEmpty)
+                if (consumed < source.Length)
                 {
                     throw new InvalidOperationException("The stream is finished; call Reset() before compressing more.");
                 }
