@@ -178,14 +178,14 @@ public ref struct DeflateBitReader
                 {
                     int extra = (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
                     e = entries[(int)(e >> DeflateHuffmanEntry.ValueShift) + (int)((_bits >> primary) & ((1u << extra) - 1))];
-                    if ((int)(e & 0xFF) <= _count)
+                    if ((int)((e >> DeflateHuffmanEntry.ExtraShift) & 15) <= _count)
                     {
                         entry = new DeflateHuffmanEntry(e);
                         return true;
                     }
                 }
             }
-            else if ((int)(e & 0xFF) <= _count)
+            else if ((int)((e >> DeflateHuffmanEntry.ExtraShift) & 15) <= _count)
             {
                 entry = new DeflateHuffmanEntry(e);
                 return true;

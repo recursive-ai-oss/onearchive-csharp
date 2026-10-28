@@ -76,7 +76,7 @@ a unit. After an exception the decoder refuses calls until `Reset`.
 The decoder writes into the caller's buffer and keeps the last 32 KiB of each call's output in a window (a copy of at most 32 KiB
 per call) so matches can reach into earlier calls. The hot loop (`DeflateFastLoop`) runs while 8 input and 272 output bytes remain:
 one 8-byte load per symbol refills the bit buffer to at least 56 bits, and entries of the lookup tables carry the length or
-distance base and extra-bit count, so a symbol is one or two table reads. Tables have a 10-bit (literal/length), 8-bit (distance) or
+distance base and extra-bit count, so a symbol is one or two table reads. The low byte of an entry is the code length plus its extra bits, so one shift drops both and the extra bits are read from the bits before the shift (the code length sits in bits 8 to 11). Tables have a 10-bit (literal/length), 8-bit (distance) or
 7-bit (code-length) first level and second-level tables for longer codes. The output depends only on the input and options. After the first literal of a refill the loop decodes up to two more first-level literals before refilling.
 
 ## Tests and data
