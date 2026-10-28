@@ -52,6 +52,7 @@ Coder order in the header follows 7-Zip: the compression method first, then the 
 | LZMA2 | `21` | 1 byte, the dictionary size code |
 | LZMA | `03 01 01` | 5 bytes: `(pb*5+lp)*9+lc`, dictionary size LE32 |
 | Deflate | `04 01 08` | none; raw Deflate at the given level (0–9) |
+| Deflate64 | `04 01 09` | none; raw Deflate64 at the given level (0–9) |
 | Zstandard | `F7 11 01` (the external-codec ID in `Methods.txt`) | none; the frame is self-describing. Standard 7-Zip builds cannot read it. |
 
 Filters: Delta `03` (property: distance − 1); x86 `03 03 01 03`, PowerPC `03 03 02 05`, IA-64 `03 03 04 01`, ARM `03 03 05 01`,
@@ -95,5 +96,5 @@ goes through the CRC, the filter and the compressor straight to the output, so m
 
 ## Not written
 
-AES encryption, PPMd, BCJ2, BZip2 and Deflate64 coders, archive properties, additional streams, start-position and
+AES encryption, PPMd, BCJ2 and BZip2 coders, archive properties, additional streams, start-position and
 comment properties.

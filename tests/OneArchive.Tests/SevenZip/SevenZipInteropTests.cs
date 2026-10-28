@@ -40,6 +40,12 @@ public class SevenZipInteropTests
     [InlineData("-m0=Copy -ms=off -mhc=off")]
     [InlineData("-m0=Deflate -ms=on -mhc=off")]
     [InlineData("-m0=Deflate -ms=off -mhc=off")]
+    [InlineData("-m0=Deflate64 -mx=1 -ms=on -mhc=off")]
+    [InlineData("-m0=Deflate64 -mx=1 -ms=off -mhc=off")]
+    [InlineData("-m0=Deflate64 -mx=5 -ms=on -mhc=off")]
+    [InlineData("-m0=Deflate64 -mx=5 -ms=off -mhc=off")]
+    [InlineData("-m0=Deflate64 -mx=9 -ms=on -mhc=off")]
+    [InlineData("-m0=Deflate64 -mx=9 -ms=off -mhc=off")]
     [InlineData("-m0=BZip2 -ms=on -mhc=off")]
     [InlineData("-m0=BZip2 -ms=e -mhc=off")]
     [InlineData("-m0=Copy -m1=Copy -ms=on -mhc=off")]
@@ -99,9 +105,9 @@ public class SevenZipInteropTests
         }
 
         // bsdtar's listing names the same entries (directories with a trailing slash, a "./" prefix is not used by 7z).
-        if (switches.Contains("-m1=Copy") || switches.Contains("Delta") || switches.Contains("-mf="))
+        if (switches.Contains("-m1=Copy") || switches.Contains("Deflate64") || switches.Contains("Delta") || switches.Contains("-mf="))
         {
-            return; // bsdtar cannot read these filter chains.
+            return; // bsdtar cannot read these filter chains or Deflate64.
         }
 
         var listed = new SortedSet<string>(StringComparer.Ordinal);

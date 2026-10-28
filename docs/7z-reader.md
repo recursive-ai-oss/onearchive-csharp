@@ -34,7 +34,7 @@ documents do not settle was fixed by a black-box run of 7-Zip 26.00 (`testdata/7
 
 ## Coders
 
-Decoded: Copy (`00`), Deflate (`04 01 08`), BZip2 (`04 02 02`), LZMA (`03 01 01`, 5 property bytes: lc/lp/pb and the
+Decoded: Copy (`00`), Deflate (`04 01 08`), Deflate64 (`04 01 09`, raw blocks, no properties, same as Deflate), BZip2 (`04 02 02`), LZMA (`03 01 01`, 5 property bytes: lc/lp/pb and the
 dictionary size; the unpack size comes from the header, an end marker is optional), LZMA2 (`21`, one property byte, the
 dictionary size code, at most 40), Delta (`03`, one property byte: distance minus one), the branch filters x86, PowerPC,
 IA-64, ARM, ARM Thumb, SPARC, ARM64 and RISC-V (short IDs `04`–`0B`; the older long IDs `03 03 xx xx` for the first six;
@@ -74,7 +74,7 @@ off the CRC check for that stream.
 
 ## Not done yet
 
-PPMd, BCJ2, AES and Deflate64 coders. Writing is in `7z-writer.md`.
+PPMd, BCJ2 and AES coders. Writing is in `7z-writer.md`.
 
 ## Zip entries (methods 14 and 95)
 

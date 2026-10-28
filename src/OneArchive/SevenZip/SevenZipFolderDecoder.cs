@@ -228,7 +228,7 @@ internal static class SevenZipFolderDecoder
 
     private static bool IsSupported(SevenZipCoder c) =>
         c.NumInStreams == 1 && c.NumOutStreams == 1 &&
-        (c.MethodId is SevenZipFormat.MethodCopy or SevenZipFormat.MethodDeflate or SevenZipFormat.MethodBZip2 or SevenZipFormat.MethodZstd
+        (c.MethodId is SevenZipFormat.MethodCopy or SevenZipFormat.MethodDeflate or SevenZipFormat.MethodDeflate64 or SevenZipFormat.MethodBZip2 or SevenZipFormat.MethodZstd
             or SevenZipFormat.MethodLzma or SevenZipFormat.MethodLzma2 or SevenZipFormat.MethodDelta ||
          BranchOf(c.MethodId) is not null);
 
@@ -282,6 +282,8 @@ internal static class SevenZipFolderDecoder
                 return input;
             case SevenZipFormat.MethodDeflate:
                 return new DeflateCodecStream(input, DeflateFormat.Raw, new DeflateDecompressionOptions { MaxOutputSize = long.MaxValue });
+            case SevenZipFormat.MethodDeflate64:
+                return new RecursiveAI.OneCompress.Deflate64.Deflate64Stream(input, new RecursiveAI.OneCompress.Deflate64.Deflate64DecompressionOptions { MaxOutputSize = long.MaxValue });
             case SevenZipFormat.MethodBZip2:
                 return new RecursiveAI.OneCompress.BZip2.BZip2Stream(input, new RecursiveAI.OneCompress.BZip2.BZip2DecompressionOptions { MaxOutputSize = long.MaxValue });
             case SevenZipFormat.MethodZstd:

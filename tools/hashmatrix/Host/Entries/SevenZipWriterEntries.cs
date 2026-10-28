@@ -15,7 +15,7 @@ internal static class SevenZipWriterEntries
     [ModuleInitializer]
     internal static void Register()
     {
-        foreach (SevenZipMethod method in new[] { SevenZipMethod.Lzma2, SevenZipMethod.Lzma, SevenZipMethod.Copy, SevenZipMethod.Deflate, SevenZipMethod.Zstd })
+        foreach (SevenZipMethod method in new[] { SevenZipMethod.Lzma2, SevenZipMethod.Lzma, SevenZipMethod.Copy, SevenZipMethod.Deflate, SevenZipMethod.Zstd, SevenZipMethod.Deflate64 })
         {
             SevenZipMethod m = method;
             string n = m.ToString().ToLowerInvariant();
@@ -23,6 +23,8 @@ internal static class SevenZipWriterEntries
             Matrix.Add("sevenzip-write", n + "-nonsolid-plain-header", (input, _) => Write(input, new SevenZipWriterOptions { Method = m, Solid = false, EncodeHeader = false }));
         }
 
+        Matrix.Add("sevenzip-write", "deflate64-level1", (input, _) => Write(input, new SevenZipWriterOptions { Method = SevenZipMethod.Deflate64, Level = 1 }));
+        Matrix.Add("sevenzip-write", "deflate64-level9", (input, _) => Write(input, new SevenZipWriterOptions { Method = SevenZipMethod.Deflate64, Level = 9 }));
         Matrix.Add("sevenzip-write", "lzma2-level1", (input, _) => Write(input, new SevenZipWriterOptions { Level = 1 }));
         Matrix.Add("sevenzip-write", "lzma2-level9", (input, _) => Write(input, new SevenZipWriterOptions { Level = 9 }));
         foreach (SevenZipFilter filter in Enum.GetValues<SevenZipFilter>())
