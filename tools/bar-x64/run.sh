@@ -2,7 +2,7 @@
 # Full speed, ratio and memory bar for the Zstandard and LZ4 codecs against the reference tools, in chunks that each fit
 # in about two hours on a shared benchmark host.
 #
-#   run.sh <1|2|3|0.2> [--only "step step"] [--list]
+#   run.sh <1|2|3|0.2|0.3> [--only "step step"] [--list]
 #
 #   chunk 1: Zstandard levels -5..19 on whole files (compress, and decode of our own output), decode of the tool's frames,
 #            small game snapshot payloads with trained dictionaries (compress and decode), LZ4 whole files and small payloads.
@@ -11,6 +11,10 @@
 #   chunk 0.2 (output dir chunk0.2): the Deflate family and bzip2 decode. One-shot compression against libdeflate 1-12, streaming
 #            compression against zlib-ng 1-9, decode of the references' output and of ours by libdeflate and zlib-ng and by us,
 #            and bzip2 decode against `bzip2 -dc`; silesia.tar and enwik8. Also runs on the Mac (BAR_LOCK_FILE=~/onearchive/BENCH.lock).
+#   chunk 0.3 (output dir chunk0.3): the LZMA family. xz presets 0-9 against `xz -T1` and lzip levels 0-9 against `lzip` (compress, whole
+#            file, in memory against the CLI with start-up subtracted), decode of the tools' output and of ours by us and by the
+#            tools, and the sizes of our 7z writer against `7zz -mx=1/5/9`; silesia.tar and enwik8. The cheap presets come first and
+#            7-9 last with one repeat, so a deadline drops the slowest rows. Also runs on the Mac (BAR_LOCK_FILE=~/onearchive/BENCH.lock).
 #   chunk 3: multithreaded jobs, dictionary training time and memory, Zstandard level 19 on small payloads, the small
 #            synthetic payload rows (256 B to 16 KiB, tools/small-bench), and the bar runner on a few files.
 #
@@ -44,7 +48,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
-case "$chunk" in 1|2|3|0.2) ;; *) echo "usage: run.sh <1|2|3|0.2> [--only \"step ...\"] [--list]" >&2; exit 2 ;; esac
+case "$chunk" in 1|2|3|0.2|0.3) ;; *) echo "usage: run.sh <1|2|3|0.2|0.3> [--only \"step ...\"] [--list]" >&2; exit 2 ;; esac
 
 home="${ONEARCHIVE_HOME:-$HOME/onearchive}"
 [ -d "$HOME/dotnet10" ] && export DOTNET_ROOT="$HOME/dotnet10"
@@ -71,7 +75,17 @@ if [ "$(uname)" = Darwin ]; then lock="${BAR_LOCK_FILE:-$HOME/onearchive/BENCH.l
 # deliberately generous; a step whose expected time no longer fits in the budget is skipped, not started.
 zenc="$repo/tools/zstd-encode-bench"; zdec="$repo/tools/zstd-decode-bench"; ztrain="$repo/tools/zstd-train-bench"; l4="$repo/tools/lz4-bench"; sb="$repo/tools/small-bench"
 steps() {
-  if [ "$chunk" = 0.2 ]; then
+  if [ "$chunk" = 0.3 ]; then
+    echo "xz-enc-a|25|lzma_run enc xz '0 1 2 3' 3"
+    echo "xz-dec|25|lzma_run dec xz '0 6 9' 5"
+    echo "lzip-enc-a|30|lzma_run enc lzip '0 1 2 3' 2"
+    echo "lzip-dec|25|lzma_run dec lzip '0 6 9' 5"
+    echo "sevenz|20|lzma_run sevenz xz '' 1"
+    echo "xz-enc-b|40|lzma_run enc xz '4 5 6' 2"
+    echo "lzip-enc-b|50|lzma_run enc lzip '4 5 6' 1"
+    echo "xz-enc-c|40|lzma_run enc xz '7 8 9' 1"
+    echo "lzip-enc-c|60|lzma_run enc lzip '7 8 9' 1"
+  elif [ "$chunk" = 0.2 ]; then
     echo "defl-enc|45|defl_run oneshot"
     echo "defl-stream|15|defl_run stream"
     echo "defl-dec|15|defl_run decode"
@@ -128,7 +142,11 @@ elapsed_min() { echo $(( ($(date +%s) - start) / 60 )); }
   echo "load before: $(load)"
   echo "running now (top by cpu):"; ps -eo pcpu,user,comm | sort -rn | head -6
   echo "sdk: $(dotnet --version)"
-  if [ "$chunk" = 0.2 ]; then
+  if [ "$chunk" = 0.3 ]; then
+    echo "xz: $(xz --version | head -1)"
+    echo "lzip: $(lzip --version 2>&1 | head -1)"
+    echo "7zz: $( (7zz 2>&1 || 7z 2>&1) | sed -n 2p)"
+  elif [ "$chunk" = 0.2 ]; then
     echo "libdeflate: $(basename "$(ls -d "$home"/tools/opt/libdeflate-* 2>/dev/null | head -1)")"
     echo "zlib-ng: $(basename "$(ls -d "$home"/tools/opt/zlib-ng-* 2>/dev/null | head -1)")"
     echo "bzip2: $(bzip2 --help 2>&1 | head -1 | sed 's/,.*//')"
@@ -156,7 +174,9 @@ build() {
   echo "$art/bin/$name/release/$name.dll"
 }
 echo "# building ($(date +%T))"
-if [ "$chunk" = 0.2 ]; then
+if [ "$chunk" = 0.3 ]; then
+  lzma_dll="$(build LzmaBench "$repo/tools/lzma-bench/LzmaBench.csproj")" || exit 4
+elif [ "$chunk" = 0.2 ]; then
   defl_dll="$(build DeflateBench "$repo/tools/deflate-bench/DeflateBench.csproj")" || exit 4
   # refbench: in-memory libdeflate and zlib-ng timings against the pinned installs.
   refbench="$art/refbench"
@@ -184,6 +204,13 @@ defl_run() {
     decode) "$repo/tools/deflate-bench/bar.sh" --mode decode --files "$files" --levels "1 6 9 12" --reps 7 ;;
     bzip2) "$repo/tools/deflate-bench/bar.sh" --mode bzip2 --files "$files" --levels "1 9" --reps 5 ;;
   esac
+}
+# The LZMA-family rows: tools/lzma-bench/bar.sh, one mode per step (arguments: mode codec levels reps).
+lzma_run() {
+  local mode="$1" codec="$2" lv="$3" reps="$4"
+  export BENCH_DLL="$lzma_dll" TMPDIR="$tmp"
+  if [ "$mode" = sevenz ]; then "$repo/tools/lzma-bench/bar.sh" --mode sevenz --files "$files"
+  else "$repo/tools/lzma-bench/bar.sh" --mode "$mode" --codec "$codec" --files "$files" --levels "$lv" --reps "$reps"; fi
 }
 enc_run() { BENCH_DLL="$enc_dll" "$zenc/run.sh" --files "$files" "$@"; }
 dec_run() { BENCH_DLL="$dec_dll" OURS_MAX_LEVEL=19 "$zdec/run.sh" --files "$files" --levels "1 3 9 19" --reps 3; }

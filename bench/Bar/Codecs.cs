@@ -1,8 +1,5 @@
 using System.IO.Compression;
 using K4os.Compression.LZ4;
-using RecursiveAI.OneCompress.Lzip;
-using RecursiveAI.OneCompress.Lzma;
-using RecursiveAI.OneCompress.Xz;
 using ZstdSharp;
 
 namespace RecursiveAI.Bar;
@@ -56,9 +53,6 @@ internal static class Registry
         new BclDeflate("zlib", "bcl-standin", Role.Ours, (s, l) => new ZLibStream(s, Options(l), leaveOpen: true), s => new ZLibStream(s, CompressionMode.Decompress)),
         new BclDeflate("gzip", "bcl-standin", Role.Ours, (s, l) => new GZipStream(s, Options(l), leaveOpen: true), s => new GZipStream(s, CompressionMode.Decompress)),
         new BclBrotli(),
-        // Our own LZMA-family codecs, gated against the xz and lzip tools at the same level.
-        new OursXz(),
-        new OursLzip(),
         // Comparison libraries.
         new ZstdSharpCodec(),
         new K4osLz4Codec(),
@@ -167,68 +161,3 @@ internal sealed class K4osLz4Codec : IBarCodec
     public int Decompress(ReadOnlyMemory<byte> src, Memory<byte> dst) => LZ4Codec.Decode(src.Span, dst.Span);
 }
 
-
-/// <summary>Our xz encoder and decoder, levels 0 to 9 as the xz tool numbers its presets (the extreme variants are not run).</summary>
-internal sealed class OursXz : IBarCodec
-{
-    public string Codec => "xz";
-    public string Impl => "ours";
-    public Role Role => Role.Ours;
-    public IReadOnlyList<int> Levels { get; } = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    public bool IsMultithreaded(int level) => false;
-    public int MaxCompressedLength(int inputLength) => inputLength + (inputLength >> 3) + 4096;
-
-    public int Compress(ReadOnlyMemory<byte> src, Memory<byte> dst, int level, int threads)
-    {
-        var options = new XzCompressionOptions { Lzma = new LzmaOptions { Preset = level } };
-        if (!Xz.TryCompress(src.Span, dst.Span, out int written, options))
-        {
-            throw new InvalidOperationException("xz: output buffer too small");
-        }
-
-        return written;
-    }
-
-    public int Decompress(ReadOnlyMemory<byte> src, Memory<byte> dst)
-    {
-        var options = new XzDecompressionOptions { MaxOutputSize = long.MaxValue, MaxDictionarySize = 1L << 30 };
-        if (!Xz.TryDecompress(src.Span, dst.Span, out int written, options))
-        {
-            throw new InvalidOperationException("xz: decompression failed");
-        }
-
-        return written;
-    }
-}
-
-/// <summary>Our lzip encoder and decoder, levels 0 to 9 as the lzip tool numbers them.</summary>
-internal sealed class OursLzip : IBarCodec
-{
-    public string Codec => "lzip";
-    public string Impl => "ours";
-    public Role Role => Role.Ours;
-    public IReadOnlyList<int> Levels { get; } = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    public bool IsMultithreaded(int level) => false;
-    public int MaxCompressedLength(int inputLength) => inputLength + (inputLength >> 3) + 4096;
-
-    public int Compress(ReadOnlyMemory<byte> src, Memory<byte> dst, int level, int threads)
-    {
-        if (!Lzip.TryCompress(src.Span, dst.Span, out int written, new LzipOptions { Level = level }))
-        {
-            throw new InvalidOperationException("lzip: output buffer too small");
-        }
-
-        return written;
-    }
-
-    public int Decompress(ReadOnlyMemory<byte> src, Memory<byte> dst)
-    {
-        var options = new LzipDecompressionOptions { MaxOutputSize = long.MaxValue, MaxDictionarySize = 1L << 30 };
-        if (!Lzip.TryDecompress(src.Span, dst.Span, out int written, options))
-        {
-            throw new InvalidOperationException("lzip: decompression failed");
-        }
-
-        return written;
-    }
-}
