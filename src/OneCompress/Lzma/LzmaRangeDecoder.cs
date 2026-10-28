@@ -40,6 +40,14 @@ public struct LzmaRangeDecoder
         set => _position = value;
     }
 
+    /// <summary>Restores a state held in locals by a loop that decodes without this struct.</summary>
+    internal void Load(uint range, uint code, int position)
+    {
+        _range = range;
+        _code = code;
+        _position = position;
+    }
+
     /// <summary>Gets a value indicating whether the code is 0, which an undamaged stream has after its last decision.</summary>
     public readonly bool IsFinishedOk => _code == 0;
 

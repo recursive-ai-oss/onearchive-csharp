@@ -1,0 +1,380 @@
+using System.Runtime.CompilerServices;
+
+namespace RecursiveAI.OneCompress.Lzma;
+
+public sealed partial class LzmaDecoderCore
+{
+    // The range coder state while a symbol is decoded by the non-inlined helpers below. The loop itself keeps range, code and
+    // the input index in locals so the JIT can hold them in registers; the helpers take the state in, work on their own locals
+    // and hand it back, instead of going through memory once per bit.
+    private struct Rc
+    {
+        public uint Range;
+        public uint Code;
+        public nint Ip;
+    }
+
+    // LZMA specification, "The Range Decoder": one adaptive bit, then normalization.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FBit(ushort[] p, int index, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
+    {
+        ref ushort prob = ref p[index];
+        uint pv = prob;
+        uint bound = (range >> 11) * pv;
+        int bit;
+        if (code < bound)
+        {
+            range = bound;
+            prob = (ushort)(pv + ((2048 - pv) >> 5));
+            bit = 0;
+        }
+        else
+        {
+            range -= bound;
+            code -= bound;
+            prob = (ushort)(pv - (pv >> 5));
+            bit = 1;
+        }
+
+        if (range < (1u << 24))
+        {
+            range <<= 8;
+            code = (code << 8) | input[(int)ip];
+            ip++;
+        }
+
+        return bit;
+    }
+
+    // The same decoding step without a branch on the decoded bit: the bit picks between two results with masks, which suits the
+    // places where the bit only feeds an index (literal and tree bits) and the branch would be taken at random.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FBitNb(ushort[] p, int index, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
+    {
+        ref ushort prob = ref p[index];
+        uint pv = prob;
+        uint bound = (range >> 11) * pv;
+        uint mask = (uint)((long)((ulong)code - bound) >> 63); // all ones when code < bound (bit 0)
+        range = (bound & mask) | ((range - bound) & ~mask);
+        code -= bound & ~mask;
+        prob = (ushort)(pv - (uint)((int)(pv - (mask & 2017u)) >> 5));
+        if (range < (1u << 24))
+        {
+            range <<= 8;
+            code = (code << 8) | input[(int)ip];
+            ip++;
+        }
+
+        return (int)mask + 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FTree(ushort[] p, int offset, int bits, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
+    {
+        int m = 1;
+        for (int i = 0; i < bits; i++)
+        {
+            m = (m << 1) + FBitNb(p, offset + m, ref range, ref code, input, ref ip);
+        }
+
+        return m - (1 << bits);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FReverseTree(ushort[] p, int offset, int bits, ref uint range, ref uint code, ReadOnlySpan<byte> input, ref nint ip)
+    {
+        int m = 1;
+        int symbol = 0;
+        for (int i = 0; i < bits; i++)
+        {
+            int bit = FBitNb(p, offset + m, ref range, ref code, input, ref ip);
+            m = (m << 1) + bit;
+            symbol |= bit << i;
+        }
+
+        return symbol;
+    }
+
+    // LZMA specification, "The match length decoding": a zero-based length 0..271.
+    private static int FLength(ushort[] p, int coder, int posState, ref Rc rc, ReadOnlySpan<byte> input)
+    {
+        uint range = rc.Range;
+        uint code = rc.Code;
+        nint ip = rc.Ip;
+        int r;
+        if (FBit(p, coder, ref range, ref code, input, ref ip) == 0)
+        {
+            r = FTree(p, coder + LzmaModel.LengthLow + (posState << 3), 3, ref range, ref code, input, ref ip);
+        }
+        else if (FBit(p, coder + LzmaModel.LengthChoice2, ref range, ref code, input, ref ip) == 0)
+        {
+            r = 8 + FTree(p, coder + LzmaModel.LengthMid + (posState << 3), 3, ref range, ref code, input, ref ip);
+        }
+        else
+        {
+            r = 16 + FTree(p, coder + LzmaModel.LengthHigh, 8, ref range, ref code, input, ref ip);
+        }
+
+        rc.Range = range;
+        rc.Code = code;
+        rc.Ip = ip;
+        return r;
+    }
+
+    // LZMA specification, "The match distance decoding": the zero-based distance; 0xFFFFFFFF is the end marker.
+    private static uint FDistance(ushort[] p, int length, ref Rc rc, ReadOnlySpan<byte> input)
+    {
+        uint range = rc.Range;
+        uint code = rc.Code;
+        nint ip = rc.Ip;
+        int lenState = Math.Min(length, LzmaModel.LengthToPositionStates - 1);
+        int slot = FTree(p, LzmaModel.PositionSlot + (lenState << 6), 6, ref range, ref code, input, ref ip);
+        uint dist;
+        if (slot < 4)
+        {
+            dist = (uint)slot;
+        }
+        else
+        {
+            int directBits = (slot >> 1) - 1;
+            dist = (2u | (uint)(slot & 1)) << directBits;
+            if (slot < LzmaModel.EndPositionModelIndex)
+            {
+                dist += (uint)FReverseTree(p, LzmaModel.PositionSpecial + (int)dist - slot, directBits, ref range, ref code, input, ref ip);
+            }
+            else
+            {
+                uint direct = 0;
+                for (int n = directBits - LzmaModel.AlignBits; n > 0; n--)
+                {
+                    range >>= 1;
+                    code -= range;
+                    uint t = 0 - (code >> 31);
+                    code += range & t;
+                    if (range < (1u << 24))
+                    {
+                        range <<= 8;
+                        code = (code << 8) | input[(int)ip];
+                        ip++;
+                    }
+
+                    direct = (direct << 1) + t + 1;
+                }
+
+                dist += direct << LzmaModel.AlignBits;
+                dist += (uint)FReverseTree(p, LzmaModel.Align, LzmaModel.AlignBits, ref range, ref code, input, ref ip);
+            }
+        }
+
+        rc.Range = range;
+        rc.Code = code;
+        rc.Ip = ip;
+        return dist;
+    }
+
+    // The symbol loop for the common case: no end-marker probing, and at least SymbolInputMargin bytes of input at the start of
+    // every symbol, so no symbol can run out of input and nothing needs an undo log. Returns Low when the margin is gone (the
+    // caller finishes the segment with the journalling loop), or a LzmaStatus. Same decisions as Run<JournalOff>.
+    private int RunFast(ReadOnlySpan<byte> input, int limit)
+    {
+        byte[] w = _window;
+        ushort[] p = _probs;
+        int capacity = _capacity;
+        uint range = _rc.Range;
+        uint code = _rc.Code;
+        nint ip = _rc.Position;
+        int pos = _pos;
+        long total = _total;
+        int state = _state;
+        uint rep0 = _rep0;
+        uint rep1 = _rep1;
+        uint rep2 = _rep2;
+        uint rep3 = _rep3;
+        int lc = _lc;
+        int lpMask = (1 << _lp) - 1;
+        int pbMask = (1 << _pb) - 1;
+        uint dictSize = _dictionarySize;
+        int matchLeft = _matchLeft;
+        int result;
+
+        while (true)
+        {
+            if (matchLeft > 0)
+            {
+                int n = Math.Min(matchLeft, limit - pos);
+                if (n > 0)
+                {
+                    CopyMatch(w, pos, capacity, (int)rep0 + 1, n);
+                    pos += n;
+                    total += n;
+                    matchLeft -= n;
+                }
+
+                if (matchLeft > 0)
+                {
+                    result = (int)LzmaStatus.OutputFull;
+                    break;
+                }
+            }
+
+            if (pos >= limit)
+            {
+                result = (int)LzmaStatus.OutputFull;
+                break;
+            }
+
+            if (input.Length - ip < SymbolInputMargin)
+            {
+                result = Low;
+                break;
+            }
+
+            int posState = (int)total & pbMask;
+            if (FBit(p, LzmaModel.IsMatch + (state << 4) + posState, ref range, ref code, input, ref ip) == 0)
+            {
+                // LZMA specification, "The Literal Decoding".
+                int prev = pos > 0 ? w[pos - 1] : (_full ? w[capacity - 1] : 0);
+                int lit = LzmaModel.Literal + (LzmaModel.LiteralCoderSize * ((((int)total & lpMask) << lc) + (prev >> (8 - lc))));
+                int sym = 1;
+                if (state >= LzmaModel.LiteralStateLimit)
+                {
+                    int mpos = pos - (int)rep0 - 1;
+                    if (mpos < 0)
+                    {
+                        mpos += capacity;
+                    }
+
+                    // LZMA specification, "The Literal Decoding" (matched literal): while the decoded bits equal the match byte's, the
+                    // probabilities come from the group chosen by the match bit. offs is 0x100 while they agree and 0 after the first
+                    // difference, which turns the same index formula into the plain literal tree without a branch.
+                    uint matchByte = w[mpos];
+                    uint offs = 0x100;
+                    do
+                    {
+                        matchByte <<= 1;
+                        uint matchBit = matchByte & offs;
+                        int bit = FBitNb(p, lit + (int)(offs + matchBit) + sym, ref range, ref code, input, ref ip);
+                        sym = (sym << 1) | bit;
+                        offs &= matchBit ^ (uint)(bit - 1);
+                    }
+                    while (sym < 0x100);
+                }
+
+                while (sym < 0x100)
+                {
+                    sym = (sym << 1) | FBitNb(p, lit + sym, ref range, ref code, input, ref ip);
+                }
+
+                w[pos++] = (byte)sym;
+                total++;
+                state = LzmaModel.NextStateAfterLiteral(state);
+                continue;
+            }
+
+            int length;
+            if (FBit(p, LzmaModel.IsRep + state, ref range, ref code, input, ref ip) == 0)
+            {
+                // A match with a newly coded distance.
+                rep3 = rep2;
+                rep2 = rep1;
+                rep1 = rep0;
+                var rc = new Rc { Range = range, Code = code, Ip = ip };
+                length = FLength(p, LzmaModel.LengthCoder, posState, ref rc, input);
+                state = LzmaModel.NextStateAfterMatch(state);
+                uint dist = FDistance(p, length, ref rc, input);
+                range = rc.Range;
+                code = rc.Code;
+                ip = rc.Ip;
+                if (dist == 0xFFFFFFFF)
+                {
+                    result = (int)LzmaStatus.EndMarker;
+                    break;
+                }
+
+                if (dist >= dictSize || dist >= total)
+                {
+                    result = (int)LzmaStatus.InvalidData;
+                    break;
+                }
+
+                rep0 = dist;
+            }
+            else
+            {
+                if (total == 0)
+                {
+                    result = (int)LzmaStatus.InvalidData;
+                    break;
+                }
+
+                if (FBit(p, LzmaModel.IsRepG0 + state, ref range, ref code, input, ref ip) == 0)
+                {
+                    if (FBit(p, LzmaModel.IsRep0Long + (state << 4) + posState, ref range, ref code, input, ref ip) == 0)
+                    {
+                        // A short rep: one byte at the last distance.
+                        int sp = pos - (int)rep0 - 1;
+                        if (sp < 0)
+                        {
+                            sp += capacity;
+                        }
+
+                        w[pos++] = w[sp];
+                        total++;
+                        state = LzmaModel.NextStateAfterShortRep(state);
+                        continue;
+                    }
+                }
+                else
+                {
+                    uint d;
+                    if (FBit(p, LzmaModel.IsRepG1 + state, ref range, ref code, input, ref ip) == 0)
+                    {
+                        d = rep1;
+                    }
+                    else
+                    {
+                        if (FBit(p, LzmaModel.IsRepG2 + state, ref range, ref code, input, ref ip) == 0)
+                        {
+                            d = rep2;
+                        }
+                        else
+                        {
+                            d = rep3;
+                            rep3 = rep2;
+                        }
+
+                        rep2 = rep1;
+                    }
+
+                    rep1 = rep0;
+                    rep0 = d;
+                }
+
+                var rc = new Rc { Range = range, Code = code, Ip = ip };
+                length = FLength(p, LzmaModel.RepLengthCoder, posState, ref rc, input);
+                range = rc.Range;
+                code = rc.Code;
+                ip = rc.Ip;
+                state = LzmaModel.NextStateAfterRep(state);
+            }
+
+            length += LzmaModel.MinMatchLength;
+            int copy = Math.Min(length, limit - pos);
+            CopyMatch(w, pos, capacity, (int)rep0 + 1, copy);
+            pos += copy;
+            total += copy;
+            matchLeft = length - copy;
+        }
+
+        _matchLeft = matchLeft;
+        _rc.Load(range, code, (int)ip);
+        _pos = pos;
+        _total = total;
+        _state = state;
+        _rep0 = rep0;
+        _rep1 = rep1;
+        _rep2 = rep2;
+        _rep3 = rep3;
+        return result;
+    }
+}

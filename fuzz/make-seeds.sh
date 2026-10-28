@@ -92,6 +92,28 @@ if command -v bzip2 >/dev/null; then
   done
 fi
 
+# lzma, xz, lzip: the vectors (a leading option byte; for lzma-decode 0 reads the .lzma alone format, 2 raw LZMA2 behind
+# a dictionary-property byte, 4 raw LZMA behind a properties byte), and the tools' own output when they are on PATH.
+for f in $(small "$root"/testdata/lzma/vectors/*); do
+  b=$(basename "$f")
+  case "$b" in
+    *.lzma) { printf '\x00'; cat "$f"; } > "$out/lzma-decode/$b" ;;
+    *.xz) { printf '\x00'; cat "$f"; } > "$out/xz-decode/$b" ;;
+    *.lz) { printf '\x00'; cat "$f"; } > "$out/lzip-decode/$b" ;;
+  esac
+done
+printf '\x02\x10\x01\x00\x04hello\x00' > "$out/lzma-decode/lzma2-stored"
+printf '\x02\x10\x01\x00\x04hello\x02\x00\x02ab\x00' > "$out/lzma-decode/lzma2-stored-twice"
+for p in "$payloads"/*; do
+  if command -v xz >/dev/null; then
+    for l in 0 6; do { printf '\x00'; xz -$l -c "$p"; } > "$out/xz-decode/ref-xz-$(basename "$p")-$l" || true; done
+    { printf '\x00'; xz --format=lzma -6 -c "$p"; } > "$out/lzma-decode/ref-lzma-$(basename "$p")" || true
+  fi
+  if command -v lzip >/dev/null; then
+    { printf '\x00'; lzip -6 -c "$p"; } > "$out/lzip-decode/ref-lzip-$(basename "$p")" || true
+  fi
+done
+
 # Round-trip targets: option bytes followed by a payload (see the target sources for what the bytes mean).
 n=0
 for p in "$payloads"/*; do

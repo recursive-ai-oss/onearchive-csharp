@@ -139,7 +139,15 @@ internal static class OneShot
                         throw new CompressionLimitException(format, "MaxOutputSize", Array.MaxLength, (long)written + 1);
                     }
 
-                    Array.Resize(ref output, (int)Math.Min(Math.Min((long)output.Length * 2, Array.MaxLength), Math.Max(maxOutput + 1, output.Length + 1)));
+                    // Doubling, but no further than one byte past the output limit (so the decoder sees the limit being passed). A limit
+                    // of long.MaxValue must not be added to, or the sum wraps and the buffer would grow one byte at a time.
+                    long grown = Math.Min((long)output.Length * 2, Array.MaxLength);
+                    if (maxOutput < Array.MaxLength)
+                    {
+                        grown = Math.Min(grown, Math.Max(maxOutput + 1, output.Length + 1));
+                    }
+
+                    Array.Resize(ref output, (int)grown);
                     break;
             }
         }

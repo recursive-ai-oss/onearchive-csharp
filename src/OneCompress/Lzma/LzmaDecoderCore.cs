@@ -35,7 +35,7 @@ public enum LzmaStatus
 /// <para>Not thread-safe. LZMA specification, "LZMA Decoding".</para>
 /// </remarks>
 [Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
-public sealed class LzmaDecoderCore
+public sealed partial class LzmaDecoderCore
 {
     // One symbol reads at most about 20 bytes: 22 adaptive decisions of at most 6.05 bits each plus 26 direct bits.
     // With this much input at hand a symbol cannot run out, so it needs no undo log.
@@ -376,7 +376,7 @@ public sealed class LzmaDecoderCore
     {
         while (true)
         {
-            int r = Run<JournalOff>(input, limit, single: false, markerOnly);
+            int r = markerOnly ? Run<JournalOff>(input, limit, single: false, markerOnly) : RunFast(input, limit);
             if (r != Low)
             {
                 return r;
@@ -478,6 +478,18 @@ public sealed class LzmaDecoderCore
         if (src < 0)
         {
             src += capacity;
+        }
+
+        if (length <= 24 && src + length <= capacity && pos + length <= capacity)
+        {
+            // Short matches are the common case, and a memmove call costs more than a few byte moves. Copying forward byte by
+            // byte is also right when the source overlaps the destination (distance below length), as the format requires.
+            for (int i = 0; i < length; i++)
+            {
+                w[pos + i] = w[src + i];
+            }
+
+            return;
         }
 
         if (src < pos)

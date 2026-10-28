@@ -143,6 +143,20 @@ public class LzmaHostileInputTests
 
     // ---- hand-built xz ----
 
+    // A limit of long.MaxValue once made the one-call buffer grow one byte at a time (the limit plus one wrapped around).
+    [Fact]
+    public void UnlimitedOutputGrowsTheBufferGeometrically()
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        LzmaVector xz = LzmaTestData.Vector("zeros300k-p6.xz");
+        LzmaVector lzma = LzmaTestData.Vector("zeros300k.lzma");
+        LzmaVector lzip = LzmaTestData.Vector("zeros300k-l6.lz");
+        xz.AssertMatches(XzApi.Decompress(xz.Compressed, new XzDecompressionOptions { MaxOutputSize = long.MaxValue }));
+        lzma.AssertMatches(LzmaApi.Decompress(lzma.Compressed, new LzmaDecompressionOptions { MaxOutputSize = long.MaxValue }));
+        lzip.AssertMatches(LzipApi.Decompress(lzip.Compressed, new LzipDecompressionOptions { MaxOutputSize = long.MaxValue }));
+        Assert.True(sw.ElapsedMilliseconds < 2000, "decoding took " + sw.ElapsedMilliseconds + " ms");
+    }
+
     [Fact]
     public void BuilderMakesAValidStreamForEveryCheck()
     {
