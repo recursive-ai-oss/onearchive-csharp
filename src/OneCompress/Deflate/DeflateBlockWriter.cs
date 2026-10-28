@@ -331,12 +331,14 @@ public sealed class DeflateBlockWriter
         int position = _writePosition;
         ulong accumulator = _accumulator;
         int bits = _bitCount;
-        for (int i = 0; i < sequences.Length; i++)
+        int count = sequences.Length;
+        for (int i = 0; i < count; i++)
         {
             // Bounds: every index below is a literal byte, a length 3..258, or a distance slot 0..29, all inside the tables above;
-            // the buffer was sized for this block with a margin of Slack bytes past the last byte written. Whole bytes are
-            // stored after every symbol (an unconditional eight-byte store beats a branch on the bit count), so the accumulator
-            // holds at most 7 bits before a symbol.
+            // the buffer was sized for this block with a margin of Slack bytes past the last byte written. Whole bytes are stored
+            // once per group of symbols (an unconditional eight-byte store beats a branch on the bit count). Before a group the
+            // accumulator holds at most 7 bits, and a group adds at most 3 literals of 15 bits, or one match of at most 20 bits for
+            // the length with its extra bits and 28 for the distance with its extra bits, so 55 bits at most.
             uint word = sequences[i];
             uint length = word & 0x1FF;
             if (length == 0)
@@ -344,16 +346,24 @@ public sealed class DeflateBlockWriter
                 uint info = DeflateEncRaw.Get(literalInfo, (int)(word >> 9));
                 accumulator |= (ulong)(info & 0xFFFF) << bits;
                 bits += (int)(info >> 16);
+                if (i + 1 < count && (sequences[i + 1] & 0x1FF) == 0)
+                {
+                    info = DeflateEncRaw.Get(literalInfo, (int)(sequences[++i] >> 9));
+                    accumulator |= (ulong)(info & 0xFFFF) << bits;
+                    bits += (int)(info >> 16);
+                    if (i + 1 < count && (sequences[i + 1] & 0x1FF) == 0)
+                    {
+                        info = DeflateEncRaw.Get(literalInfo, (int)(sequences[++i] >> 9));
+                        accumulator |= (ulong)(info & 0xFFFF) << bits;
+                        bits += (int)(info >> 16);
+                    }
+                }
             }
             else
             {
                 uint composite = DeflateEncRaw.Get(lengthComposite, (int)length);
                 accumulator |= (ulong)(composite & 0xFFFFFF) << bits;
                 bits += (int)(composite >> 24);
-                DeflateEncRaw.Write64(buffer, position, accumulator);
-                position += bits >> 3;
-                accumulator >>= bits & ~7;
-                bits &= 7;
 
                 int distance = (int)(word >> 9) + 1;
                 int slot = DeflateSymbols.DistanceSlot(distance);

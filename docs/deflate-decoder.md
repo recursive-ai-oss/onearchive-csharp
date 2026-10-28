@@ -77,7 +77,11 @@ The decoder writes into the caller's buffer and keeps the last 32 KiB of each ca
 per call) so matches can reach into earlier calls. The hot loop (`DeflateFastLoop`) runs while 8 input and 272 output bytes remain:
 one 8-byte load per symbol refills the bit buffer to at least 56 bits, and entries of the lookup tables carry the length or
 distance base and extra-bit count, so a symbol is one or two table reads. The low byte of an entry is the code length plus its extra bits, so one shift drops both and the extra bits are read from the bits before the shift (the code length sits in bits 8 to 11). Tables have a 10-bit (literal/length), 8-bit (distance) or
-7-bit (code-length) first level and second-level tables for longer codes. The output depends only on the input and options. After the first literal of a refill the loop decodes up to two more first-level literals before refilling.
+7-bit (code-length) first level and second-level tables for longer codes. The output depends only on the input and options. After the first literal of a refill the loop decodes up to two more first-level literals before refilling. The literal/length
+table keeps a second copy for the loop in which a first-level entry whose code is followed, within the same ten index bits, by a
+complete literal code stands for both literals (one two-byte store); this changes nothing a caller can observe, since the
+slow path and `Lookup` read the plain table. A match that reaches back before the call's output ends the loop, and the caller
+copies it from the window and re-enters, so the loop makes no calls.
 
 ## Tests and data
 

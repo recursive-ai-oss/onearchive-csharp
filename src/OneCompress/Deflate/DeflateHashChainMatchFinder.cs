@@ -205,6 +205,29 @@ public sealed class DeflateHashChainMatchFinder
 
     internal void InsertBound(int position) => InsertUnchecked(_data, position);
 
+    // Inserts positions first..last-1 of the bound window, exactly as InsertUnchecked would one at a time; the tables stay in
+    // locals for the whole run, which is most of the work in text where matches cover most positions.
+    internal void InsertRange(int first, int last)
+    {
+        byte[] data = _data;
+        int[] head = _head;
+        ushort[] previous = _previous;
+        int[]? shortHead = _shortHead;
+        int shift = _shift;
+        for (int position = first; position < last; position++)
+        {
+            uint value = DeflateEncRaw.Read32(data, position);
+            int hash = (int)((value * 2654435761u) >> shift);
+            int candidate = DeflateEncRaw.Get(head, hash);
+            DeflateEncRaw.Set(head, hash, position);
+            DeflateEncRaw.SetLink(previous, position & WindowMask, (uint)(position - candidate) <= WindowMask + 1 ? (ushort)(position - candidate) : (ushort)0);
+            if (shortHead is not null)
+            {
+                DeflateEncRaw.Set(shortHead, (int)(((value & 0xFFFFFF) * 2654435761u) >> (32 - ShortHashBits)), position);
+            }
+        }
+    }
+
     // The two-probe search for the fastest level: each 4-byte hash owns a bucket of the latest two positions, both are tried, and
     // no links are stored. Returns 0 when neither matches for at least 4 bytes.
     internal int FindFirstUnchecked(ReadOnlySpan<byte> data, int position, int maxLength, int oldestPosition, out int distance)

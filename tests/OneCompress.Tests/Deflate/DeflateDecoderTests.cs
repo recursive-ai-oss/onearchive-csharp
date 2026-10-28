@@ -314,6 +314,47 @@ public class DeflateDecoderTests
         public override bool CanRead => false;
     }
 
+    // Matches that reach back into earlier calls' output (the window), short distances, and literal pairs, with the output handed over
+    // in pieces of every size from 1 byte up: each piece boundary lands somewhere else in the stream.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(7)]
+    [InlineData(300)]
+    [InlineData(4099)]
+    [InlineData(70000)]
+    public void OutputInPiecesGivesTheSameBytes(int piece)
+    {
+        foreach (string name in new[] { "text1k", "runs500k", "mixed300k" })
+        {
+            byte[] data = Input(name);
+            if (piece == 1 && data.Length > 100_000)
+            {
+                data = data.AsSpan(0, 100_000).ToArray();
+            }
+
+            foreach (CompressionLevel level in new[] { CompressionLevel.Fastest, CompressionLevel.SmallestSize })
+            {
+                byte[] compressed = DeflateTestData.BclCompress(DeflateFormat.Raw, data, level);
+                var decoder = new DeflateDecoder(DeflateFormat.Raw);
+                byte[] output = new byte[data.Length];
+                int consumed = 0;
+                int written = 0;
+                OperationStatus status;
+                do
+                {
+                    int take = Math.Min(piece, output.Length - written);
+                    status = decoder.Decompress(compressed.AsSpan(consumed), output.AsSpan(written, take), out int c, out int w);
+                    consumed += c;
+                    written += w;
+                }
+                while (status is OperationStatus.DestinationTooSmall or OperationStatus.NeedMoreData && (written < output.Length || status == OperationStatus.NeedMoreData && consumed < compressed.Length));
+
+                Assert.Equal(data.Length, written);
+                Assert.True(data.AsSpan().SequenceEqual(output), $"{name} {level} piece {piece}");
+            }
+        }
+    }
+
     [Fact]
     public async Task StreamHonoursCancellation()
     {

@@ -6,9 +6,13 @@ using RecursiveAI.OneCompress.Deflate;
 //   Compresses the file in memory, N timed passes after 2 warm-up passes (or until S seconds), and prints:
 //   size, best compress MB/s, and the best decompress MB/s of our decoder on our output.
 //   --stream feeds 64 KiB pieces through the streaming encoder, as a stream wrapper would; the default is one call.
+//   --out <file> also writes our compressed bytes, so a reference decoder can be timed on them.
+//   Rates are printed as best, median and slowest of the timed passes.
 // DeflateBench dec <file.gz-or-zlib-or-raw> [--format ...] [--reps N]
 //   Decompresses a stream written by another tool and prints the best MB/s.
-#pragma warning disable ONECOMPRESS003
+// DeflateBench bz2dec <file.bz2> [--reps N]
+//   Decompresses a bzip2 stream and prints the best MB/s (the bzip2 decoder bar rows).
+#pragma warning disable ONECOMPRESS003, ONECOMPRESS004
 static int Usage()
 {
     Console.Error.WriteLine("usage: DeflateBench enc|dec <file> [level] [--format raw|zlib|gzip] [--stream] [--strategy name] [--reps N] [--seconds S]");
@@ -28,6 +32,7 @@ bool stream = false;
 DeflateStrategy strategy = DeflateStrategy.Default;
 int reps = 5;
 double seconds = 0;
+string? outPath = null;
 int next = 2;
 if (mode == "enc")
 {
@@ -43,6 +48,7 @@ for (int i = next; i < args.Length; i++)
         case "--stream": stream = true; break;
         case "--strategy": strategy = Enum.Parse<DeflateStrategy>(args[++i], true); break;
         case "--reps": reps = int.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture); break;
+        case "--out": outPath = args[++i]; break;
         case "--seconds": seconds = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture); break;
         default: return Usage();
     }
@@ -50,6 +56,11 @@ for (int i = next; i < args.Length; i++)
 
 byte[] input = File.ReadAllBytes(path);
 double mb = input.Length / 1e6;
+
+if (mode == "bz2dec")
+{
+    return Bz2Decode(input, reps, seconds);
+}
 
 if (mode == "dec")
 {
@@ -102,16 +113,23 @@ for (int i = 0; i < 2; i++)
     size = CompressOnce();
 }
 
-double best = double.MaxValue;
+var times = new List<double>();
 var total = Stopwatch.StartNew();
 for (int i = 0; i < reps || total.Elapsed.TotalSeconds < seconds; i++)
 {
     long t = Stopwatch.GetTimestamp();
     size = CompressOnce();
-    best = Math.Min(best, Stopwatch.GetElapsedTime(t).TotalSeconds);
+    times.Add(Stopwatch.GetElapsedTime(t).TotalSeconds);
 }
 
-Console.WriteLine($"enc level={level} format={format} {(stream ? "stream" : "oneshot")} strategy={strategy} in={input.Length} size={size} ratio={(double)size / input.Length:F4} comp_MBps={mb / best:F1}");
+var (best, med, worst) = Stats(times);
+
+Console.WriteLine($"enc level={level} format={format} {(stream ? "stream" : "oneshot")} strategy={strategy} in={input.Length} size={size} ratio={(double)size / input.Length:F4} comp_MBps={mb / best:F1} comp_MBps_med={mb / med:F1} comp_MBps_min={mb / worst:F1}");
+if (outPath is not null)
+{
+    File.WriteAllBytes(outPath, output.AsSpan(0, size).ToArray());
+}
+
 if (Environment.GetEnvironmentVariable("BENCH_NODECODE") is not null)
 {
     return 0;
@@ -152,14 +170,16 @@ static int Decode(byte[] compressed, DeflateFormat format, int reps, double seco
         n = Once();
     }
 
-    double best = double.MaxValue;
+    var times = new List<double>();
     var sw = Stopwatch.StartNew();
     for (int i = 0; i < reps || sw.Elapsed.TotalSeconds < seconds; i++)
     {
         long t = Stopwatch.GetTimestamp();
         n = Once();
-        best = Math.Min(best, Stopwatch.GetElapsedTime(t).TotalSeconds);
+        times.Add(Stopwatch.GetElapsedTime(t).TotalSeconds);
     }
+
+    var (best, med, worst) = Stats(times);
 
     if (original is not null && !original.AsSpan().SequenceEqual(buffer.AsSpan(0, n)))
     {
@@ -167,6 +187,36 @@ static int Decode(byte[] compressed, DeflateFormat format, int reps, double seco
         return 1;
     }
 
-    Console.WriteLine($"dec out={n} dec_MBps={n / 1e6 / best:F1}");
+    Console.WriteLine($"dec out={n} dec_MBps={n / 1e6 / best:F1} dec_MBps_med={n / 1e6 / med:F1} dec_MBps_min={n / 1e6 / worst:F1}");
     return 0;
+}
+
+static int Bz2Decode(byte[] compressed, int reps, double seconds)
+{
+    var opts = new RecursiveAI.OneCompress.BZip2.BZip2DecompressionOptions();
+    byte[] result = RecursiveAI.OneCompress.BZip2.BZip2.Decompress(compressed, opts);
+    byte[] buffer = new byte[result.Length];
+    var times = new List<double>();
+    var sw = Stopwatch.StartNew();
+    int n = 0;
+    for (int i = 0; i < reps || sw.Elapsed.TotalSeconds < seconds; i++)
+    {
+        long t = Stopwatch.GetTimestamp();
+        if (!RecursiveAI.OneCompress.BZip2.BZip2.TryDecompress(compressed, buffer, out n, opts))
+        {
+            throw new InvalidOperationException("bzip2 decode failed");
+        }
+
+        times.Add(Stopwatch.GetElapsedTime(t).TotalSeconds);
+    }
+
+    var (best, med, worst) = Stats(times);
+    Console.WriteLine($"dec out={n} dec_MBps={n / 1e6 / best:F1} dec_MBps_med={n / 1e6 / med:F1} dec_MBps_min={n / 1e6 / worst:F1}");
+    return 0;
+}
+
+static (double Best, double Median, double Worst) Stats(List<double> times)
+{
+    times.Sort();
+    return (times[0], times[times.Count / 2], times[^1]);
 }
