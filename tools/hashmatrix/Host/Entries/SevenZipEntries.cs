@@ -5,6 +5,7 @@ using RecursiveAI.OneArchive;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneCompress.Checksums;
 using RecursiveAI.OneCompress.Deflate;
+using RecursiveAI.OneCompress.Filters;
 
 namespace RecursiveAI.HashMatrix;
 
@@ -21,13 +22,16 @@ internal static class SevenZipEntries
     [ModuleInitializer]
     internal static void Register()
     {
+        // Delta and x86 branch filters chained (decode order: BCJ, then Delta), packed by the library's own filter encoders.
+        Matrix.Add("sevenzip-read", "filter-chain-plain-header", (input, _) => Read(input, 2, false));
+        Matrix.Add("sevenzip-read", "filter-chain-encoded-header", (input, _) => Read(input, 2, true));
         foreach (bool deflate in new[] { false, true })
         {
             foreach (bool encodedHeader in new[] { false, true })
             {
                 bool d = deflate;
                 bool e = encodedHeader;
-                Matrix.Add("sevenzip-read", $"{(d ? "deflate" : "copy")}-{(e ? "encoded" : "plain")}-header", (input, _) => Read(input, d, e));
+                Matrix.Add("sevenzip-read", $"{(d ? "deflate" : "copy")}-{(e ? "encoded" : "plain")}-header", (input, _) => Read(input, d ? 1 : 0, e));
             }
         }
     }
@@ -78,17 +82,36 @@ internal static class SevenZipEntries
 
     private static byte[] Prop(int id, byte[] body) => Cat(id, (ulong)body.Length, body);
 
-    private static byte[] Build(ReadOnlySpan<byte> input, bool deflate, bool encodedHeader)
+    private static byte[] Build(ReadOnlySpan<byte> input, int mode, bool encodedHeader)
     {
         int cut = input.Length / 3;
         byte[] f1 = input[..cut].ToArray();
         byte[] f2 = input[cut..].ToArray();
         byte[] unpacked = input.ToArray();
-        byte[] packed = deflate ? Deflate.Compress(unpacked, new DeflateOptions { Level = 6 }) : unpacked;
-        byte[] coder = deflate ? Cat(0x03, 0x04, 0x01, 0x08) : Cat(0x01, 0x00);
+        byte[] packed;
+        byte[] folder;
+        byte[] sizes;
+        if (mode == 2)
+        {
+            packed = (byte[])unpacked.Clone();
+            new DeltaFilter(4, encode: true).Convert(packed);
+            var bcj = new BranchFilter(BranchArchitecture.X86, 0, encode: true);
+            int done = bcj.Convert(packed);
+            _ = done;
+            // Two coders: 0 = Delta(4) (the result), 1 = BCJ x86, whose output feeds the Delta coder's input.
+            folder = Cat(2UL, Cat(0x21, 0x03, 0x01, 0x03), Cat(0x01, 0x04), 0UL, 1UL);
+            sizes = Cat((ulong)unpacked.Length, (ulong)unpacked.Length);
+        }
+        else
+        {
+            packed = mode == 1 ? Deflate.Compress(unpacked, new DeflateOptions { Level = 6 }) : unpacked;
+            folder = Cat(1UL, mode == 1 ? Cat(0x03, 0x04, 0x01, 0x08) : Cat(0x01, 0x00));
+            sizes = Cat((ulong)unpacked.Length);
+        }
+
         byte[] streams = Cat(
             0x06, 0UL, 1UL, 0x09, (ulong)packed.Length, 0x00,
-            0x07, 0x0B, 1UL, 0, 1UL, coder, 0x0C, (ulong)unpacked.Length, 0x00,
+            0x07, 0x0B, 1UL, 0, folder, 0x0C, sizes, 0x00,
             0x08, 0x0D, 2UL, 0x09, (ulong)f1.Length, 0x0A, 1, Crc32.Compute(f1), Crc32.Compute(f2), 0x00,
             0x00);
         long ft = (Mtime * 10_000_000L) + 116444736000000000L;
@@ -118,9 +141,9 @@ internal static class SevenZipEntries
         return Cat(new byte[] { (byte)'7', (byte)'z', 0xBC, 0xAF, 0x27, 0x1C, 0, 4 }, Crc32.Compute(next), next, body, tail);
     }
 
-    private static byte[] Read(ReadOnlySpan<byte> input, bool deflate, bool encodedHeader)
+    private static byte[] Read(ReadOnlySpan<byte> input, int mode, bool encodedHeader)
     {
-        byte[] archive = Build(input, deflate, encodedHeader);
+        byte[] archive = Build(input, mode, encodedHeader);
         var sb = new StringBuilder();
         using (var reader = new SevenZipReader(new MemoryStream(archive)))
         {

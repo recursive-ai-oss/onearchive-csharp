@@ -39,6 +39,7 @@ public sealed class SevenZipReader : ArchiveReader
     private int _next;
     private SevenZipFolderCursor? _seq;
     private int _seqFolder = -1;
+    private readonly List<(int Folder, SevenZipFolderCursor Cursor)> _cache = [];
     private SevenZipFolderCursor? _linkCursor;
     private int _linkFolder = -1;
 
@@ -162,7 +163,7 @@ public sealed class SevenZipReader : ArchiveReader
             _seqFolder = entry.FolderIndex;
         }
 
-        return new SevenZipEntryStream(_seq, ownsCursor: false, entry, _options.VerifyChecksum);
+        return new SevenZipEntryStream(_seq, null, entry, _options.VerifyChecksum);
     }
 
     /// <inheritdoc />
@@ -180,7 +181,22 @@ public sealed class SevenZipReader : ArchiveReader
             return new MemoryReadStream(ReadOnlyMemory<byte>.Empty);
         }
 
-        return new SevenZipEntryStream(NewCursor(e.FolderIndex), ownsCursor: true, e, _options.VerifyChecksum);
+        // Random access: lease a decoder for the folder (a recently used one when there is one, so that reading a solid
+        // folder's entries one after another does not decode it from the start each time) and hand it back on dispose.
+        int folder = e.FolderIndex;
+        SevenZipFolderCursor? cursor = null;
+        for (int i = 0; i < _cache.Count; i++)
+        {
+            if (_cache[i].Folder == folder)
+            {
+                cursor = _cache[i].Cursor;
+                _cache.RemoveAt(i);
+                break;
+            }
+        }
+
+        cursor ??= NewCursor(folder);
+        return new SevenZipEntryStream(cursor, c => ReturnCursor(folder, c), e, _options.VerifyChecksum);
     }
 
     /// <inheritdoc />
@@ -190,6 +206,12 @@ public sealed class SevenZipReader : ArchiveReader
         {
             _seq?.Dispose();
             _linkCursor?.Dispose();
+            foreach ((_, SevenZipFolderCursor c) in _cache)
+            {
+                c.Dispose();
+            }
+
+            _cache.Clear();
             if (!_leaveOpen)
             {
                 _stream.Dispose();
@@ -197,6 +219,23 @@ public sealed class SevenZipReader : ArchiveReader
         }
 
         base.Dispose(disposing);
+    }
+
+    // At most two idle decoders are kept: each holds a dictionary's worth of memory.
+    private void ReturnCursor(int folder, SevenZipFolderCursor cursor)
+    {
+        if (IsDisposed)
+        {
+            cursor.Dispose();
+            return;
+        }
+
+        _cache.Add((folder, cursor));
+        if (_cache.Count > 2)
+        {
+            _cache[0].Cursor.Dispose();
+            _cache.RemoveAt(0);
+        }
     }
 
     // ---- loading ----
@@ -209,7 +248,8 @@ public sealed class SevenZipReader : ArchiveReader
             folder,
             k => new SevenZipPackStream(_stream, _packOffsets[folder.FirstPackStream + k], _streams.PackSizes[folder.FirstPackStream + k], errorOffset, _meter),
             errorOffset,
-            Limits), _meter);
+            Limits,
+            _options), _meter);
     }
 
     private void EnsureLoaded()
@@ -545,11 +585,22 @@ internal sealed class SevenZipFolderCursor(Func<Stream> open, ExpansionMeter met
 
     public int Read(Span<byte> buffer)
     {
-        _stream ??= open();
-        int n = _stream.Read(buffer);
-        Position += n;
-        meter.AddProduced(n);
-        return n;
+        try
+        {
+            _stream ??= open();
+            int n = _stream.Read(buffer);
+            Position += n;
+            meter.AddProduced(n);
+            return n;
+        }
+        catch
+        {
+            // A decoder that failed cannot go on; the next use starts the folder again from its beginning.
+            _stream?.Dispose();
+            _stream = null;
+            Position = 0;
+            throw;
+        }
     }
 
     public void SkipTo(long target)
@@ -592,10 +643,11 @@ internal sealed class SevenZipFolderCursor(Func<Stream> open, ExpansionMeter met
 }
 
 /// <summary>The content of one entry: a window of its folder's unpacked stream, with the entry's CRC-32 checked at the end.</summary>
-internal sealed class SevenZipEntryStream(SevenZipFolderCursor cursor, bool ownsCursor, SevenZipEntry entry, bool verify) : Stream
+internal sealed class SevenZipEntryStream(SevenZipFolderCursor cursor, Action<SevenZipFolderCursor>? release, SevenZipEntry entry, bool verify) : Stream
 {
     private long _pos;
     private uint _crc;
+    private bool _released;
     private bool _crcValid = verify && entry.Crc32 is not null;
 
     public override bool CanRead => true;
@@ -680,9 +732,10 @@ internal sealed class SevenZipEntryStream(SevenZipFolderCursor cursor, bool owns
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing && ownsCursor)
+        if (disposing && release is not null && !_released)
         {
-            cursor.Dispose();
+            _released = true;
+            release(cursor);
         }
 
         base.Dispose(disposing);
