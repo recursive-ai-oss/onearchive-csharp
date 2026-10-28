@@ -225,10 +225,16 @@ public class DeflateEncoderTests
         foreach (int level in new[] { 1, 6, 9, 12 })
         {
             var encoder = new DeflateEncoder(DeflateFormat.GZip, new DeflateOptions { Level = level });
-            for (int warm = 0; warm < 2; warm++)
+            // Warm up until a call allocates nothing: tiered compilation of the hot loops can allocate on this thread the first few times.
+            for (int warm = 0; warm < 20; warm++)
             {
+                long b = GC.GetAllocatedBytesForCurrentThread();
                 encoder.Reset();
                 encoder.Compress(data, output, out _, out _, DeflateFlush.Finish);
+                if (warm >= 2 && GC.GetAllocatedBytesForCurrentThread() - b <= 64)
+                {
+                    break;
+                }
             }
 
             long before = GC.GetAllocatedBytesForCurrentThread();
