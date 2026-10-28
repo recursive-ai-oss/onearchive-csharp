@@ -300,6 +300,10 @@ allows 32 parts per 128 KiB.
 offsets, content) and, for anything else, raw content (8 bytes or more; ID 0 unless given). The Huffman tree, the three FSE tables
 and the repeat offsets start the frame's carried state, so the first block can use repeat modes and treeless literals.
 
+A dictionary builds search tables over its content for each set of match-finder parameters it is used with (level, size class and
+window change them). It keeps at most 128 MiB of such tables; the least recently used sets are dropped and rebuilt on demand, which
+costs time but never changes the output. A long-lived dictionary used at many settings therefore stays bounded in memory.
+
 ## Windows
 
 `WindowLog` (10 to 31) replaces the level's window log. The header states it; matches never reach back further than 2^30 bytes, which is
