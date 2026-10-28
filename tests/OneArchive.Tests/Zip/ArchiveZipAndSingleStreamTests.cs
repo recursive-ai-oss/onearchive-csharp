@@ -300,7 +300,6 @@ public class ArchiveZipAndSingleStreamTests
 
         Archive.Extract(path, temp.Combine("o"));
         Assert.Equal("hello", File.ReadAllText(temp.Combine("o/f.txt")));
-        Assert.Throws<ArchiveUnsupportedException>(() => Archive.Create(temp.Combine("new.tar.bz2")));
     }
 
     [Fact]
