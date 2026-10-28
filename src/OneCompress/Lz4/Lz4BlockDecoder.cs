@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Lz4;
 
 /// <summary>
@@ -14,6 +15,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// block is a single sequence of literals. Offset zero, offsets reaching before the history, and a block that ends inside a
 /// sequence are errors.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Lz4BlockDecoder
 {
     /// <summary>

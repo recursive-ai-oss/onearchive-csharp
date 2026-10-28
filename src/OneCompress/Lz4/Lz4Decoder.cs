@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 using System.Buffers.Binary;
 using RecursiveAI.OneCompress.Checksums;
@@ -28,6 +29,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// </para>
 /// <para>An instance is not thread-safe. Dictionaries (<see cref="Lz4Dictionary"/>) are, and may be shared.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4Decoder
 {
     private enum State

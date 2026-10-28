@@ -22,6 +22,26 @@ build/ci.sh wasm         # browser-wasm build and a headless run under Node (nee
 Build output goes to `artifacts/` (ignored by git). Set `ONEARCHIVE_ARTIFACTS` to put it elsewhere,
 for example one directory per git worktree.
 
+## Preview codecs
+
+Zstandard and LZ4 are preview while their speed is below the reference tools'. Their compression ratio and
+byte-identical output are already at the target; speed is what is still being tuned. Their public types
+carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
+
+| Codec | Diagnostic ID |
+|---|---|
+| Zstandard (including dictionary training and the seekable format) | `ONECOMPRESS001` |
+| LZ4 | `ONECOMPRESS002` |
+
+```xml
+<PropertyGroup>
+  <NoWarn>$(NoWarn);ONECOMPRESS001</NoWarn>
+</PropertyGroup>
+```
+
+or `#pragma warning disable ONECOMPRESS001` around the code that uses it. The marker comes off once the codec
+meets its speed target.
+
 ## Layout
 
 - `src/OneCompress`, `src/OneArchive` - the two packages.

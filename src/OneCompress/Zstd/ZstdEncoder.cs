@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 using RecursiveAI.OneCompress.Checksums;
 
@@ -13,6 +14,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// the input was split across calls (unless <see cref="Flush"/> is called, which ends a block early).</para>
 /// <para>An encoder is not thread-safe; a dictionary can be shared between encoders.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class ZstdEncoder
 {
     private const int BlockSize = ZstdFormat.BlockSizeMax;

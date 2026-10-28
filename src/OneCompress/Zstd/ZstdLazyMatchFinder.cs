@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -24,6 +25,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// attempts it has left. The binary-tree strategy's own positions form a tree; the dictionary side is searched as chains.</para>
 /// <para>The optimal strategies above <see cref="ZstdStrategy.BinaryTreeLazy2"/> have their own finder, <see cref="ZstdOptimalMatchFinder"/>.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
 {
     // The parse stops looking ahead once a match is this long: a longer one found a position later could add little.

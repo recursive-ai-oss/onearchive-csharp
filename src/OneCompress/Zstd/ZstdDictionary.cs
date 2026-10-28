@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -8,6 +9,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// immutable and may be shared by any number of decoders on any number of threads.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "This is the Zstandard format's own term; the type is not a collection.")]
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdDictionary
 {
     private readonly byte[] _content;

@@ -1,6 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>Options for writing a seekable Zstandard file.</summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdSeekableOptions
 {
     /// <summary>The default frame size: 1 MiB of content per frame.</summary>
@@ -36,6 +38,7 @@ public sealed class ZstdSeekableOptions
 }
 
 /// <summary>Options for reading a seekable Zstandard file.</summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdSeekableReaderOptions
 {
     /// <summary>The default limit on the content of one frame: 256 MiB.</summary>

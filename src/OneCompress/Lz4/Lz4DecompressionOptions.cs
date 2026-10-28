@@ -1,11 +1,14 @@
+using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Lz4;
 
 /// <summary>Receives the payload of a skippable frame (Frame format, "Skippable Frames").</summary>
 /// <param name="variant">The low four bits of the frame's magic number (0 to 15).</param>
 /// <param name="data">The user data; valid only during the call.</param>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public delegate void Lz4SkippableFrameHandler(int variant, ReadOnlySpan<byte> data);
 
 /// <summary>Limits, checks and dictionaries for LZ4 frame decoding. Read once when a decoder or stream is created.</summary>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4DecompressionOptions
 {
     /// <summary>The default for <see cref="MaxBlockSize"/>: 8 MiB, which admits the 4 MiB frame blocks and the 8 MiB legacy blocks.</summary>

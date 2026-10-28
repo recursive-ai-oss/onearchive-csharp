@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 
 namespace RecursiveAI.OneCompress.Lz4;
@@ -17,6 +18,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// ends the frame (the end mark and the checksum) and, unless <c>leaveOpen</c> is set, disposes the inner stream. A stream that
 /// is never disposed leaves an unfinished frame.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4Stream : Stream
 {
     /// <summary>The size of the buffer that holds compressed bytes read from the inner stream.</summary>

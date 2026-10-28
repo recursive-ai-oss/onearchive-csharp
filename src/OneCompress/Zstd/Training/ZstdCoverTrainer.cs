@@ -1,9 +1,11 @@
+using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>A segment size and d-mer size for COVER-style training.</summary>
 /// <param name="SegmentSize">The segment size k in bytes.</param>
 /// <param name="DmerSize">The d-mer size d in bytes.</param>
 /// <param name="Score">How d-mer frequencies are combined into a segment's score.</param>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly record struct ZstdCoverParameters(int SegmentSize, int DmerSize, ZstdSegmentScore Score = ZstdSegmentScore.SquareRoot);
 
 /// <summary>
@@ -21,6 +23,7 @@ public readonly record struct ZstdCoverParameters(int SegmentSize, int DmerSize,
 /// <para>Every comparison is on integers and ties go to the earliest position, the smaller score order, the smaller d and then the
 /// smaller k, so the result depends only on the samples and the options.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class ZstdCoverTrainer
 {
     // A dictionary file's header (magic, ID, tables, repeat offsets) is usually 150 to 350 bytes; this much is set aside for it

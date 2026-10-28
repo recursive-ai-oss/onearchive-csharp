@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 using System.Buffers.Binary;
 using RecursiveAI.OneCompress.Checksums;
@@ -8,6 +9,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// The header of an LZ4 frame (Frame Format, "Frame Descriptor"): the flags, the block size, and the optional content
 /// size and dictionary ID.
 /// </summary>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct Lz4FrameHeader
 {
     internal Lz4FrameHeader(bool blocksIndependent, bool hasBlockChecksum, bool hasContentChecksum, long contentSize, uint? dictionaryId, int blockMaxSize, int length)

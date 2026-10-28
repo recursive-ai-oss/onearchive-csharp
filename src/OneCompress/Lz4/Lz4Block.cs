@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 
 namespace RecursiveAI.OneCompress.Lz4;
 
 /// <summary>Settings for decoding raw LZ4 blocks with <see cref="Lz4Block"/>.</summary>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4BlockOptions
 {
     /// <summary>The default for <see cref="MaxOutputSize"/>: 64 MiB.</summary>
@@ -30,6 +32,7 @@ public sealed class Lz4BlockOptions
 /// One-call decoding of raw LZ4 blocks (LZ4 Block Format), the form used when the compressed size and a bound on the
 /// decoded size travel outside the data. For the framed format use <see cref="Lz4"/>.
 /// </summary>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Lz4Block
 {
     /// <summary>Gets the most bytes a block of <paramref name="inputLength"/> bytes can compress to; a destination of this size always suffices.</summary>

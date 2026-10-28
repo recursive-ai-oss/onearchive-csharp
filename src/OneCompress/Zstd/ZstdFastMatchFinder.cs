@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -15,6 +16,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// <see cref="ZstdCompressionParameters.TargetLength"/> acceleration (negative levels) fewer positions are tried; the search also
 /// speeds up the longer it goes without finding a match.
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdFastMatchFinder : ZstdMatchFinder
 {
     private const ulong HashPrime = 0x9E3779B185EBCA87UL;

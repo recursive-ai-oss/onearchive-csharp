@@ -1,9 +1,11 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.Intrinsics.X86;
 
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>A long match found by <see cref="ZstdLongDistanceMatcher"/>: <see cref="Length"/> bytes at <see cref="Start"/> equal to the bytes <see cref="Offset"/> positions earlier.</summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct ZstdLongMatch
 {
     /// <summary>Creates a match.</summary>
@@ -30,6 +32,7 @@ public readonly struct ZstdLongMatch
 /// <summary>
 /// The knobs of the long-distance matcher. <see cref="Resolve"/> fills in the defaults from the window.
 /// </summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct ZstdLongDistanceParameters
 {
     /// <summary>The window log used when long-distance matching is on and the caller named none: 27, which a default <c>zstd -d</c> decodes.</summary>
@@ -132,6 +135,7 @@ public readonly struct ZstdLongDistanceParameters
 /// <see cref="Slide"/> when the window buffer moves. Finding the checkpoints (<see cref="Scan"/>) only reads the data, so it can run for
 /// several ranges on several threads while one thread at a time does the matching. Dictionary content is not indexed.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdLongDistanceMatcher
 {
     // The gear hash covers this many bytes: each step shifts the hash left one bit, so a byte's constant leaves after 64 steps.
@@ -533,6 +537,7 @@ public sealed class ZstdLongDistanceMatcher
 /// The checkpoints of a range of data, found by <see cref="ZstdLongDistanceMatcher.Scan"/> and used by the matcher's matching step. A
 /// buffer that is reused from range to range.
 /// </summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdLongCheckpoints
 {
     private int[] _position = new int[256];
@@ -570,6 +575,7 @@ public sealed class ZstdLongCheckpoints
 /// Builds a block's sequences from long matches and an ordinary match finder: the long matches go in first, and the finder
 /// parses the stretches between them.
 /// </summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class ZstdLongSequencer
 {
     // How much of the end of a long match the finder is told about, so the data just after the match can refer back into it.

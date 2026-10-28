@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 using System.Buffers.Binary;
 using RecursiveAI.OneCompress.Checksums;
@@ -23,6 +24,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// </para>
 /// <para>An instance is not thread-safe. Dictionaries (<see cref="ZstdDictionary"/>) are, and may be shared.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdDecoder
 {
     private enum State

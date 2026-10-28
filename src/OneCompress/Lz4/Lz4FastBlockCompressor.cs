@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Lz4;
@@ -33,6 +34,7 @@ internal readonly struct WithDictionary : IDictionaryMode
 /// identically, so output never depends on earlier blocks.</para>
 /// <para>The parse is the same on every platform: integer arithmetic, a fixed multiplicative hash, no vector decisions.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
 {
     /// <summary>The default table size, 2^12 entries (16 KiB), small enough to stay in the first-level cache.</summary>

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 using RecursiveAI.OneCompress.Checksums;
 
@@ -14,6 +15,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// <see cref="Reset(Stream)"/>. Not thread-safe. Call <see cref="Complete"/> to finish the file; disposing a writer that
 /// is not complete and not faulted completes it.
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdSeekableWriter : IDisposable, IAsyncDisposable
 {
     private readonly int _frameSize;

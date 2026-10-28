@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -14,6 +15,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// Reading past the beginning of the data yields zero bits and sets <see cref="IsOverflowed"/>; it never
 /// reads outside the span. A stream that was decoded correctly ends with <see cref="IsFinished"/> true.
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public ref struct ZstdReverseBitReader
 {
     private readonly ReadOnlySpan<byte> _data;
@@ -158,6 +160,7 @@ public ref struct ZstdReverseBitReader
 /// Reads a forward little-endian bitstream, as used by FSE table descriptions (RFC 8878 §4.1.1): bits are
 /// taken from the least significant end of each byte first.
 /// </summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public ref struct ZstdForwardBitReader
 {
     private readonly ReadOnlySpan<byte> _data;

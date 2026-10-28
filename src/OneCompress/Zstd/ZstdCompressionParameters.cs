@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>The match-finding strategies of Zstandard, from fastest to strongest; the numbers follow the level tables.</summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZstdStrategy
 {
     /// <summary>One hash table, one candidate per position.</summary>
@@ -37,6 +39,7 @@ public enum ZstdStrategy
 /// The knobs a match finder runs with. <see cref="Resolve"/> derives them from a level the way the level tables define them;
 /// callers of the raw layer can also set every field themselves (a default value has all fields zero, which is not usable).
 /// </summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct ZstdCompressionParameters
 {
     /// <summary>The smallest window log the format can describe.</summary>
