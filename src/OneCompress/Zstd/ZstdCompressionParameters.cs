@@ -251,18 +251,21 @@ public readonly struct ZstdCompressionParameters
         chainLog = Math.Min(chainLog, MaxChainLog(strategy, windowLog));
         int dictionaryHashLog = 0;
         int dictionaryChainLog = 0;
-        if (dictionarySize > 0 && contentSize >= 0)
+        if (dictionarySize > 0)
         {
             // The tables the source fills need only suit the source; the dictionary keeps the sizes its own length calls for.
-            int sourceWindowLog = Math.Min(windowLog, Math.Max(contentSize <= 1 ? 0 : BitOperations.Log2((ulong)(contentSize - 1)) + 1, MinWindowLog));
-            int smallHashLog = Math.Min(hashLog, sourceWindowLog + 1);
-            int smallChainLog = Math.Min(chainLog, MaxChainLog(strategy, sourceWindowLog));
-            if (smallHashLog != hashLog || smallChainLog != chainLog)
+            // Its index holds one entry per content position, so tables beyond the content's size only cost memory (a 4 KiB
+            // dictionary at level 22 would otherwise ask for 256 MiB): the chain index is capped at the content length, which
+            // loses no position, and the hash tables at 16 slots per position.
+            int contentLog = Math.Max(BitOperations.Log2((uint)Math.Max(dictionarySize - 1, 1)) + 1, MinWindowLog);
+            bool hashed = strategy <= ZstdStrategy.DoubleFast;
+            dictionaryHashLog = Math.Min(hashLog, contentLog + 4);
+            dictionaryChainLog = hashed ? Math.Min(chainLog, contentLog + 4) : Math.Min(chainLog, contentLog);
+            if (contentSize >= 0)
             {
-                dictionaryHashLog = hashLog;
-                dictionaryChainLog = chainLog;
-                hashLog = smallHashLog;
-                chainLog = smallChainLog;
+                int sourceWindowLog = Math.Min(windowLog, Math.Max(contentSize <= 1 ? 0 : BitOperations.Log2((ulong)(contentSize - 1)) + 1, MinWindowLog));
+                hashLog = Math.Min(hashLog, sourceWindowLog + 1);
+                chainLog = Math.Min(chainLog, MaxChainLog(strategy, sourceWindowLog));
             }
         }
 

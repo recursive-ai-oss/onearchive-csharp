@@ -30,3 +30,4 @@ xorriso	1.5.8.pl02	xorriso-1.5.8.pl02.tar.gz	https://ftp.gnu.org/gnu/xorriso/xor
 cabextract	1.11	cabextract-1.11.tar.gz	https://www.cabextract.org.uk/cabextract-1.11.tar.gz	b5546db1155e4c718ff3d4b278573604f30dd64c3c5bfd4657cd089b823a3ac6	all
 rar	7.23	rarlinux-x64-723.tar.gz	https://www.rarlab.com/rar/rarlinux-x64-723.tar.gz	759b4b6aa0d9f77131882162951193f3a0e54bf60e1d8dc4255aa308accab588	linux-x64
 rar	7.23	rarmacos-arm-723.tar.gz	https://www.rarlab.com/rar/rarmacos-arm-723.tar.gz	68b393c000758d477fde43c955ff7542f12f76f3f5e87cdda923152fc791bd4d	osx-arm64
+gzip	1.15	gzip-1.15.tar.xz	https://ftp.gnu.org/gnu/gzip/gzip-1.15.tar.xz	9aa0cc780dec156b8282844833b342ab7cb08c25d2cd9a1869cdd0df31deff48	all

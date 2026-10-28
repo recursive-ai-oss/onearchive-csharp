@@ -32,6 +32,8 @@ public sealed partial class ZstdEncoder
 
     private ZstdCompressionParameters _parameters;
     private byte[] _window = [];
+    private int _windowCapacity;
+    private const int InitialWindow = 1 << 20;
     private int _windowFill;
     private int _blockStart;
     private long _windowStartPosition;
@@ -51,7 +53,7 @@ public sealed partial class ZstdEncoder
 
     /// <summary>Creates an encoder.</summary>
     /// <param name="options">The options; <see langword="null"/> for <see cref="ZstdCompressionOptions.Default"/>.</param>
-    /// <exception cref="ArgumentOutOfRangeException">The level is not supported.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The level is not supported, or the window log or size hint is out of range.</exception>
     public ZstdEncoder(ZstdCompressionOptions? options = null)
     {
         _options = options ?? ZstdCompressionOptions.Default;
@@ -60,6 +62,11 @@ public sealed partial class ZstdEncoder
         if (_options.WindowLog != 0 && (_options.WindowLog < ZstdCompressionParameters.MinWindowLog || _options.WindowLog > 31))
         {
             throw new ArgumentOutOfRangeException(nameof(options), "WindowLog must be 0 or from 10 to 31.");
+        }
+
+        if (_options.SizeHint < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "SizeHint must not be negative.");
         }
 
         ValidateParallelOptions();
@@ -128,6 +135,7 @@ public sealed partial class ZstdEncoder
         ZstdCompressionParameters parameters = ResolveParameters(declaredSize);
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
         SelectFinder(parameters.Strategy);
+        _finder.GrowTables = declaredSize < 0 && _options.SizeHint is null;
         _finder.BeginFrame(parameters, dictionary);
         _writer.BeginFrame(dictionary, parameters.CompressLiterals, parameters.Strategy <= ZstdStrategy.DoubleFast);
         BeginLongDistance(declaredSize);
@@ -186,11 +194,15 @@ public sealed partial class ZstdEncoder
 
     private ZstdCompressionParameters ResolveParameters(long contentSize)
     {
-        ZstdCompressionParameters p = ZstdCompressionParameters.Resolve(_options.Level, contentSize, _options.Dictionary?.Content.Length ?? 0);
+        // An unknown size may be replaced by the caller's estimate. The estimate only shapes the window and tables; the frame
+        // header still states no content size, and data beyond the estimate is compressed with the smaller window.
+        bool hinted = contentSize < 0 && _options.SizeHint is not null;
+        long sizeForParameters = hinted ? _options.SizeHint!.Value : contentSize;
+        ZstdCompressionParameters p = ZstdCompressionParameters.Resolve(_options.Level, sizeForParameters, _options.Dictionary?.Content.Length ?? 0);
         int windowLog = _options.WindowLog;
         if (windowLog == 0 && _options.LongDistanceMatching)
         {
-            windowLog = DefaultLongWindowLog(contentSize, _options.Dictionary?.Content.Length ?? 0);
+            windowLog = DefaultLongWindowLog(sizeForParameters, _options.Dictionary?.Content.Length ?? 0);
         }
 
         if (windowLog != 0)
@@ -214,7 +226,7 @@ public sealed partial class ZstdEncoder
         // Blocks are cut every 128 KiB, and a block may not exceed the window (RFC 8878 3.1.1.2.3), so a window log below 17 asked for
         // explicitly is declared as 17 in the header while matching keeps to the smaller window. Windows chosen by the level tables are
         // only that small for sources that fit them whole, where the frame is single-segment.
-        _headerWindowLog = _options.WindowLog != 0 ? Math.Max(p.WindowLog, 17) : p.WindowLog;
+        _headerWindowLog = _options.WindowLog != 0 || hinted ? Math.Max(p.WindowLog, 17) : p.WindowLog;
         if (p.WindowLog > MaxMatchWindowLog)
         {
             p = new ZstdCompressionParameters
@@ -471,6 +483,7 @@ public sealed partial class ZstdEncoder
         ZstdCompressionParameters parameters = ResolveParameters(pledged);
         ZstdCompressionDictionary? dictionary = _options.Dictionary;
         SelectFinder(parameters.Strategy);
+        _finder.GrowTables = pledged < 0 && _options.SizeHint is null;
         _finder.BeginFrame(parameters, dictionary);
         _writer.BeginFrame(dictionary, parameters.CompressLiterals, parameters.Strategy <= ZstdStrategy.DoubleFast);
         BeginLongDistance(pledged);
@@ -483,10 +496,14 @@ public sealed partial class ZstdEncoder
         // The window holds the history the finder may reach (the window size and one more byte, so the oldest table entry
         // is always out of reach) plus the block being gathered.
         int windowSize = (int)Math.Min(parameters.WindowSize, 1 << 30);
-        int capacity = windowSize + 1 + (2 * BlockSize) + 64;
-        if (_window.Length < capacity)
+        // The buffer is only as large as the input so far needs and doubles up to this capacity, so a stream of unknown length at a
+        // level with a large window does not reserve the window before the data exists. Where the window slides depends on the
+        // capacity alone, never on how much of it is allocated.
+        _windowCapacity = windowSize + 1 + (2 * BlockSize) + 64;
+        int initial = _finder.GrowTables ? Math.Min(_windowCapacity, InitialWindow) : _windowCapacity;
+        if (_window.Length < initial)
         {
-            _window = new byte[capacity];
+            _window = new byte[initial];
         }
 
         if (_pending.Length < BlockSize + 3 + OutputSlack + 64)
@@ -501,8 +518,9 @@ public sealed partial class ZstdEncoder
 
     private void MakeRoom(int incoming)
     {
-        if (_windowFill + incoming <= _window.Length - 64)
+        if (_windowFill + incoming <= _windowCapacity - 64)
         {
+            GrowWindow(_windowFill + incoming + 64);
             return;
         }
 
@@ -517,6 +535,24 @@ public sealed partial class ZstdEncoder
             _finder.Slide(delta);
             _ldm?.Slide(delta);
         }
+
+        GrowWindow(_windowFill + incoming + 64);
+    }
+
+    private void GrowWindow(int needed)
+    {
+        if (_window.Length >= needed)
+        {
+            return;
+        }
+
+        // Four times the old size, or the whole capacity once a quarter of it is needed or the step would pass half of it: the
+        // copies left behind stay a fraction of the final buffer.
+        long step = Math.Max((long)needed, 4L * _window.Length);
+        int size = needed > _windowCapacity / 4 || step > _windowCapacity / 2 ? _windowCapacity : (int)step;
+        byte[] grown = new byte[size];
+        Buffer.BlockCopy(_window, 0, grown, 0, _windowFill);
+        _window = grown;
     }
 
     private void EmitBlock(int length, bool last)

@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- `ZstdCompressionOptions.SizeHint`: an estimate of a stream's length that sizes the window and tables without being written to the frame.
+
+### Changed
+
+- Zstandard encoder memory: a stream of unknown length no longer reserves its whole window and binary-tree tables up front (level 22 took 384 MiB for a 1 KiB frame, 640 MiB with a small dictionary; now 129 MiB), and a dictionary's search index is sized by the dictionary, not the source (4 KiB at level 22: 256 MiB, now under 1 MiB). Compressed bytes are unchanged.
+
 ## [0.1.0-preview.1] - 2026-10-28
 
 First preview. Both codecs are preview and their public types carry `[Experimental]` (`ONECOMPRESS001` for Zstandard, `ONECOMPRESS002` for LZ4): compressed sizes are at or near the reference tools', and speed is still below them. The README has the measurements.
