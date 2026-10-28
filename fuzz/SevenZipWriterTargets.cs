@@ -45,7 +45,7 @@ internal static class SevenZipWriterTargets
         byte o = input[0];
         var options = new SevenZipWriterOptions
         {
-            Method = (o & 7) switch { 1 => SevenZipMethod.Lzma, 2 => SevenZipMethod.Copy, 3 => SevenZipMethod.Deflate, 4 => SevenZipMethod.Zstd, _ => SevenZipMethod.Lzma2 },
+            Method = (o & 7) switch { 5 => SevenZipMethod.Deflate64, 1 => SevenZipMethod.Lzma, 2 => SevenZipMethod.Copy, 3 => SevenZipMethod.Deflate, 4 => SevenZipMethod.Zstd, _ => SevenZipMethod.Lzma2 },
             Level = 1 + (input[1] % 9),
             Solid = (o & 8) == 0,
             SolidFileCount = (o & 16) != 0 ? 2 : 0,

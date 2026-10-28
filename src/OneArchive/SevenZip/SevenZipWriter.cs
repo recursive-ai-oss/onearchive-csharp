@@ -432,6 +432,10 @@ public sealed class SevenZipWriter : ArchiveWriter
                 top = new DeflateEncoderStream(sink, DeflateFormat.Raw, new DeflateOptions { Level = _options.Level }, leaveOpen: true);
                 break;
 
+            case SevenZipMethod.Deflate64:
+                top = new RecursiveAI.OneCompress.Deflate64.Deflate64Stream(sink, new RecursiveAI.OneCompress.Deflate64.Deflate64Options { Level = _options.Level }, leaveOpen: true);
+                break;
+
             case SevenZipMethod.Zstd:
                 top = new ZstdStream(sink, new ZstdCompressionOptions { Level = ZstdLevels[_options.Level] }, leaveOpen: true);
                 break;
@@ -811,6 +815,10 @@ public sealed class SevenZipWriter : ArchiveWriter
             case SevenZipMethod.Deflate:
                 w.Byte(0x03);
                 w.Bytes([0x04, 0x01, 0x08]);
+                break;
+            case SevenZipMethod.Deflate64:
+                w.Byte(0x03);
+                w.Bytes([0x04, 0x01, 0x09]);
                 break;
             case SevenZipMethod.Zstd:
                 w.Byte(0x03);

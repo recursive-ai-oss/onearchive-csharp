@@ -103,7 +103,7 @@ public class SevenZipWriterTests
 
     public static TheoryData<string> Variants() => new()
     {
-        "", "copy", "lzma", "lzma-nonsolid", "deflate", "zstd", "plain-header", "level1", "level9", "nonsolid", "delta", "x86", "arm64", "riscv",
+        "", "copy", "lzma", "lzma-nonsolid", "deflate", "deflate64", "deflate64-nonsolid", "zstd", "plain-header", "level1", "level9", "nonsolid", "delta", "x86", "arm64", "riscv",
         "filecount", "blocksize", "ppc", "sparc", "ia64", "arm", "armt", "level0",
     };
 
@@ -113,6 +113,8 @@ public class SevenZipWriterTests
         "lzma" => new() { Method = SevenZipMethod.Lzma },
         "lzma-nonsolid" => new() { Method = SevenZipMethod.Lzma, Solid = false },
         "deflate" => new() { Method = SevenZipMethod.Deflate },
+        "deflate64" => new() { Method = SevenZipMethod.Deflate64 },
+        "deflate64-nonsolid" => new() { Method = SevenZipMethod.Deflate64, Solid = false, Level = 9 },
         "zstd" => new() { Method = SevenZipMethod.Zstd },
         "plain-header" => new() { EncodeHeader = false },
         "level1" => new() { Level = 1 },

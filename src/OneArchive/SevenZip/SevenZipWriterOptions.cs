@@ -21,6 +21,9 @@ public enum SevenZipMethod
 
     /// <summary>Zstandard frames under the external-codec ID F7 11 01 listed in <c>Methods.txt</c>. Standard 7-Zip builds cannot read it.</summary>
     Zstd = 4,
+
+    /// <summary>Raw Deflate64 (method ID 04 01 09), at <see cref="SevenZipWriterOptions.Level"/> as given (0-9).</summary>
+    Deflate64 = 5,
 }
 
 /// <summary>The filter placed in front of the compression method.</summary>
