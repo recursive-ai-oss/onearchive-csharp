@@ -183,14 +183,17 @@ btultra2 parses the first block of a frame twice.
 
 - **Tree:** the binary tree of btlazy2 (one tree per hash of `minMatch` bytes, `2^(chainLog-1)` nodes, every position entered once, in order),
   compared up to 1024 bytes (the tree's "long enough"), at most `2^searchLog` nodes per search. The matches met on the way down, each longer
-  than the one before, are the candidates; with a dictionary, the dictionary's hash chains add candidates longer than the tree's best,
-  using the attempts that are left. The three repeat offsets (with a literal in front; with none, the second, the third and the first minus
+  than the one before, are the candidates; with a dictionary, the dictionary's hash chains add candidates longer than the tree's best.
+  The chain walk has its own budget of 16 times the level's attempts (the frame's tree does not use it up): the dictionary has no tree,
+  and its best match is often far down a chain. The three repeat offsets (with a literal in front; with none, the second, the third and the first minus
   one, RFC 8878 section 3.1.1.5) are candidates too, from four bytes (three when `minMatch` is 3). A candidate that reaches the
   target length ends the stretch at once: the longest candidate is measured to its end and taken.
 - **Prices:** in 1/256 bit. A symbol costs `log2(total) - log2(count)` (counts below 1 are 1; `log2` is the integer table of `ZstdCost`), plus
   its extra bits. Four count sets: literals (256), literal length codes (36), match length codes (53) and offset codes (32; the offset
   value's base-2 logarithm, so the repeat codes 1 to 3 are codes 0 and 1). Counts of the first block start from the block's literal
-  histogram and the predefined distributions (a distribution entry of -1 counts 1). Prices are rebuilt from the statistics alone at the start of each
+  histogram and the predefined distributions (a distribution entry of -1 counts 1); with a dictionary in the Zstandard format they start from
+  the dictionary's tables instead, since the first block can be coded with them: a literal counts `2^(maxBits - codeLength)` (1 if it has no code)
+  and a sequence symbol its normalized count (1 for -1 and 0). Prices are rebuilt from the statistics alone at the start of each
   block, and again every 4096 bytes parsed (half the statistics at the block start plus the counts of this block so far). When a block
   finishes, its counts are added to half the old statistics. A match of length 3 costs two bits more than its symbols.
 - **Path search:** from the start of a stretch (the first position with a candidate, with the literals since the last match pending) a
@@ -476,3 +479,8 @@ Outliers by file (first 4 MB of Silesia files, levels 16 and 19): mr +1.1% and +
 are within 0.4% (osdb is 1.3% smaller). x-ray at levels 18 and up is 1.7% larger than at level 17 for us but 1.2% smaller for the tool: skipping the search at a
 position where a literal is almost as cheap (what level 17 does) brings it to +0.4% and costs 0.3% on text, so the other levels do not do it.
 Inputs of 16 KB or less at levels 13 to 15 can be up to 1.8% larger than the tool's.
+
+Small game payloads with a trained dictionary at levels 16 and 19 (seed 2, one frame per payload, dictionaries of 16 and 112 KiB trained on seed 1;
+size against the tool's at the same level; worst cell, then the range over all 24 cells):
+before the dictionary-aware starting prices and the dictionary's own chain-walk budget, L16 up to +8.7% and L19 up to +5.8%; after, L16 -1.5% to +1.2%
+(worst: lanterns saves, 16 KiB dictionary) and L19 -4.8% to +0.4%. Levels 13 and 15 on the same payloads are -2.2% to +0.4%.
