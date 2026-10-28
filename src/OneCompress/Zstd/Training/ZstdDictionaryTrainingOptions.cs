@@ -87,7 +87,7 @@ public sealed class ZstdDictionaryTrainingOptions
     /// <summary>Gets the sampling step for <see cref="ZstdTrainingAlgorithm.FastCover"/>, 1 to 10: only every n-th d-mer position counts. Default 1.</summary>
     public int Acceleration { get; init; } = 1;
 
-    /// <summary>Gets the dictionary ID to write, or 0 to derive one from the dictionary bytes (in the range the format leaves free, 32768 to 2^31-1). Default 0.</summary>
+    /// <summary>Gets the dictionary ID to write, or 0 to derive one from the dictionary bytes (in the range the format leaves free, 32768 to 2^31-1). IDs from 1 to 32767 and from 2^31 up are reserved by the format (RFC 8878 §5) and are rejected. Default 0.</summary>
     public uint DictionaryId { get; init; }
 
     /// <summary>

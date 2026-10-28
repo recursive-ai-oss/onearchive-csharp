@@ -61,7 +61,7 @@ public static class Lz4Block
         }
     }
 
-    /// <summary>Compresses <paramref name="source"/> into one block in <paramref name="destination"/>.</summary>
+    /// <summary>Compresses <paramref name="source"/> into one block in <paramref name="destination"/>. For many blocks use a reusable <see cref="Lz4BlockEncoder"/>.</summary>
     /// <param name="source">The bytes to compress, at most <see cref="Lz4BlockCompressor.MaxInputLength"/>.</param>
     /// <param name="destination">Receives the block.</param>
     /// <param name="options">The level and dictionary; <see langword="null"/> for the defaults.</param>
@@ -78,7 +78,11 @@ public static class Lz4Block
         return written;
     }
 
-    /// <summary>Compresses <paramref name="source"/> into one block, reporting whether it fit.</summary>
+    /// <summary>
+    /// Compresses <paramref name="source"/> into one block, reporting whether it fit. Each call sets up a compressor and its match
+    /// table (16 KiB at the default level); to compress many blocks, create one <see cref="Lz4BlockEncoder"/> and reuse it, which
+    /// allocates nothing per call and writes the same bytes.
+    /// </summary>
     /// <param name="source">The bytes to compress, at most <see cref="Lz4BlockCompressor.MaxInputLength"/>.</param>
     /// <param name="destination">Receives the block.</param>
     /// <param name="bytesWritten">The size of the block; meaningful only when the method returns true.</param>

@@ -6,7 +6,8 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// <summary>
 /// A Zstandard dictionary (RFC 8878 §5): content that acts as history in front of the data, and for
 /// dictionaries in the Zstandard format, entropy tables and repeat offsets to start from. A dictionary is
-/// immutable and may be shared by any number of decoders on any number of threads.
+/// immutable and may be shared by any number of decoders on any number of threads. Dictionary IDs from 1 to 32767 and from 2^31 up are
+/// reserved by the format (RFC 8878 §5); IDs for your own dictionaries belong in 32768 to 2^31-1, and 0 means no ID.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "This is the Zstandard format's own term; the type is not a collection.")]
 [Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
@@ -99,7 +100,7 @@ public sealed class ZstdDictionary
     /// <param name="samples">The training samples; empty samples are ignored.</param>
     /// <param name="options">The options; null means the defaults (FastCover with parameter search, 110 KiB).</param>
     /// <param name="cancellationToken">Cancels a long search.</param>
-    /// <returns>The dictionary file's bytes, ready to save or to pass to <see cref="Parse"/>.</returns>
+    /// <returns>The dictionary file's bytes, ready to save or to pass to <see cref="Parse"/>. To use a fresh dictionary directly for both compressing and decompressing, call <see cref="ZstdCompressionDictionary.Train"/> instead and take <see cref="ZstdCompressionDictionary.ForDecompression"/> from it.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="samples"/> is null.</exception>
     /// <exception cref="ArgumentException">An option is out of range.</exception>
     /// <exception cref="CompressionDictionaryException">The samples hold fewer than 8 bytes in total.</exception>
