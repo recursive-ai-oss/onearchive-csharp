@@ -318,6 +318,25 @@ internal sealed partial class BrotliEncoderCore
                 }
             }
 
+            // The distances the short codes 4 to 15 reach: the last two distances plus or minus up to three.
+            for (int r = 0; r < 2; r++)
+            {
+                for (int delta = -3; delta <= 3; delta++)
+                {
+                    int d = ring[r] + delta;
+                    if (delta == 0 || d < 1 || d > maxDistance || maxLength < 2)
+                    {
+                        continue;
+                    }
+
+                    int len = CommonLength(pos - d, pos, maxLength);
+                    for (int l = Math.Max(2, len - 6); l <= len; l++)
+                    {
+                        Relax(i, i + l, cost, insert, l, d, l, false, ring);
+                    }
+                }
+            }
+
             // The tree's candidates: for each length the nearest distance among the candidates at least that long.
             int minDistance = int.MaxValue;
             for (int k = last - 1; k >= first; k--)

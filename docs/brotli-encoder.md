@@ -74,10 +74,10 @@ and 128 at qualities 10 and 11. The table is the single source; `BrotliQualityPl
 
 - Hash of a position: `(little-endian 4 bytes * 0x1E35A7BD mod 2^32) >> (32 - HashBits)`. Only positions with four bytes inside
   the block are entered.
-- **Hash head** (Q0, Q1): one candidate per bucket, the latest position.
-- **Hash chain** (Q2 to Q4): `head[hash]` and `chain[position]`; candidates newest first, at most Depth; a candidate must beat the
+- **Hash head** (q0, q1): one candidate per bucket, the latest position.
+- **Hash chain** (q2 to q4): `head[hash]` and `chain[position]`; candidates newest first, at most Depth; a candidate must beat the
   best length so far; ends at the nice length.
-- **Binary tree** (Q5 and up): each bucket is the root of a tree of positions keyed by the string starting there, re-rooted at
+- **Binary tree** (q5 and up): each bucket is the root of a tree of positions keyed by the string starting there, re-rooted at
   each new position (each position stores a smaller and a larger link). The nodes met on the way down are the candidates, with
   ever longer common prefixes. Comparisons stop at the nice length, and a node that agrees that far is replaced by the new
   position, which inherits its subtrees. A position is entered only if `position + niceLength` is inside the block; positions
@@ -85,13 +85,13 @@ and 128 at qualities 10 and 11. The table is the single source; `BrotliQualityPl
   decided by bytes that are not there yet. A candidate's length is checked by comparing bytes before it is used.
 - The four last distances are always tried first (any length from 3 in the greedy and lazy parses, from 2 in the shortest-path
   parse), then the finder's candidates. Distances beyond the window or the data so far are never used.
-- **Static dictionary** (Q5 and up, only when the best match found is shorter than 12): words are indexed by a hash (18 bits) of
+- **Static dictionary** (q5 and up, only when the best match found is shorter than 12): words are indexed by a hash (18 bits) of
   their first four bytes, the lowest word ids first. A hit is accepted only after the whole transformed word has been compared
-  with the input. Q5 to Q7 try the identity transform, Q8 and up all 121. A dictionary copy uses the distance
+  with the input. q5 to q7 try the identity transform, q8 and up all 121. A dictionary copy uses the distance
   `maxDistance + 1 + word id` where `maxDistance = min(window, bytes so far)` (RFC 7932 section 8) and does not enter the
   last-distance ring.
 
-## Greedy and lazy parse (Q0 to Q9)
+## Greedy and lazy parse (q0 to q9)
 
 Costs are in 1/16 bit. A match's score is `covered * 90 - cost`, where cost is 144 for a copy at the last distance, 200 for one of
 the other three recent distances, and `224 + 16 * (extra bits of the distance)` for a new distance or a dictionary word. A match
@@ -99,7 +99,7 @@ is taken only if its score is positive; ties go to the one covering more bytes. 
 a match one (or two) positions later scores more by over 90 (180) than this one, for matches covering under 64 bytes; the probe
 for the later positions uses half the depth (a quarter for hash chains).
 
-## Shortest-path parse (Q10, Q11)
+## Shortest-path parse (q10, q11)
 
 Per block (1 MiB):
 
@@ -122,9 +122,9 @@ Per block (1 MiB):
 
 Done by the meta-block writer, in this order (each choice by estimated size, integer arithmetic, ties to the lower index):
 
-1. **Distance parameters.** Q6 and up try `(NPOSTFIX, NDIRECT)` = (0,0), (0,8), (1,0), (1,8), (2,0), (2,12) and keep the one with
-   the smallest distance entropy; below Q6 it is (0,0). Distances are mapped onto the short codes (RFC 7932 section 4) first.
-2. **Block splitting** (Q4 and up) separately for literals, commands and distances (section 6). The sequence is cut into equal
+1. **Distance parameters.** q6 and up try `(NPOSTFIX, NDIRECT)` = (0,0), (0,8), (1,0), (1,8), (2,0), (2,12) and keep the one with
+   the smallest distance entropy; below q6 it is (0,0). Distances are mapped onto the short codes (RFC 7932 section 4) first.
+2. **Block splitting** (q4 and up) separately for literals, commands and distances (section 6). The sequence is cut into equal
    segments of at least 256 symbols; at most 2048 segments for literals and 128 for commands and for distances.
    Segment histograms are clustered into at most 256 block types, then refined up to four times (stopping early when nothing
    moves) by a Viterbi search over the segments where a type change costs 14 bits. The split is kept only if its estimated cost, headers and switches included,
@@ -134,10 +134,10 @@ Done by the meta-block writer, in this order (each choice by estimated size, int
    plus 20). Up to 160 histograms the cheapest pair is merged repeatedly; beyond that histograms are taken largest first, each
    joining the nearest group or opening one, then two rounds move each histogram to the group that codes it best. Entropy is
    computed with an integer table of `x log2 x` in 1/65536 bit.
-4. **Literal contexts** (Q3 and up): each literal block type gets a context mode (RFC 7932 section 7.1): LSB6, MSB6, UTF8 or
-   Signed. Q5 and up try all four per type, by entropy plus an estimate of the header; below that UTF8 is used. The 64 contexts of
+4. **Literal contexts** (q3 and up): each literal block type gets a context mode (RFC 7932 section 7.1): LSB6, MSB6, UTF8 or
+   Signed. q5 and up try all four per type, by entropy plus an estimate of the header; below that UTF8 is used. The 64 contexts of
    each type are clustered onto trees (at most 256 trees in total). Distance contexts (4 per type, section 7.2) are clustered
-   the same way. Q0 to Q2 use one tree and one context.
+   the same way. q0 to q2 use one tree and one context.
 5. **Prefix codes.** Lengths from `BrotliHuffmanCode` (plain Huffman: leaves ordered by (count, symbol), two merged queues,
    maximum length 15, a code longer than the limit is rebuilt with every count raised to a floor of 1, 2, 4, ... until it fits). Codes with one used symbol are written as
    simple codes with zero bits per symbol; codes of up to four symbols use the simple form, the rest the complex form with
