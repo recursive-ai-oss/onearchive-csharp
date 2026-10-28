@@ -45,7 +45,7 @@ else
   cores() { nproc; }
   fsize() { stat -c %s "$1"; }
 fi
-refrate() { tr '\r' '\n' < "$1" | grep 'MB/s' | tail -1 | sed 's/.*MB\/s, *//; s/ *MB\/s.*//'; }
+refrate() { tr '\r' '\n' < "$1" | grep -E 'MB/s, *[0-9.]+ *MB/s' | tail -1 | sed 's/.*MB\/s, *//; s/ *MB\/s.*//'; }
 
 echo "# $("$zstd" --version | head -1)"
 echo "# cpu: $(cpu), cores: $(cores), load before: $(load)"

@@ -30,14 +30,15 @@ for f in "$dir"/enc-*.tsv "$dir"/ldm.tsv "$dir"/jobs.tsv; do
     $1 == "file" { next }
     NF < 17 { next }
     {
-      cr = ($6 > 0) ? $8 / $6 : 0; dr = ($11 > 0) ? $13 / $11 : 0
-      cb = ($6 > 0) ? $7 / $6 : 0; db = ($11 > 0) ? $12 / $11 : 0
-      cm = ($6 > 0) ? $9 / $6 : 0; dm = ($11 > 0) ? $14 / $11 : 0
-      ok = ($5 + 0 <= smax && cr >= smin && dr >= smin)
-      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s L%s (size %+.2f%%, c %.2f, d %.2f)", $1, $2, $5, cr, dr) }
-      printf "| %s | %s | %s | %s | %+.2f%% | %.2f (%.2f-%.2f) | %.2f (%.2f-%.2f) | %d / %d | %s |\n", $1, $2, $3, $4, $5, cr, cm, cb, dr, dm, db, $16 / 1024, $17 / 1024, ok ? "PASS" : "MISS"
+      cr = ($6 > 0) ? $8 / $6 : 0; dn = ($11 + 0 > 0 && $13 + 0 > 0); dr = dn ? $13 / $11 : 0
+      cb = ($6 > 0) ? $7 / $6 : 0; db = dn ? $12 / $11 : 0
+      cm = ($6 > 0) ? $9 / $6 : 0; dm = dn ? $14 / $11 : 0
+      ok = ($5 + 0 <= smax && cr >= smin && (!dn || dr >= smin)); if (!dn) nd++
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s L%s (size %+.2f%%, c %.2f, d %s)", $1, $2, $5, cr, dn ? sprintf("%.2f", dr) : "n/a") }
+      dtxt = dn ? sprintf("%.2f (%.2f-%.2f)", dr, dm, db) : "n/a (tool decode rate not captured)"
+      printf "| %s | %s | %s | %s | %+.2f%% | %.2f (%.2f-%.2f) | %s | %d / %d | %s%s |\n", $1, $2, $3, $4, $5, cr, cm, cb, dtxt, $16 / 1024, $17 / 1024, ok ? "PASS" : "MISS", dn ? "" : " (size and compress only)"
     }
-    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }
+    END { printf "\n%d rows: %d PASS, %d MISS (%d without a tool decode rate)\n", n, p, m, nd; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }
   ' "$f"
 done
 
@@ -56,6 +57,7 @@ if [ -s "$dir/dec-tool.tsv" ]; then
     /^#/ { next }
     $1 == "frames" { next }
     NF < 12 { next }
+    $6 !~ /^[0-9.]+$/ { bad[$1 "\t" $2 "\t" $3] = 1; next }   # the tool line had no usable decode rate
     {
       key = $1 "\t" $2 "\t" $3
       if (!(key in cnt)) { order[++k] = key; cnt[key] = 0; bytes[key] = $4 }
@@ -73,6 +75,7 @@ if [ -s "$dir/dec-tool.tsv" ]; then
         printf "| %s | %s | %s | %s | %.2f (%.2f-%.2f) | %.2f | %d / %d | %s |\n", kk[1], kk[2], kk[3], bytes[key], m, lo, hi, ms, rp[key] / 1024, op[key] / 1024, ok ? "PASS" : "MISS"
       }
       printf "\n%d rows: %d PASS, %d MISS\n", np, pp, mm; for (i = 1; i <= mm; i++) printf "- MISS %s\n", worst[i]
+      for (key in bad) { split(key, kk, "\t"); printf "- no result (tool decode rate not captured): %s %s L%s\n", kk[1], kk[2], kk[3] }
     }' "$dir/dec-tool.tsv"
 fi
 
@@ -146,6 +149,7 @@ if [ -s "$dir/lz4-game.tsv" ]; then
   echo "|---|---|---|---|---|---|---|---|---|"
   awk -F'\t' -v smin="$SPEED_MIN" '
     /^#/ { next }
+    $1 == "set" { next }
     NF < 11 { next }
     {
       ok = ($8 + 0 <= 1.01 && $11 + 0 >= smin)
