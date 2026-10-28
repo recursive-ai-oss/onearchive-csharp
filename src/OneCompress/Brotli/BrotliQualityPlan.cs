@@ -130,10 +130,25 @@ internal sealed class BrotliQualityPlan
                 p.Dictionary = true;
                 p.DictionaryTransforms = true;
                 break;
-            default:
+            case 9:
                 p.HashBits = 20;
                 p.ChainDepth = 48;
                 p.Lazy = 2;
+                p.LiteralContexts = true;
+                p.SplitBlocks = true;
+                p.SearchContextMode = true;
+                p.SearchDistanceParameters = true;
+                p.Dictionary = true;
+                p.DictionaryTransforms = true;
+                break;
+            default:
+                // 10 and 11: the shortest path over a cost model, refined from the previous pass.
+                p.BlockSize = 1 << 20;
+                p.HashBits = 20;
+                p.ChainDepth = quality == 10 ? 64 : 128;
+                p.NiceLength = 128;
+                p.Optimal = true;
+                p.OptimalPasses = quality == 10 ? 2 : 3;
                 p.LiteralContexts = true;
                 p.SplitBlocks = true;
                 p.SearchContextMode = true;

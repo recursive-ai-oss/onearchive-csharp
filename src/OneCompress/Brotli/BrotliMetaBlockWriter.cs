@@ -252,7 +252,7 @@ internal sealed class BrotliMetaBlockWriter
             litSymbols[k] = lit[k];
         }
 
-        BrotliBlockSplit litSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(litSymbols, 256, 512, 128) : BrotliBlockSplit.Single(literalCount);
+        BrotliBlockSplit litSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(litSymbols, 256, 256, 2048) : BrotliBlockSplit.Single(literalCount);
         BrotliBlockSplit cmdSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(cmdSymbols, 704, 256, 128) : BrotliBlockSplit.Single(nCmd);
         BrotliBlockSplit distSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(distSymbols, distanceAlphabet, 256, 128) : BrotliBlockSplit.Single(explicitCount);
 

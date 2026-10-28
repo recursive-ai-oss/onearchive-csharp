@@ -151,7 +151,16 @@ internal sealed partial class BrotliEncoderCore
             if (record && len > longest && CommonLength(cur, pos, len) == len)
             {
                 longest = len;
-                Consider(ref best, len, len, distance, false, DistanceCost + (16 * DistanceBits(distance)));
+                if (_collecting)
+                {
+                    AddCandidate(len, distance, len);
+                }
+                else
+                {
+                    // The comparison stops at the nice length; a longer agreement is measured only for a match that is going to be considered.
+                    int full = len >= _plan.NiceLength ? CommonLength(cur, pos, _blockEnd - pos) : len;
+                    Consider(ref best, full, full, distance, false, DistanceCost + (16 * DistanceBits(distance)));
+                }
             }
 
             if (len >= maxLength)
@@ -354,6 +363,12 @@ internal sealed partial class BrotliEncoderCore
     private void Parse(int start, int end)
     {
         _blockEnd = end;
+        if (_plan.Optimal)
+        {
+            ParseOptimal(start, end);
+            return;
+        }
+
         Span<int> ring = stackalloc int[4];
         _ring.AsSpan(0, 4).CopyTo(ring);
         int pos = start;

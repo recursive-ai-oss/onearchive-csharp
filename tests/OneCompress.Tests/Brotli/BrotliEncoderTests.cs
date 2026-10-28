@@ -134,6 +134,41 @@ public class BrotliEncoderTests
     }
 
     [Fact]
+    public async Task StreamCompressesWithFlushesAndMatchesTheSpanEncoder()
+    {
+        byte[] data = BZip2TestData.Text(6, 600_000);
+        var options = new BrotliOptions { Quality = 5, WindowBits = 20 };
+        var sink = new MemoryStream();
+        await using (var stream = new BrotliStream(sink, options, leaveOpen: true))
+        {
+            Assert.True(stream.CanWrite);
+            Assert.False(stream.CanRead);
+            Assert.Throws<NotSupportedException>(() => stream.Read(new byte[1], 0, 1));
+            for (int at = 0; at < data.Length; at += 70_001)
+            {
+                await stream.WriteAsync(data.AsMemory(at, Math.Min(70_001, data.Length - at)), TestContext.Current.CancellationToken);
+            }
+        }
+
+        Assert.True(sink.ToArray().AsSpan().SequenceEqual(BR.Compress(data, options)), "stream output differs from the one-call output");
+
+        var flushed = new MemoryStream();
+        using (var stream = new BrotliStream(flushed, options, leaveOpen: true))
+        {
+            stream.Write(data, 0, 1000);
+            stream.Flush();
+            var decoder = new BrotliDecoder();
+            byte[] got = new byte[1000];
+            decoder.Decompress(flushed.ToArray(), got, out _, out int produced);
+            Assert.Equal(1000, produced);
+            Assert.True(data.AsSpan(0, 1000).SequenceEqual(got));
+            stream.Write(data, 1000, data.Length - 1000);
+        }
+
+        Assert.True(data.AsSpan().SequenceEqual(BR.Decompress(flushed.ToArray())));
+    }
+
+    [Fact]
     public void TryCompressRespectsTheDestination()
     {
         byte[] data = BZip2TestData.Text(8, 100_000);
