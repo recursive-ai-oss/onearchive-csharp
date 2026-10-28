@@ -5,6 +5,14 @@
     <NoWarn>$(NoWarn);xUnit1051</NoWarn>
   </PropertyGroup>
 
+  <!-- Test vectors and generator scripts under testdata/, copied next to the test assembly (source paths are not
+       available when the build maps them for reproducibility). -->
+  <ItemGroup>
+    <Content Include="../../testdata/7z/vectors/**/*;../../testdata/zip/*.py"
+             Link="testdata/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../../src/OneArchive/OneArchive.csproj" />
   </ItemGroup>

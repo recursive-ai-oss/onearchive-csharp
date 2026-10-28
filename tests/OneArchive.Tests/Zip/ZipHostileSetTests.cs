@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using RecursiveAI.OneCompress;
 
 namespace RecursiveAI.OneArchive.Tests;
@@ -6,8 +5,7 @@ namespace RecursiveAI.OneArchive.Tests;
 /// <summary>Runs every archive of the generated hostile zip set through extraction, seekable and forward-only.</summary>
 public class ZipHostileSetTests
 {
-    private static string Script([CallerFilePath] string here = "") =>
-        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", "..", "..", "testdata", "zip", "make-hostile.py"));
+    private static string Script() => Path.Combine(AppContext.BaseDirectory, "testdata", "make-hostile.py");
 
     private static string? FindPython()
     {

@@ -268,14 +268,23 @@ public class DeflateDecoderTests
             byte[] small = new byte[1000];
             DecodeAll(decoder, compressed, buffer);
             DecodeAllSmall(decoder, compressed, small);
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 3; i++)
+
+            // The runtime may charge a round with its own work (tiering a method up, for example), so a round that
+            // allocates nothing at all is the evidence; the decoder's own allocations would show in every round.
+            long least = long.MaxValue;
+            for (int round = 0; round < 5 && least != 0; round++)
             {
-                DecodeAll(decoder, compressed, buffer);
-                DecodeAllSmall(decoder, compressed, small);
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < 3; i++)
+                {
+                    DecodeAll(decoder, compressed, buffer);
+                    DecodeAllSmall(decoder, compressed, small);
+                }
+
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
             }
 
-            Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+            Assert.Equal(0, least);
         }
     }
 

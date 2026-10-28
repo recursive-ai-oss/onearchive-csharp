@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text;
 using RecursiveAI.OneCompress.Checksums;
 
@@ -9,8 +8,7 @@ internal static class SevenZipFixtures
 {
     public const long Mtime = 1700000000;
 
-    public static string Vector(string name, [CallerFilePath] string here = "") =>
-        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", "..", "..", "testdata", "7z", "vectors", name + ".7z"));
+    public static string Vector(string name) => Path.Combine(AppContext.BaseDirectory, "testdata", name + ".7z");
 
     public static byte[] Lcg(int seed, int n)
     {
