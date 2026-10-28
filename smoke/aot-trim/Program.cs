@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using RecursiveAI.OneArchive;
 using RecursiveAI.OneCompress;
+using RecursiveAI.OneCompress.BZip2;
 using RecursiveAI.OneCompress.Deflate;
 using RecursiveAI.OneCompress.Lz4;
 using RecursiveAI.OneCompress.Zstd;
@@ -216,6 +217,37 @@ if (!inflateResult.ToArray().AsSpan().SequenceEqual(text))
 try
 {
     GZip.Decompress(deflateGzip.AsSpan(0, 40));
+    return 1;
+}
+catch (CompressionFormatException e) when (e.IsTruncated)
+{
+}
+
+// bzip2: "hello hello hello" written by the bzip2 tool, through the one-liner, the stream and the span decoder; truncation is a typed error.
+byte[] bzip2Data = Convert.FromBase64String("QlpoMTFBWSZTWZ5iW/4AAAKRAEAAAkSgACEUYGaCke8jRwu5IpwoSE8xLf8A");
+if (System.Text.Encoding.ASCII.GetString(BZip2.Decompress(bzip2Data)) != "hello hello hello")
+{
+    Console.Error.WriteLine("bzip2 failed");
+    return 1;
+}
+
+using (var bzip2Stream = new BZip2Stream(new MemoryStream(bzip2Data)))
+{
+    var bzip2Result = new MemoryStream();
+    bzip2Stream.CopyTo(bzip2Result);
+    var bzip2Decoder = new BZip2Decoder();
+    byte[] bzip2Buffer = new byte[64];
+    bzip2Decoder.Decompress(bzip2Data, bzip2Buffer, out _, out int bzip2Written);
+    if (bzip2Result.Length != 17 || bzip2Written != 17 || BZip2Crc.Compute("123456789"u8) != 0xFC891918u)
+    {
+        Console.Error.WriteLine("bzip2 stream failed");
+        return 1;
+    }
+}
+
+try
+{
+    BZip2.Decompress(bzip2Data.AsSpan(0, 20));
     return 1;
 }
 catch (CompressionFormatException e) when (e.IsTruncated)

@@ -37,7 +37,8 @@ public class PreviewMarkerTests
             if (!type.IsPublic) continue;
             if (type.Namespace is { } ns && (ns.EndsWith(".Zstd", StringComparison.Ordinal) || ns.Contains(".Zstd.", StringComparison.Ordinal)
                 || ns.EndsWith(".Lz4", StringComparison.Ordinal) || ns.Contains(".Lz4.", StringComparison.Ordinal)
-                || ns.EndsWith(".Deflate", StringComparison.Ordinal) || ns.Contains(".Deflate.", StringComparison.Ordinal))) continue;
+                || ns.EndsWith(".Deflate", StringComparison.Ordinal) || ns.Contains(".Deflate.", StringComparison.Ordinal)
+                || ns.EndsWith(".BZip2", StringComparison.Ordinal) || ns.Contains(".BZip2.", StringComparison.Ordinal))) continue;
             Assert.Null(type.GetCustomAttribute<ExperimentalAttribute>());
         }
     }
