@@ -152,6 +152,13 @@ internal sealed class DecoderPump<T> : IDisposable
             if (status == OperationStatus.Done)
             {
                 _sawData = true;
+                if (!_singleStream && consumed == 0 && w == 0)
+                {
+                    // A multi-stream decoder that reports Done without using anything has found data it was told to leave alone.
+                    _finished = true;
+                    return true;
+                }
+
                 if (_singleStream)
                 {
                     _streamDone = true;

@@ -99,7 +99,7 @@ internal static class OneShot
 {
     private const int InitialFactor = 4;
 
-    public static byte[] Decompress<T>(T decoder, ReadOnlySpan<byte> source, string format, long maxOutput, bool failOnTrailing)
+    public static byte[] Decompress<T>(T decoder, ReadOnlySpan<byte> source, string format, long maxOutput, bool failOnTrailing, bool multiStream = false)
         where T : class, IStepDecoder
     {
         if (source.IsEmpty)
@@ -119,6 +119,11 @@ internal static class OneShot
             switch (status)
             {
                 case OperationStatus.Done:
+                    if (multiStream && consumed < source.Length && (c > 0 || w > 0))
+                    {
+                        break;
+                    }
+
                     if (failOnTrailing && consumed < source.Length)
                     {
                         throw new CompressionFormatException(format, consumed, "the end of the data after the " + format + " stream");
@@ -140,7 +145,7 @@ internal static class OneShot
         }
     }
 
-    public static bool TryDecompress<T>(T decoder, ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten, string format, bool failOnTrailing)
+    public static bool TryDecompress<T>(T decoder, ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten, string format, bool failOnTrailing, bool multiStream = false)
         where T : class, IStepDecoder
     {
         bytesWritten = 0;
@@ -160,6 +165,11 @@ internal static class OneShot
             switch (status)
             {
                 case OperationStatus.Done:
+                    if (multiStream && consumed < source.Length && (c > 0 || w > 0))
+                    {
+                        break;
+                    }
+
                     if (failOnTrailing && consumed < source.Length)
                     {
                         throw new CompressionFormatException(format, consumed, "the end of the data after the " + format + " stream");
