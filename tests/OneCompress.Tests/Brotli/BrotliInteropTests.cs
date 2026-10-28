@@ -16,13 +16,13 @@ namespace RecursiveAI.OneCompress.Tests;
 [Trait("Category", "Interop")]
 public class BrotliInteropTests
 {
-    private static string Tools => Environment.GetEnvironmentVariable("ONEARCHIVE_TOOLS")
+    internal static string Tools => Environment.GetEnvironmentVariable("ONEARCHIVE_TOOLS")
         ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "onearchive", "tools", "bin");
 
-    private static string Corpora => Environment.GetEnvironmentVariable("ONEARCHIVE_CORPORA")
+    internal static string Corpora => Environment.GetEnvironmentVariable("ONEARCHIVE_CORPORA")
         ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "onearchive", "corpora");
 
-    private static string Scratch { get; } = MakeScratch();
+    internal static string Scratch { get; } = MakeScratch();
 
     private static string MakeScratch()
     {
@@ -32,10 +32,10 @@ public class BrotliInteropTests
         return dir;
     }
 
-    private static void RequireEnabled() =>
+    internal static void RequireEnabled() =>
         Assert.SkipUnless(Environment.GetEnvironmentVariable("ONEARCHIVE_INTEROP") == "1", "set ONEARCHIVE_INTEROP=1 to run interop tests");
 
-    private static string Tool()
+    internal static string Tool()
     {
         string pinned = Path.Combine(Tools, "brotli");
         if (File.Exists(pinned))

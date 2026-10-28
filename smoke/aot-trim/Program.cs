@@ -472,6 +472,32 @@ using (var brotliStream = new BrotliStream(new MemoryStream(brotliData)))
         Console.Error.WriteLine("brotli failed");
         return 1;
     }
+
+    // The encoder: one-liner at a fast, a middle and the optimal quality, and the stream with a flush.
+    byte[] brotliInput = System.Text.Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat(BrotliExpected + " ", 40)));
+    foreach (int quality in new[] { 1, 5, 11 })
+    {
+        byte[] packed = Brotli.Compress(brotliInput, new BrotliOptions { Quality = quality, WindowBits = 16 });
+        if (!Brotli.Decompress(packed).AsSpan().SequenceEqual(brotliInput))
+        {
+            Console.Error.WriteLine("brotli encoder round trip failed");
+            return 1;
+        }
+    }
+
+    var brotliPacked = new MemoryStream();
+    using (var writer = new BrotliStream(brotliPacked, new BrotliOptions { Quality = 6 }, leaveOpen: true))
+    {
+        writer.Write(brotliInput, 0, 100);
+        writer.Flush();
+        writer.Write(brotliInput, 100, brotliInput.Length - 100);
+    }
+
+    if (!Brotli.Decompress(brotliPacked.ToArray()).AsSpan().SequenceEqual(brotliInput))
+    {
+        Console.Error.WriteLine("brotli stream round trip failed");
+        return 1;
+    }
 }
 
 // The LZMA family: each encoder at a fast and a normal preset, read back by this library's decoders (300 bytes of text, repeated).
