@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 using System.Buffers.Binary;
 using RecursiveAI.OneCompress.Checksums;
@@ -17,6 +18,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// <para>An instance is not thread-safe. A dictionary (<see cref="Lz4CompressionOptions.Dictionary"/>) is prepared once and may be
 /// shared by encoders on several threads.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4Encoder
 {
     private const int MaxHeader = Lz4Format.FrameHeaderMax;

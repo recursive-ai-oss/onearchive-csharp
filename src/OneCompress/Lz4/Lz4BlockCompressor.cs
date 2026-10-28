@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Lz4;
 
 /// <summary>
@@ -12,6 +13,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// before: <see cref="Reset"/> (or a block with no history) makes an instance behave like a new one.</para>
 /// <para>Instances own their tables, which are allocated once; they are not thread-safe.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public abstract class Lz4BlockCompressor
 {
     /// <summary>The largest input one block can hold: 2,113,929,216 bytes (the block format's limit for a single block).</summary>

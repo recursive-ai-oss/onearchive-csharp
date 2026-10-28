@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 using System.Numerics;
 using RecursiveAI.OneCompress.Checksums;
@@ -15,6 +16,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// to a bound a probability, the smallest for those the samples never produced, so that frames that differ a little from the
 /// samples can still start from the dictionary's tables.
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class ZstdDictionaryBuilder
 {
     // The level whose parse stands in for the frames the dictionary will serve.

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Lz4;
@@ -10,6 +11,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// to be at least five bytes (and the last match to start at least twelve bytes before the end), unless the whole block is
 /// literals.
 /// </summary>
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Lz4BlockWriter
 {
     /// <summary>The shortest match a sequence can carry.</summary>

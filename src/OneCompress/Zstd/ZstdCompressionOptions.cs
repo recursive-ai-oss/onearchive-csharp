@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>
 /// Options for compressing to Zstandard. The same options always give the same bytes, on every platform and thread count.
 /// </summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdCompressionOptions
 {
     /// <summary>Gets the shared instance with every option at its default.</summary>

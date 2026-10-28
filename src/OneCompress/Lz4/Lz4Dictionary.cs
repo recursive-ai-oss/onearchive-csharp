@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Lz4;
 
 /// <summary>
@@ -6,6 +7,7 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// </summary>
 /// <remarks>Instances are immutable and may be shared between decoders and threads.</remarks>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "This is the LZ4 format's own term; the type is not a collection.")]
+[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4Dictionary
 {
     /// <summary>The most dictionary content a match can reach: 64 KiB.</summary>

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -16,6 +17,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// writes an empty frame). Reading from a write-mode stream, and writing to a read-mode one, throw
 /// <see cref="NotSupportedException"/>.</para>
 /// </remarks>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdStream : Stream
 {
     /// <summary>The size of the buffer that holds compressed bytes read from the inner stream.</summary>

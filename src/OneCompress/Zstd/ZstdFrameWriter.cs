@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -6,6 +7,7 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// Writes the parts of a Zstandard frame around its blocks (RFC 8878 §3.1): the header, the checksum and skippable frames.
 /// Blocks from any source (this library's block writer, or a parallel compressor's) can sit between a header and a checksum.
 /// </summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class ZstdFrameWriter
 {
     /// <summary>The largest frame header: magic, descriptor, window descriptor, 4-byte dictionary ID and 8-byte content size.</summary>
