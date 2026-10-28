@@ -76,22 +76,21 @@ public sealed class HuffmanEncodingTable
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxBits, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(maxBits, MaxBits);
-        Span<ulong> keys = stackalloc ulong[256];
-        int n = 0;
-        uint largest = 0;
-        for (int s = 0; s <= maxSymbol; s++)
-        {
-            uint count = histogram[s];
-            if (count != 0)
-            {
-                keys[n++] = ((ulong)count << 8) | (uint)s;
-                largest = Math.Max(largest, count);
-            }
-        }
-
+        Span<byte> symbols = stackalloc byte[257];
+        int n = ListPresent(histogram, maxSymbol, symbols);
         if (n < 2 || n > (1 << maxBits))
         {
             return false;
+        }
+
+        // The work from here on is proportional to the symbols that occur, not to the 256 possible ones.
+        Span<ulong> keys = stackalloc ulong[256];
+        uint largest = 0;
+        for (int i = 0; i < n; i++)
+        {
+            uint count = histogram[symbols[i]];
+            keys[i] = ((ulong)count << 8) | symbols[i];
+            largest = Math.Max(largest, count);
         }
 
         if (largest < SmallCountLimit)
@@ -135,8 +134,8 @@ public sealed class HuffmanEncodingTable
             longest = Math.Max(longest, depth[i]);
         }
 
+        // Code lengths by symbol; only the entries of symbols that occur are written, and only those are read.
         Span<byte> lengths = stackalloc byte[256];
-        lengths[..(maxSymbol + 1)].Clear();
         for (int i = 0; i < n; i++)
         {
             lengths[(int)(keys[i] & 255)] = depth[i];
@@ -144,11 +143,94 @@ public sealed class HuffmanEncodingTable
 
         if (longest > maxBits)
         {
-            LimitLengths(lengths, histogram, maxSymbol, maxBits);
+            // The rare case: LimitLengths walks all symbols, so it gets zeros for the ones that do not occur.
+            Span<byte> full = stackalloc byte[256];
+            full[..(maxSymbol + 1)].Clear();
+            for (int i = 0; i < n; i++)
+            {
+                full[symbols[i]] = lengths[symbols[i]];
+            }
+
+            LimitLengths(full, histogram, maxSymbol, maxBits);
+            for (int i = 0; i < n; i++)
+            {
+                lengths[symbols[i]] = full[symbols[i]];
+            }
         }
 
-        AssignCodes(lengths, maxSymbol + 1);
+        AssignCodes(symbols[..n], lengths);
         return true;
+    }
+
+    // Lists, in ascending order, the symbols up to maxSymbol whose counter is not zero; returns how many. Four counters are tested
+    // at a time with vectors where the hardware has them; the list is the same either way.
+    private static int ListPresent(ReadOnlySpan<uint> histogram, int maxSymbol, Span<byte> symbols)
+    {
+        int n = 0;
+        int s = 0;
+        int end = maxSymbol + 1;
+        if (System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated)
+        {
+            for (; s + 4 <= end; s += 4)
+            {
+                var v = System.Runtime.Intrinsics.Vector128.Create(histogram.Slice(s, 4));
+                uint zero = System.Runtime.Intrinsics.Vector128.ExtractMostSignificantBits(System.Runtime.Intrinsics.Vector128.Equals(v, System.Runtime.Intrinsics.Vector128<uint>.Zero));
+                uint present = ~zero & 0xF;
+                while (present != 0)
+                {
+                    symbols[n++] = (byte)(s + BitOperations.TrailingZeroCount(present));
+                    present &= present - 1;
+                }
+            }
+        }
+
+        for (; s < end; s++)
+        {
+            symbols[n] = (byte)s;
+            n += histogram[s] != 0 ? 1 : 0;
+        }
+
+        return n;
+    }
+
+    // Hands out codes to the symbols that occur (ascending), whose code lengths are lengths[symbol]. Same assignment as the general
+    // routine below: rows of the decoder's table go from the lowest weight up, and equal weights in symbol order.
+    private void AssignCodes(ReadOnlySpan<byte> symbols, ReadOnlySpan<byte> lengths)
+    {
+        int maxBits = 0;
+        for (int i = 0; i < symbols.Length; i++)
+        {
+            maxBits = Math.Max(maxBits, lengths[symbols[i]]);
+        }
+
+        Span<int> rankCount = stackalloc int[MaxBits + 2];
+        rankCount.Clear();
+        for (int i = 0; i < symbols.Length; i++)
+        {
+            rankCount[maxBits + 1 - lengths[symbols[i]]]++;
+        }
+
+        Span<int> rankStart = stackalloc int[MaxBits + 2];
+        int next = 0;
+        for (int w = 1; w <= maxBits; w++)
+        {
+            rankStart[w] = next;
+            next += rankCount[w] << (w - 1);
+        }
+
+        Array.Clear(_length);
+        for (int i = 0; i < symbols.Length; i++)
+        {
+            int symbol = symbols[i];
+            int len = lengths[symbol];
+            int w = maxBits + 1 - len;
+            _code[symbol] = (ushort)(rankStart[w] >> (w - 1));
+            rankStart[w] += 1 << (w - 1);
+            _length[symbol] = (byte)len;
+        }
+
+        _symbolCount = symbols[^1] + 1;
+        _maxBits = maxBits;
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
