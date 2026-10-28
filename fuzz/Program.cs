@@ -66,7 +66,7 @@ if (args.Length >= 3 && args[0] == "replay")
         catch (Exception ex)
         {
             failed++;
-            Console.WriteLine($"{file}: FINDING {ex.GetType().Name}: {ex.Message}");
+            Console.WriteLine($"{file}: FINDING {ex.GetType().Name}: {ex.Message}{Environment.NewLine}{ex.StackTrace}");
         }
     }
 

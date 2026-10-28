@@ -142,11 +142,19 @@ install_gzip() {
   link "$p/bin/gzip" gzip
 }
 install_libarchive() {
+  # bsdtar reads and writes 7z and tar.xz/.bz2 only with liblzma and libbz2 linked in, so the pinned xz and bzip2 are built
+  # first (static, in their own prefixes) and named explicitly; configure then fails instead of silently dropping them.
+  local x; x="$(prefix_of xz)"; [ -f "$x/lib/liblzma.a" ] || install_xz
+  local b; b="$(prefix_of bzip2)"; [ -f "$b/lib/libbz2.a" ] || install_bzip2
   local p; p="$(prefix_of libarchive)"; unpack libarchive
   local z; z="$(prefix_of zlib)"
-  CPPFLAGS="-I$z/include" LDFLAGS="-L$z/lib" ./configure --prefix="$p" --disable-shared --without-xml2 --without-expat --without-openssl --without-nettle >/dev/null
+  CPPFLAGS="-I$z/include -I$x/include -I$b/include" LDFLAGS="-L$z/lib -L$x/lib -L$b/lib" PKG_CONFIG_PATH="$x/lib/pkgconfig" \
+    ./configure --prefix="$p" --disable-shared --without-xml2 --without-expat --without-openssl --without-nettle --with-lzma --with-bz2lib >/dev/null
   mk >/dev/null; make install >/dev/null
   link "$p/bin/bsdtar" bsdtar
+  # Fail the install if the codecs did not make it in: the version line names them.
+  "$p/bin/bsdtar" --version | grep -q liblzma || { echo "bsdtar was built without liblzma" >&2; return 1; }
+  "$p/bin/bsdtar" --version | grep -q bz2lib || { echo "bsdtar was built without bzip2" >&2; return 1; }
 }
 install_tar() {
   local p; p="$(prefix_of tar)"; unpack tar
@@ -211,6 +219,8 @@ ids="${*:-$all_ids}"
 for id in $ids; do
   p="$(prefix_of "$id")"
   sha="$(pin_row "$id" | cut -f5)"
+  # A recipe change that must rebuild an installed tool adds a suffix here.
+  [ "$id" = libarchive ] && sha="$sha+lzma+bz2"
   if [ -f "$p/.installed" ] && [ "$(cat "$p/.installed")" = "$sha" ] && [ -z "${FORCE:-}" ]; then
     echo "ok       $id $(version_of "$id")"
     continue
