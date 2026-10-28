@@ -29,6 +29,11 @@ public sealed class FseEncodingTable
     private int _accuracyLog;
     private int _symbolCount;
 
+    // Cost() prices a histogram once per block, and a table that serves many blocks (a dictionary's, a predefined one) is priced
+    // against many histograms, so the price of one occurrence of each symbol is worked out once, on first use. -1 marks a symbol
+    // with no state.
+    private int[]? _symbolCosts;
+
     /// <summary>Gets the accuracy log: the table has <c>1 &lt;&lt; AccuracyLog</c> states.</summary>
     public int AccuracyLog => _accuracyLog;
 
@@ -283,6 +288,7 @@ public sealed class FseEncodingTable
         normalizedCounts.CopyTo(_normalized);
         _symbolCount = normalizedCounts.Length;
         _accuracyLog = accuracyLog;
+        _symbolCosts = null;
     }
 
     /// <summary>Per symbol: how many bits a transition emits (in the high half, with a correction) and where its states start.</summary>
@@ -322,6 +328,19 @@ public sealed class FseEncodingTable
         return Raw.Get(_stateTable, (state >> (int)nb) + Raw.Get(_transform, symbol).FindState);
     }
 
+    private int[] BuildSymbolCosts()
+    {
+        var costs = new int[_symbolCount];
+        int baseCost = _accuracyLog * ZstdCost.Bit;
+        for (int s = 0; s < costs.Length; s++)
+        {
+            int c = _normalized[s];
+            costs[s] = c == 0 ? -1 : baseCost - ZstdCost.Log2((uint)(c < 0 ? 1 : c));
+        }
+
+        return costs;
+    }
+
     /// <summary>Whether the table can code <paramref name="symbol"/> (it has at least one state).</summary>
     internal bool Contains(int symbol) => symbol < _symbolCount && _normalized[symbol] != 0;
 
@@ -333,23 +352,32 @@ public sealed class FseEncodingTable
     /// <returns>The cost, or <see cref="int.MaxValue"/> if a symbol that occurs has no state in this table.</returns>
     public int Cost(ReadOnlySpan<uint> histogram, int maxSymbol)
     {
+        int[] costs = _symbolCosts ??= BuildSymbolCosts();
         long cost = 0;
-        int baseCost = _accuracyLog * ZstdCost.Bit;
-        for (int s = 0; s <= maxSymbol; s++)
+        int known = Math.Min(maxSymbol + 1, _symbolCount);
+        for (int s = 0; s < known; s++)
         {
             uint count = histogram[s];
-            if (count == 0)
+            int perSymbol = costs[s];
+            if (perSymbol < 0)
             {
+                if (count != 0)
+                {
+                    return int.MaxValue;
+                }
+
                 continue;
             }
 
-            if (s >= _symbolCount || _normalized[s] == 0)
+            cost += (long)count * perSymbol;
+        }
+
+        for (int s = known; s <= maxSymbol; s++)
+        {
+            if (histogram[s] != 0)
             {
                 return int.MaxValue;
             }
-
-            int c = _normalized[s] < 0 ? 1 : _normalized[s];
-            cost += (long)count * (baseCost - ZstdCost.Log2((uint)c));
         }
 
         return cost > int.MaxValue ? int.MaxValue : (int)cost;

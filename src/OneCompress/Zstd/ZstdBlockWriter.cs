@@ -334,7 +334,7 @@ public sealed class ZstdBlockWriter
         if (tryNew)
         {
             int estimate = CompressedHeaderSize(n, 0, singleStream) + 8 + ((distinct * 3) / 8)
-                + StreamBytes(ZstdCost.EntropyLowerBound(histogram, maxSymbol, n) / ZstdCost.Bit, singleStream, n);
+                + StreamBytes((symbols.IsEmpty ? ZstdCost.EntropyLowerBound(histogram, maxSymbol, n) : ZstdCost.EntropyLowerBound(histogram, symbols, n)) / ZstdCost.Bit, singleStream, n);
             tryNew = estimate < Math.Min(rawCost, previousCost);
         }
 
@@ -698,6 +698,7 @@ public sealed class ZstdBlockWriter
         // rounds over all three kinds: the repeat and predefined tables, then the new ones. The exact price of a table walks the
         // code sequence through a chain of dependent table reads, so the walks of all the tables of a round run side by side.
         Span<bool> repeatOk = stackalloc bool[3];
+        Span<int> repeatCost = stackalloc int[3];
         Span<bool> predefinedOk = stackalloc bool[3];
         for (int k = 0; k < 3; k++)
         {
@@ -723,7 +724,8 @@ public sealed class ZstdBlockWriter
 
             modes[k] = Mode.Compressed;
             FseEncodingTable? previous = _previous[k];
-            repeatOk[k] = previous is not null && previous.Contains(maxSymbol) && previous.Cost(histogram, maxSymbol) != int.MaxValue;
+            repeatCost[k] = previous is not null && previous.Contains(maxSymbol) ? previous.Cost(histogram, maxSymbol) : int.MaxValue;
+            repeatOk[k] = repeatCost[k] != int.MaxValue;
             predefinedOk[k] = maxSymbol <= defaultMaxSymbol[k];
             lanes[2 * k] = repeatOk[k] ? previous! : FseEncodingTable.Every;
             lanes[(2 * k) + 1] = predefinedOk[k] ? Default(k) : FseEncodingTable.Every;
@@ -756,7 +758,7 @@ public sealed class ZstdBlockWriter
             Mode bestMode = Mode.Compressed;
             if (repeatOk[k])
             {
-                int cost = exact ? priced[2 * k] * ZstdCost.Bit : _previous[k]!.Cost(histogram, maxSymbol);
+                int cost = exact ? priced[2 * k] * ZstdCost.Bit : repeatCost[k];
                 if (cost < bestCost)
                 {
                     bestCost = cost;
