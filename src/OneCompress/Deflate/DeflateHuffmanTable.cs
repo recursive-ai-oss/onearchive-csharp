@@ -42,14 +42,19 @@ public readonly struct DeflateHuffmanEntry
 
     internal DeflateHuffmanEntry(uint raw) => Raw = raw;
 
-    /// <summary>Gets the packed form: value in bits 16 to 31, kind in 12 to 15, extra bits in 8 to 11, code length in 0 to 7.</summary>
+    /// <summary>
+    /// Gets the packed form: value in bits 16 to 31, kind in 12 to 15, and below that, for a literal, length, distance or code-length
+    /// entry, the code length in bits 8 to 11 and the code length plus the extra bits that follow it in bits 0 to 7, so that a decoder
+    /// drops code and extra bits in one shift. For a link to a second-level table, bits 8 to 11 hold that table's index width and
+    /// bits 0 to 7 the first-level width.
+    /// </summary>
     public uint Raw { get; }
 
     /// <summary>Gets the length in bits of the code. It is at least 1, also for <see cref="DeflateSymbolKind.Invalid"/>, so that a decoder always consumes input before it fails.</summary>
-    public int CodeLength => (int)(Raw & 0xFF);
+    public int CodeLength => Kind == DeflateSymbolKind.Link ? (int)(Raw & 0xFF) : (int)((Raw >> ExtraShift) & 15);
 
     /// <summary>Gets the number of extra bits that follow the code (lengths and distances only).</summary>
-    public int ExtraBits => (int)((Raw >> ExtraShift) & 15);
+    public int ExtraBits => Kind == DeflateSymbolKind.Link ? 0 : (int)(Raw & 0xFF) - (int)((Raw >> ExtraShift) & 15);
 
     /// <summary>Gets what the code stands for.</summary>
     public DeflateSymbolKind Kind => (DeflateSymbolKind)((Raw >> KindShift) & 15);
@@ -58,7 +63,9 @@ public readonly struct DeflateHuffmanEntry
     public int Value => (int)(Raw >> ValueShift);
 
     internal static uint Pack(DeflateSymbolKind kind, int value, int extraBits, int codeLength) =>
-        ((uint)value << ValueShift) | ((uint)kind << KindShift) | ((uint)extraBits << ExtraShift) | (uint)codeLength;
+        kind == DeflateSymbolKind.Link
+            ? ((uint)value << ValueShift) | ((uint)kind << KindShift) | ((uint)extraBits << ExtraShift) | (uint)codeLength
+            : ((uint)value << ValueShift) | ((uint)kind << KindShift) | ((uint)codeLength << ExtraShift) | (uint)(codeLength + extraBits);
 }
 
 /// <summary>The alphabet a <see cref="DeflateHuffmanTable"/> decodes (RFC 1951 sections 3.2.5 to 3.2.7).</summary>

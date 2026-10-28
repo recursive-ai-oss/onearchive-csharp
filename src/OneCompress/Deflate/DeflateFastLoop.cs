@@ -71,6 +71,9 @@ internal static class DeflateFastLoop
                 e = DeflateRaw.Get(literals, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits >> LiteralPrimaryBits, (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15)));
             }
 
+            // The low byte of an entry is the code length plus the extra bits that follow it, so one shift drops both; the extra
+            // bits' value is read from the bits as they were before the shift.
+            ulong before = bits;
             int n = (int)(e & 0xFF);
             bits >>= n;
             count -= n;
@@ -107,10 +110,7 @@ internal static class DeflateFastLoop
                 break;
             }
 
-            int extra = (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
-            int length = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits, extra);
-            bits >>= extra;
-            count -= extra;
+            int length = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)(LowBits(before, n) >> (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15));
 
             e = DeflateRaw.Get(distances, (int)(bits & DistanceMask));
             if ((e & KindMask) == LinkKind)
@@ -118,6 +118,7 @@ internal static class DeflateFastLoop
                 e = DeflateRaw.Get(distances, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits >> DistancePrimaryBits, (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15)));
             }
 
+            before = bits;
             n = (int)(e & 0xFF);
             bits >>= n;
             count -= n;
@@ -127,23 +128,31 @@ internal static class DeflateFastLoop
                 break;
             }
 
-            extra = (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
-            int distance = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits, extra);
-            bits >>= extra;
-            count -= extra;
+            int distance = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)(LowBits(before, n) >> (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15));
 
             int end = op + length;
             if (distance >= 8 && distance <= op)
             {
-                // Eight bytes at a time: each read is at least 8 bytes behind its write, so it only sees bytes already written.
+                // Eight bytes at a time, each read at least 8 bytes behind its write, so it only sees bytes already written. The
+                // first 24 bytes are copied without a loop test (most matches are shorter), which keeps the branch predictable; the
+                // stores may run past the match, and the output margin covers that.
                 int s = op - distance;
-                do
+                DeflateRaw.Copy8(dst, op, s);
+                DeflateRaw.Copy8(dst, op + 8, s + 8);
+                DeflateRaw.Copy8(dst, op + 16, s + 16);
+                if (length > 24)
                 {
-                    DeflateRaw.Copy8(dst, op, s);
-                    op += 8;
-                    s += 8;
+                    int p = op + 24;
+                    s += 24;
+                    do
+                    {
+                        DeflateRaw.Copy8(dst, p, s);
+                        p += 8;
+                        s += 8;
+                    }
+                    while (p < end);
                 }
-                while (op < end);
+
                 op = end;
             }
             else if (CopyUncommon(dst, op, distance, length, history))
