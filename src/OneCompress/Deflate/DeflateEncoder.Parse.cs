@@ -183,10 +183,7 @@ public sealed partial class DeflateEncoder
                         first = Math.Max(first, end - p.Tail);
                     }
 
-                    for (int q = first; q < last; q++)
-                    {
-                        finder.InsertBound(q);
-                    }
+                    finder.InsertRange(first, last);
                 }
 
                 position = end;
@@ -354,10 +351,7 @@ public sealed partial class DeflateEncoder
             PutMatch(words, literalCounts, distanceCounts, ref count, length, distance);
             int matchEnd = position + length;
             int insertLast = Math.Min(matchEnd, insertEnd);
-            for (int q = Math.Max(hashedTo, position + 1); q < insertLast; q++)
-            {
-                finder.InsertBound(q);
-            }
+            finder.InsertRange(Math.Max(hashedTo, position + 1), insertLast);
 
             position = matchEnd;
             if (count >= checkAt)
