@@ -40,16 +40,23 @@ internal readonly struct LevelParameters
     /// <summary>Lazy: when positive, also look two bytes ahead, and take that match instead if it scores better than the current one by more than this (see <c>Gain</c>).</summary>
     public int Lazy2 { get; init; }
 
+    /// <summary>
+    /// Greedy and lazy: after this many literals in a row with no match (0 = never), the parser stops searching at every position:
+    /// it emits (misses - SkipAfter) / 8 further bytes as literals without looking for matches, so data that does not compress costs
+    /// little time. A match resets the count.
+    /// </summary>
+    public int SkipAfter { get; init; }
+
     public static LevelParameters For(int level) => level switch
     {
         0 => new() { Mode = ParseMode.Stored },
-        1 => new() { Mode = ParseMode.Greedy, HashBits = 17, HashBytes = 4, Chain = 1, Nice = 32, MaxLazy = 32, Tail = 4 },
-        2 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 3, Chain = 6, Nice = 40, MaxLazy = 32, Tail = 4 },
-        3 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 48, Tail = 4 },
-        4 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 8, Nice = 32, MaxLazy = 16, Good = 8 },
-        5 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 24, Good = 12 },
-        6 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 20, Nice = 64, MaxLazy = 64, Good = 16 },
-        7 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 48, Nice = 100, MaxLazy = 100, Good = 16 },
+        1 => new() { Mode = ParseMode.Greedy, HashBits = 17, HashBytes = 4, Chain = 1, Nice = 32, MaxLazy = 32, Tail = 4, SkipAfter = 16 },
+        2 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 3, Chain = 6, Nice = 40, MaxLazy = 32, Tail = 4, SkipAfter = 16 },
+        3 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 48, Tail = 4, SkipAfter = 16 },
+        4 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 8, Nice = 32, MaxLazy = 16, Good = 8, SkipAfter = 16 },
+        5 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 24, Good = 12, SkipAfter = 16 },
+        6 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 20, Nice = 64, MaxLazy = 64, Good = 16, SkipAfter = 16 },
+        7 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 48, Nice = 100, MaxLazy = 100, Good = 16, SkipAfter = 16 },
         8 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 128, Nice = 160, MaxLazy = 200, Good = 16, Lazy2 = 4 },
         9 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 512, Nice = 258, MaxLazy = 258, Good = 16, Lazy2 = 4 },
         10 => new() { Mode = ParseMode.Optimal, Chain = 24, Nice = 64, Passes = 1 },
@@ -70,6 +77,8 @@ public sealed partial class DeflateEncoder
     // bit of distance (a far match needs more extra bits and its distance code is rarer, so it is dearer). A match one byte later
     // replaces the current one when its score is higher by more than LazyMargin, so a same-length match that is much nearer wins.
     private const int LazyMargin = 1;
+
+    private const int SkipShift = 3;
 
     private static int Gain(int length, int distance) => length * 4 - (31 - System.Numerics.BitOperations.LeadingZeroCount((uint)distance));
 
@@ -174,6 +183,8 @@ public sealed partial class DeflateEncoder
         int insertEnd = fill - DeflateHashChainMatchFinder.RequiredLookahead + 1;
         int oldest = _oldest;
         finder.Bind(window, fill, oldest, p.Nice);
+        int misses = 0;
+        int skipT = p.SkipAfter == 0 ? int.MaxValue : p.SkipAfter;
         while (position < limit)
         {
             int available = fill - position;
@@ -200,10 +211,12 @@ public sealed partial class DeflateEncoder
                 }
 
                 position = end;
+                misses = 0;
             }
             else
             {
                 PutLiteral(words, literalCounts, ref count, window[position++]);
+                misses++;
             }
 
             if (count >= checkAt)
@@ -214,6 +227,15 @@ public sealed partial class DeflateEncoder
                 count = _sequences.CountValue;
                 checkAt = _checkAt;
             }
+
+            if (misses > skipT)
+            {
+                int extra = Math.Min(Math.Min((misses - skipT) >> SkipShift, limit - position), checkAt - count - 1);
+                for (int i = 0; i < extra; i++)
+                {
+                    PutLiteral(words, literalCounts, ref count, window[position++]);
+                }
+            }
         }
 
         _sequences.CountValue = count;
@@ -222,6 +244,7 @@ public sealed partial class DeflateEncoder
 
     // Level 1: one probe per position, no chains. Interior positions of short matches go into the table so that text keeps finding
     // its repeats.
+
     private void ParseFastest(int limit)
     {
         DeflateHashChainMatchFinder finder = _chain!;
@@ -236,6 +259,8 @@ public sealed partial class DeflateEncoder
         int fill = _fill;
         int insertEnd = fill - DeflateHashChainMatchFinder.RequiredLookahead + 1;
         int oldest = _oldest;
+        int misses = 0;
+        int skipT = p.SkipAfter == 0 ? int.MaxValue : p.SkipAfter;
         while (position < limit)
         {
             int length = 0;
@@ -262,10 +287,12 @@ public sealed partial class DeflateEncoder
                 }
 
                 position = end;
+                misses = 0;
             }
             else
             {
                 PutLiteral(words, literalCounts, ref count, window[position++]);
+                misses++;
             }
 
             if (count >= checkAt)
@@ -275,6 +302,15 @@ public sealed partial class DeflateEncoder
                 CheckBlock();
                 count = _sequences.CountValue;
                 checkAt = _checkAt;
+            }
+
+            if (misses > skipT)
+            {
+                int extra = Math.Min(Math.Min((misses - skipT) >> SkipShift, limit - position), checkAt - count - 1);
+                for (int i = 0; i < extra; i++)
+                {
+                    PutLiteral(words, literalCounts, ref count, window[position++]);
+                }
             }
         }
 
@@ -299,6 +335,8 @@ public sealed partial class DeflateEncoder
         int insertEnd = fill - DeflateHashChainMatchFinder.RequiredLookahead + 1;
         int oldest = _oldest;
         finder.Bind(window, fill, oldest, p.Nice);
+        int misses = 0;
+        int skipT = p.SkipAfter == 0 ? int.MaxValue : p.SkipAfter;
         while (position < limit)
         {
             int available = fill - position;
@@ -316,6 +354,7 @@ public sealed partial class DeflateEncoder
             if (length < DeflateTables.MinMatchLength)
             {
                 PutLiteral(words, literalCounts, ref count, window[position++]);
+                misses++;
                 if (count >= checkAt)
                 {
                     _sequences.CountValue = count;
@@ -323,6 +362,15 @@ public sealed partial class DeflateEncoder
                     CheckBlock();
                     count = _sequences.CountValue;
                     checkAt = _checkAt;
+                }
+
+                if (misses > skipT)
+                {
+                    int extra = Math.Min(Math.Min((misses - skipT) >> SkipShift, limit - position), checkAt - count - 1);
+                    for (int i = 0; i < extra; i++)
+                    {
+                        PutLiteral(words, literalCounts, ref count, window[position++]);
+                    }
                 }
 
                 continue;
@@ -395,6 +443,7 @@ public sealed partial class DeflateEncoder
             }
 
             // Take the match at position; hashedTo is the first position not yet in the chains.
+            misses = 0;
             PutMatch(words, literalCounts, distanceCounts, ref count, length, distance);
             int matchEnd = position + length;
             int insertLast = Math.Min(matchEnd, insertEnd);
