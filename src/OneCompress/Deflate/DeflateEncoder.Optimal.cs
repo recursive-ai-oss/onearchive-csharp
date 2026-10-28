@@ -131,7 +131,8 @@ public sealed partial class DeflateEncoder
         int position = _position;
         while (position < limit)
         {
-            if (_sequences.Count > 0 && _sequences.Count + RunLength + 1 > _sequences.Capacity)
+            // The nominal capacity, not the buffer's: a one-call encoder shrinks the buffer to the input, and block boundaries must not depend on that.
+            if (_sequences.Count > 0 && _sequences.Count + RunLength + 1 > SequenceCapacity)
             {
                 _position = position;
                 CloseBlock(isFinal: false);

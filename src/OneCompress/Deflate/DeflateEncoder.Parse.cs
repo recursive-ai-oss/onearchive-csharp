@@ -37,6 +37,9 @@ internal readonly struct LevelParameters
     /// <summary>Greedy: inside a match longer than <see cref="MaxLazy"/>, only the last this many positions are entered into the finder.</summary>
     public int Tail { get; init; }
 
+    /// <summary>Lazy: when positive, also look two bytes ahead, and take that match instead if it scores better than the current one by more than this (see <c>Gain</c>).</summary>
+    public int Lazy2 { get; init; }
+
     public static LevelParameters For(int level) => level switch
     {
         0 => new() { Mode = ParseMode.Stored },
@@ -47,8 +50,8 @@ internal readonly struct LevelParameters
         5 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 24, Good = 12 },
         6 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 20, Nice = 64, MaxLazy = 64, Good = 16 },
         7 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 48, Nice = 100, MaxLazy = 100, Good = 16 },
-        8 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 128, Nice = 160, MaxLazy = 200, Good = 16 },
-        9 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 512, Nice = 258, MaxLazy = 258, Good = 16 },
+        8 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 128, Nice = 160, MaxLazy = 200, Good = 16, Lazy2 = 4 },
+        9 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 512, Nice = 258, MaxLazy = 258, Good = 16, Lazy2 = 4 },
         10 => new() { Mode = ParseMode.Optimal, Chain = 24, Nice = 64, Passes = 1 },
         11 => new() { Mode = ParseMode.Optimal, Chain = 64, Nice = 128, Passes = 2 },
         _ => new() { Mode = ParseMode.Optimal, Chain = 256, Nice = 258, Passes = 3 },
@@ -58,7 +61,17 @@ internal readonly struct LevelParameters
 public sealed partial class DeflateEncoder
 {
     // A 3-byte match this far back costs more bits than three literals would, so it is not taken.
-    private const int TooFar = 4096;
+    private const int TooFar = 8192;
+
+    // The greedy levels keep the older, stricter limit: their searches find many more 3-byte matches that would not pay.
+    private const int GreedyTooFar = 4096;
+
+    // Lazy matching compares candidate matches by a score that stands in for their cost: 4 units per byte covered, minus one per
+    // bit of distance (a far match needs more extra bits and its distance code is rarer, so it is dearer). A match one byte later
+    // replaces the current one when its score is higher by more than LazyMargin, so a same-length match that is much nearer wins.
+    private const int LazyMargin = 1;
+
+    private static int Gain(int length, int distance) => length * 4 - (31 - System.Numerics.BitOperations.LeadingZeroCount((uint)distance));
 
     // The parsers below keep the entry count and the position in locals and store them back before they call anything that
     // reads the encoder's state (CheckBlock, which may close the block). An entry is written at words[count] only while
@@ -171,7 +184,7 @@ public sealed partial class DeflateEncoder
                 length = finder.Find(position, 2, p.Chain, out distance);
             }
 
-            if (length >= DeflateTables.MinMatchLength && (length > 3 || distance <= TooFar))
+            if (length >= DeflateTables.MinMatchLength && (length > 3 || distance <= GreedyTooFar))
             {
                 PutMatch(words, literalCounts, distanceCounts, ref count, length, distance);
                 int end = position + length;
@@ -183,10 +196,7 @@ public sealed partial class DeflateEncoder
                         first = Math.Max(first, end - p.Tail);
                     }
 
-                    for (int q = first; q < last; q++)
-                    {
-                        finder.InsertBound(q);
-                    }
+                    finder.InsertRange(first, last);
                 }
 
                 position = end;
@@ -248,10 +258,7 @@ public sealed partial class DeflateEncoder
                         first = Math.Max(first, end - p.Tail);
                     }
 
-                    for (int q = first; q < last; q++)
-                    {
-                        finder.InsertFirstUnchecked(window, q);
-                    }
+                    finder.InsertFirstRange(window, first, last);
                 }
 
                 position = end;
@@ -327,9 +334,11 @@ public sealed partial class DeflateEncoder
             {
                 int chain = length >= p.Good ? p.Chain >> 2 : p.Chain;
                 int next = position + 1;
-                int length2 = finder.Find(next, length, chain, out int distance2);
+                // Find reports only matches longer than its second argument, so ask for one as long as the current match.
+                int length2 = finder.Find(next, length - 1, chain, out int distance2);
                 hashedTo = next + 1;
-                if (length2 > length && !(length2 == DeflateTables.MinMatchLength && distance2 > TooFar))
+                if (distance2 > 0 && Gain(length2, distance2) > Gain(length, distance) + LazyMargin
+                    && !(length2 == DeflateTables.MinMatchLength && distance2 > TooFar))
                 {
                     PutLiteral(words, literalCounts, ref count, window[position]);
                     position = next;
@@ -347,6 +356,41 @@ public sealed partial class DeflateEncoder
                     continue;
                 }
 
+                if (p.Lazy2 > 0 && position + 2 < insertEnd)
+                {
+                    int next2 = position + 2;
+                    int length3 = finder.Find(next2, length, chain, out int distance3);
+                    hashedTo = next2 + 1;
+                    if (distance3 > 0 && Gain(length3, distance3) > Gain(length, distance) + p.Lazy2
+                        && !(length3 == DeflateTables.MinMatchLength && distance3 > TooFar))
+                    {
+                        PutLiteral(words, literalCounts, ref count, window[position]);
+                        if (count >= checkAt)
+                        {
+                            _sequences.CountValue = count;
+                            _position = position + 1;
+                            CheckBlock();
+                            count = _sequences.CountValue;
+                            checkAt = _checkAt;
+                        }
+
+                        PutLiteral(words, literalCounts, ref count, window[position + 1]);
+                        position = next2;
+                        length = length3;
+                        distance = distance3;
+                        if (count >= checkAt)
+                        {
+                            _sequences.CountValue = count;
+                            _position = position;
+                            CheckBlock();
+                            count = _sequences.CountValue;
+                            checkAt = _checkAt;
+                        }
+
+                        continue;
+                    }
+                }
+
                 break;
             }
 
@@ -354,10 +398,7 @@ public sealed partial class DeflateEncoder
             PutMatch(words, literalCounts, distanceCounts, ref count, length, distance);
             int matchEnd = position + length;
             int insertLast = Math.Min(matchEnd, insertEnd);
-            for (int q = Math.Max(hashedTo, position + 1); q < insertLast; q++)
-            {
-                finder.InsertBound(q);
-            }
+            finder.InsertRange(Math.Max(hashedTo, position + 1), insertLast);
 
             position = matchEnd;
             if (count >= checkAt)

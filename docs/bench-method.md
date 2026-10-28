@@ -130,10 +130,13 @@ black box on a file held in memory and times only the library call:
   same file in one call (`DeflateBench enc <file> <level>`), levels 1 to 12.
 - `zlibng enc <level>`: streaming deflate fed in 64 KiB pieces. Our side feeds the same pieces through the encoder
   (`--stream`), levels 1 to 9.
-- `dec`: decompression of the other tool's own gzip output; ours is `DeflateBench dec`, at levels 1, 6, 9 and 12 of
-  each reference (zlib-ng up to 9).
+- `dec`: decompression of the other tool's own gzip output and of ours (written with `DeflateBench enc --out`), by the
+  reference library and by us, at levels 1, 6, 9 and 12 (zlib-ng up to 9).
+- `bzip2`: our bzip2 decoder against `bzip2 -dc` on the tool's own `-1` and `-9` output. The CLI has no in-memory mode, so
+  its wall time (output to the null device, best of N) has the process start-up subtracted, measured the same way on a
+  one-byte stream.
 
-Both sides use the best of N passes after warm-up (N is `--reps`, default 5). The gzip wrapper is included on both
+Both sides use the best of N passes after warm-up (N is `--reps`, default 5); ours also reports the median and slowest pass. The gzip wrapper is included on both
 sides, so sizes compare directly. `tools/deflate-bench/bar.sh --mode oneshot|stream|decode` prints one row per file and
 level with sizes, MB/s of uncompressed data, the time ratio (the reference's MB/s divided by ours),
 peak resident memory of each process, and pass or FAIL against the usual limits (size at most 1.01, time at most 1.15).

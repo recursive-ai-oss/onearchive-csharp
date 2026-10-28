@@ -179,6 +179,69 @@ if [ -s "$dir/small.tsv" ]; then
     END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/small.tsv"
 fi
 
+# Deflate compress rows (one-shot against libdeflate, streaming against zlib-ng).
+# cols: file level ref_size ours_size size_ratio ref_MBps ours_MBps ours_med ours_min time_ratio ref_peak_KB ours_peak_KB verdict
+for f in "$dir/defl-enc.tsv" "$dir/defl-stream.tsv"; do
+  [ -s "$f" ] || continue
+  name="$(basename "$f" .tsv)"
+  echo; echo "## $name (compress; ours/ref rate is best-of-repeats, with median and slowest of ours)"; echo
+  grep '^# \(cpu\|reference\)' "$f" | sed 's/^# */- /' | head -3
+  echo
+  echo "| file | level | ref bytes | our bytes | size | ours/ref rate best (median, min) | ref MB/s | peak MB: ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 13 { next }
+    {
+      sz = $5 + 0; rr = ($6 > 0) ? $7 / $6 : 0; rm = ($6 > 0) ? $8 / $6 : 0; rn = ($6 > 0) ? $9 / $6 : 0
+      ok = (sz <= 1.01 && rr >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s L%s (size %+.2f%%, rate %.2f)", $1, $2, (sz - 1) * 100, rr) }
+      printf "| %s | %s | %s | %s | %+.2f%% | %.2f (%.2f, %.2f) | %s | %d / %d | %s |\n", $1, $2, $3, $4, (sz - 1) * 100, rr, rm, rn, $6, $11 / 1024, $12 / 1024, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$f"
+done
+
+# Deflate decode: the reference decoder against ours, on the reference's output and on ours.
+# cols: file reference level source ref_MBps ours_MBps ours_med ours_min time_ratio ref_peak_KB ours_peak_KB verdict
+if [ -s "$dir/defl-dec.tsv" ]; then
+  echo; echo "## defl-dec (decode speed, ours/reference rate; source = whose compressed bytes are decoded)"; echo
+  echo "| file | reference | level | source | ours/ref rate best (median, min) | ref MB/s | peak MB: ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 12 { next }
+    {
+      rr = ($5 > 0) ? $6 / $5 : 0; rm = ($5 > 0) ? $7 / $5 : 0; rn = ($5 > 0) ? $8 / $5 : 0
+      ok = (rr >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s vs %s L%s on %s output (%.2f)", $1, $2, $3, $4, rr) }
+      printf "| %s | %s | %s | %s | %.2f (%.2f, %.2f) | %s | %d / %d | %s |\n", $1, $2, $3, $4, rr, rm, rn, $5, $10 / 1024, $11 / 1024, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/defl-dec.tsv"
+fi
+
+# bzip2 decode against `bzip2 -dc` (process start-up subtracted).
+# cols: file block_size compressed out_bytes ref_MBps ours_MBps ours_med ours_min time_ratio ref_peak_KB ours_peak_KB verdict
+if [ -s "$dir/bzip2-dec.tsv" ]; then
+  echo; echo "## bzip2-dec (decode speed, ours/reference rate)"; echo
+  grep '^#' "$dir/bzip2-dec.tsv" | sed 's/^# */- /' | head -3
+  echo
+  echo "| file | block size | compressed bytes | ours/ref rate best (median, min) | ref MB/s | peak MB: ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 12 { next }
+    {
+      rr = ($5 > 0) ? $6 / $5 : 0; rm = ($5 > 0) ? $7 / $5 : 0; rn = ($5 > 0) ? $8 / $5 : 0
+      ok = (rr >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s -%s (%.2f)", $1, $2, rr) }
+      printf "| %s | -%s | %s | %.2f (%.2f, %.2f) | %s | %d / %d | %s |\n", $1, $2, $3, rr, rm, rn, $5, $10 / 1024, $11 / 1024, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/bzip2-dec.tsv"
+fi
+
 if [ -d "$dir/bar-runner" ]; then
   echo; echo "## bar-runner"; echo; ls "$dir/bar-runner" | sed 's/^/- /'
 fi

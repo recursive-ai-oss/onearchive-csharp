@@ -101,6 +101,7 @@ public sealed class DeflateHuffmanTable
 {
     private readonly int _primaryBits;
     private uint[] _entries;
+    private uint[] _fast = [];
     private readonly int[] _subtableOffset;
     private readonly byte[] _subtableBits;
 
@@ -140,6 +141,14 @@ public sealed class DeflateHuffmanTable
     public int PrimaryBits => _primaryBits;
 
     internal uint[] Entries => _entries;
+
+    /// <summary>
+    /// The literal/length table as the fast loop reads it (empty for other alphabets): every literal entry carries the number of
+    /// bytes it stands for in bits 8 to 11 (1 or 2) and its value as one or two bytes (first byte lowest), and bits 0 to 7
+    /// hold the bits it consumes. Where two literal codes together fit the first level, the first-level entry stands for both.
+    /// Everything else, and the layout of second-level tables, is as in <see cref="Entries"/>.
+    /// </summary>
+    internal uint[] FastEntries => _fast;
 
     internal uint PrimaryMask => (1u << _primaryBits) - 1;
 
@@ -288,7 +297,46 @@ public sealed class DeflateHuffmanTable
         }
 
         problem = null;
+        BuildFast(size);
         return true;
+    }
+
+    // RFC 1951 3.2.2 codes are prefix codes, so when the first literal's code is l1 bits long and the next literal's code is no
+    // longer than the (primary - l1) first-level bits that follow it, the first-level index alone decides both symbols.
+    private void BuildFast(int size)
+    {
+        if (Alphabet != DeflateAlphabet.LiteralLength)
+        {
+            return;
+        }
+
+        if (_fast.Length < size)
+        {
+            _fast = new uint[_entries.Length];
+        }
+
+        const uint LiteralBits = (uint)DeflateSymbolKind.Literal << DeflateHuffmanEntry.KindShift;
+        int primary = _primaryBits;
+        for (int i = 0; i < size; i++)
+        {
+            uint e = _entries[i];
+            if (((e >> DeflateHuffmanEntry.KindShift) & 15) == (uint)DeflateSymbolKind.Literal)
+            {
+                int first = (int)(e & 0xFF);
+                e = (e & 0xFFFF0000u) | LiteralBits | (1u << DeflateHuffmanEntry.ExtraShift) | (uint)first;
+                if (i < (1 << primary) && first < primary)
+                {
+                    uint next = _entries[i >> first];
+                    int second = (int)(next & 0xFF);
+                    if (((next >> DeflateHuffmanEntry.KindShift) & 15) == (uint)DeflateSymbolKind.Literal && second <= primary - first)
+                    {
+                        e = ((e >> 16) | ((next >> 16) << 8)) << 16 | LiteralBits | (2u << DeflateHuffmanEntry.ExtraShift) | (uint)(first + second);
+                    }
+                }
+            }
+
+            _fast[i] = e;
+        }
     }
 
     private void Clear() => Array.Fill(_entries, DeflateHuffmanEntry.Pack(DeflateSymbolKind.Invalid, 0, 0, 1), 0, 1 << _primaryBits);
