@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A timing loop for the Deflate encoder and decoder: whole-file compression and decompression in MB/s with the compressed size. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>DeflateBench</AssemblyName>
+    <RootNamespace>RecursiveAI.Bench</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
+  </ItemGroup>
+
+</Project>
