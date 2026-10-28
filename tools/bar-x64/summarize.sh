@@ -159,6 +159,26 @@ if [ -s "$dir/lz4-game.tsv" ]; then
     END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/lz4-game.tsv"
 fi
 
+# cols: game kind payload dict_kb dict_by codec level payloads ref_out ours_out size_ratio ref_c_best ref_c_med ours_c_best ours_c_med
+# ours_c_min c_best_ratio c_med_ratio ref_d_best ref_d_med ours_d_best ours_d_med ours_d_min d_best_ratio d_med_ratio alloc_c alloc_d
+if [ -s "$dir/small.tsv" ]; then
+  echo; echo "## small (synthetic payloads of 256 B to 16 KiB, reused encoder and decoder, pinned zstd and lz4 libraries)"; echo
+  grep '^#' "$dir/small.tsv" | sed 's/^# */- /'
+  echo
+  echo "| game | kind | payload B | dict KiB (by) | codec | level | size ratio | compress ours/ref best (median) | decompress ours/ref best (median) | alloc B/payload c / d | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "game" { next }
+    NF < 27 { next }
+    {
+      ok = ($11 + 0 <= 1.01 && $18 + 0 >= smin && $25 + 0 >= smin && $26 + 0 < 0.5 && $27 + 0 < 0.5)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s/%s %sB dict %s %s L%s (size %.3f, compress %.2f, decompress %.2f, alloc %s/%s)", $1, $2, $3, $4, $6, $7, $11, $18, $25, $26, $27) }
+      printf "| %s | %s | %s | %s (%s) | %s | %s | %.3f | %.2f (%.2f) | %.2f (%.2f) | %s / %s | %s |\n", $1, $2, $3, $4, $5, $6, $7, $11, $17, $18, $24, $25, $26, $27, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/small.tsv"
+fi
+
 if [ -d "$dir/bar-runner" ]; then
   echo; echo "## bar-runner"; echo; ls "$dir/bar-runner" | sed 's/^/- /'
 fi

@@ -3,6 +3,11 @@ using RecursiveAI.OneCompress;
 using RecursiveAI.OneCompress.Checksums;
 
 // Runs under Node. The hash-matrix runner will grow out of this host.
+if (args.Length > 0 && args[0] == "small")
+{
+    return RecursiveAI.Smoke.SmallRows.Run(args);
+}
+
 string compress = OneCompressInfo.Name;
 string archive = OneArchiveInfo.Name;
 if (compress != "OneCompress" || !archive.Contains(compress, StringComparison.Ordinal))
