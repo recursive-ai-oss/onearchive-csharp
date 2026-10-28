@@ -45,13 +45,13 @@ Archive.Create("backup.tar.zst").Add("assets/").Add("notes.txt", "docs/notes.txt
 ```
 
 `Archive.Create(path)` chooses the format and compression from the extension (`.tar`, `.tar.zst`/`.tzst`, `.tar.lz4`/`.tlz4`,
-`.tar.gz`/`.tgz`, `.zip`, and `.gz`/`.zst`/`.lz4` for one compressed file) unless `ArchiveCreateOptions.Format`/`Compression` say otherwise. An extension
+`.tar.gz`/`.tgz`, `.tar.xz`/`.txz`, `.tar.lz`/`.tlz`, `.zip`, and `.gz`/`.zst`/`.lz4`/`.xz`/`.lz` for one compressed file) unless `ArchiveCreateOptions.Format`/`Compression` say otherwise. An extension
 that names no writable format and no `Format` option is an `ArgumentException`. `Archive.Create(Stream)` defaults to
 uncompressed tar. `.tar.bz2` and `.bz2` can be read, not written.
 
 ### Detection
 
-1. Compression from the first bytes: Zstandard `28 B5 2F FD`, LZ4 frame `04 22 4D 18`, gzip `1F 8B`, bzip2 `BZh`,
+1. Compression from the first bytes: Zstandard `28 B5 2F FD`, LZ4 frame `04 22 4D 18`, gzip `1F 8B`, bzip2 `BZh`, xz `FD 37 7A 58 5A 00`, lzip `LZIP`,
    xz `FD 37 7A 58 5A 00`. Magic bytes win over the file name.
 2. If compressed, the first 512 bytes of the decompressed stream are examined; otherwise the first 512 bytes.
 3. Container from those bytes: `PK\3\4` (also `PK\5\6`, the whole of an empty zip, and the span markers `PK\7\8` and `PK00`) is
@@ -62,10 +62,11 @@ uncompressed tar. `.tar.bz2` and `.bz2` can be read, not written.
 5. A compressed stream that is still unrecognised is a single compressed file (below).
 6. Otherwise `CompressionFormatException` (`archive`, offset 0).
 
-gzip (RFC 1952, all members in a row) and bzip2 are read; zstd, LZ4 and gzip are written (gzip at `CompressionLevel`, default 6,
-through the Deflate encoder; MTIME is the entry's modification time or 0, OS byte 255). xz is recognised but its codec is not wired in
-yet: opening or creating raises `ArchiveUnsupportedException`. The place to add them is
-`Internal/CompressionFilters.cs` (`OpenDecompress`, `OpenCompress`, `CanCompress`); nothing else changes.
+gzip (RFC 1952, all members in a row), bzip2, xz and lzip are read; zstd, LZ4, gzip, xz and lzip are written (gzip at
+`CompressionLevel`, default 6, through the Deflate encoder; MTIME is the entry's modification time or 0, OS byte 255; xz at preset
+`CompressionLevel`, default 6, with a CRC64 check; lzip at level `CompressionLevel`, default 6, one member). The xz and lzip dictionary sizes
+are checked against `MaxWindowSize` before any allocation. The place for a new layer is `Internal/CompressionFilters.cs`
+(`OpenDecompress`, `OpenCompress`, `CanCompress`).
 
 ## Entry model
 
@@ -118,7 +119,7 @@ A limit hit raises `CompressionLimitException` whose `LimitName` is the property
 | `MaxPathLength` | 4096 chars | entry name and link target |
 | `MaxPathDepth` | 64 components | entry name |
 | `MaxExpansionRatio` | 1000 | bytes produced (tar stream bytes plus sparse holes) per byte read from the file, only once more than 32 MiB were produced; `Archive` only; 0 disables |
-| `MaxWindowSize` | 8 MiB | Zstandard window a compressed archive may declare |
+| `MaxWindowSize` | 8 MiB | Zstandard window, or xz/lzip dictionary, a compressed archive may declare (xz presets 0 to 6 and lzip levels 0 to 6 fit; raise it for the larger presets) |
 
 Tar adds (`TarReaderOptions`): `MaxExtendedHeaderSize` 1 MiB (one pax or long-name record block, checked before it is
 buffered) and `MaxSparseRegions` 100,000.
@@ -202,7 +203,7 @@ Single-threaded, so the bytes do not depend on the machine.
 
 A `.gz`, `.bz2`, `.zst` or `.lz4` file (any compressed stream the detector finds no container in) is an archive of one regular file,
 `ArchiveFormat.SingleStream`, with `Archive.Compression` saying which codec. The entry's name is the gzip header's FNAME when it
-has one (ISO 8859-1, as RFC 1952 2.3.1 says), otherwise the archive's file name without its `.gz`/`.bz2`/`.zst`/`.zstd`/`.lz4`
+has one (ISO 8859-1, as RFC 1952 2.3.1 says), otherwise the archive's file name without its `.gz`/`.bz2`/`.zst`/`.zstd`/`.lz4`/`.xz`/`.lz`
 extension, otherwise `data`. The gzip MTIME, when not zero, is the entry's modification time. `Size` is 0: the content's length
 is not known before it has been read (it is limited and metered like every compressed archive). Writing takes exactly one file
 entry (`ArchiveUnsupportedException` for a second entry or for anything but a regular file); gzip stores the entry's base name as FNAME (ISO 8859-1; left out when it has characters above U+00FF) and its modification time

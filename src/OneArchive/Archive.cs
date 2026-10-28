@@ -273,7 +273,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
         if (name is null)
         {
             string file = archiveName is null ? string.Empty : Path.GetFileName(archiveName);
-            foreach (string suffix in new[] { ".gz", ".bz2", ".zst", ".zstd", ".lz4" })
+            foreach (string suffix in new[] { ".gz", ".bz2", ".zst", ".zstd", ".lz4", ".xz", ".lz" })
             {
                 if (file.Length > suffix.Length && file.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
                 {

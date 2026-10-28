@@ -47,6 +47,12 @@ public static class ArchiveDetector
             return ArchiveCompression.Xz;
         }
 
+        // lzip manual "File format": the member header starts with "LZIP".
+        if (prefix.StartsWith("LZIP"u8))
+        {
+            return ArchiveCompression.Lzip;
+        }
+
         return ArchiveCompression.None;
     }
 
@@ -180,6 +186,7 @@ public static class ArchiveDetector
         (".cpio.gz", ArchiveCompression.Gzip),
         (".cpio.bz2", ArchiveCompression.Bzip2),
         (".cpio.xz", ArchiveCompression.Xz),
+        (".cpio.lz", ArchiveCompression.Lzip),
     ];
 
     private static readonly (string, ArchiveCompression)[] s_tarSuffixes =
@@ -190,11 +197,13 @@ public static class ArchiveDetector
         (".tar.gz", ArchiveCompression.Gzip), (".tgz", ArchiveCompression.Gzip),
         (".tar.bz2", ArchiveCompression.Bzip2), (".tbz2", ArchiveCompression.Bzip2), (".tbz", ArchiveCompression.Bzip2),
         (".tar.xz", ArchiveCompression.Xz), (".txz", ArchiveCompression.Xz),
+        (".tar.lz", ArchiveCompression.Lzip), (".tlz", ArchiveCompression.Lzip),
     ];
 
     private static readonly (string, ArchiveCompression)[] s_compressionSuffixes =
     [
         (".zst", ArchiveCompression.Zstd), (".lz4", ArchiveCompression.Lz4), (".gz", ArchiveCompression.Gzip),
         (".bz2", ArchiveCompression.Bzip2), (".xz", ArchiveCompression.Xz),
+        (".lz", ArchiveCompression.Lzip),
     ];
 }
