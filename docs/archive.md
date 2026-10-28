@@ -55,7 +55,7 @@ uncompressed tar. `.tar.bz2` and `.bz2` can be read, not written.
    xz `FD 37 7A 58 5A 00`. Magic bytes win over the file name.
 2. If compressed, the first 512 bytes of the decompressed stream are examined; otherwise the first 512 bytes.
 3. Container from those bytes: `PK\3\4` (also `PK\5\6`, the whole of an empty zip, and the span markers `PK\7\8` and `PK00`) is
-   zip; `ustar` at offset 257 is tar; a block with no magic but a valid header checksum, numeric mode and size fields and a
+   zip; `MSCF` is a cabinet (see `cab-reader.md`; `.cab` by extension); `ustar` at offset 257 is tar; a block with no magic but a valid header checksum, numeric mode and size fields and a
    non-empty name is a version 7 tar; 512 zero bytes inside a compressed stream are an empty tar, unless a name is known and
    does not say tar (a disk image starts with zeros too).
 4. If nothing matched, the file name's extension decides (this is how an empty uncompressed `.tar` is recognised).

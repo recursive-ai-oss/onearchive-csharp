@@ -27,5 +27,15 @@ under the Revised BSD License set forth in Section 4.c of the IETF Trust's Legal
 > INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 > NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## Microsoft Open Specifications ([MS-CAB], [MS-PATCH])
+
+The cabinet reader and the LZX decoder are written from Microsoft's Cabinet File Format ([MS-CAB]) and LZX DELTA Compression and
+Decompression ([MS-PATCH]) specifications. The position-slot table of LZX is computed in `LzxPositionSlots` from the rule those
+documents state, and `docs/` and the tests quote a few of its values. Microsoft's Intellectual Property Rights Notice for Open
+Specifications Documentation applies to the documents: "you may make copies of it in order to develop implementations of the
+technologies described in the Open Specifications and may distribute portions of it in your implementations using these technologies or
+your documentation as necessary to properly document the implementation". Microsoft has patents that may cover implementations of these
+technologies, and the notice grants no licence under them.
+
 The tests and benchmarks also use test corpora, comparison packages and reference tools; they are fetched or referenced, never
 shipped, and are listed here as they are added.

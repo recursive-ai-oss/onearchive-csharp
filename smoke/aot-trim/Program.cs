@@ -339,6 +339,31 @@ using (var arReader = new RecursiveAI.OneArchive.Ar.ArReader(new MemoryStream(ar
     }
 }
 
+// A 619-byte cabinet with a stored, an MSZIP and an LZX folder, each holding one 315-byte text file: read through CabReader and Archive.
+byte[] cabBytes = Convert.FromHexString("4d534346000000006b020000000000003c000000000000000301030003000000341200008d00000001000000d0010000010001000d0200000100030f3b0100000000000000006958aa6d20006e6f6e655c742e747874003b0100000000000001006958aa6d20006d737a69705c742e747874003b0100000000000002006958aa6d20006c7a785c742e747874000e655d773b013b0154686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e2054686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e2054686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e2054686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e2054686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e2054686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e2054686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e206996c82a35003b01434b0bc94855282ccd4cce56482aca2fcf5348cbaf50c82acd2d2856c82f4b2d5228c94855c849acaa5448c94fd75318558cac18000f6cfa7f56003b010010b01300000000220000553942e99f9d282118fbaa5b5de5f7008000000000001008013e678c15effb000000000000000008113e61effb72a707731ecd7728ab02c5479960d1b143054b40be4271b17fe9dfc000f2");
+using (var cabReader = new RecursiveAI.OneArchive.Cab.CabReader(new MemoryStream(cabBytes)))
+{
+    int cabCount = 0;
+    while (cabReader.GetNextEntry() is { } cabEntry)
+    {
+        using var cabContent = new MemoryStream();
+        cabReader.OpenEntryStream().CopyTo(cabContent);
+        if (cabEntry.Size != 315 || !cabEntry.Name.EndsWith("/t.txt", StringComparison.Ordinal) || Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(cabContent.ToArray())) != "dababee8658b645e01725be3eab108b2f506b7220e19ef399a18a11ae9e78e66")
+        {
+            Console.Error.WriteLine("cab entry failed: " + cabEntry.Name);
+            return 1;
+        }
+
+        cabCount++;
+    }
+
+    if (cabCount != 3 || Archive.Open(new MemoryStream(cabBytes)).Format != ArchiveFormat.Cab)
+    {
+        Console.Error.WriteLine("cab read failed");
+        return 1;
+    }
+}
+
 // Deflate64: a level-6 stream of 70,000 bytes with a far repeat, through the one-liners, the streams and the span decoder.
 byte[] deflate64Input = new byte[70_000];
 new Random(3).NextBytes(deflate64Input.AsSpan(0, 40_000));

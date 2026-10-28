@@ -66,4 +66,6 @@ set from `testdata/zip/make-hostile.py`.
 targets run with the password `fuzz-password`: WinZip AES and traditional headers, verifiers and authentication codes, 7z AES
 properties, encrypted headers and the wrong-password paths. The 7z read target caps the key-derivation power at 8 so that a
 mutated power is a limit error instead of a stall. Round trips write with the salt and IV hooks fixed, so two writes agree.
+Seeds for `cab-read` and `lzx-decode` come from `seeds-cab.sh` (`fuzz seeds-cab DIR`).
+
 Seeds come from `seeds-encrypted.sh` (`fuzz seeds-encrypted DIR` writes the library's own encrypted archives).

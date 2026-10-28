@@ -18,6 +18,12 @@
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
   </PropertyGroup>
 
+  <!-- The LZX test compressor and cabinet builder are shared with the tests so that the matrix can build streams to decode. -->
+  <ItemGroup>
+    <Compile Include="../../../tests/OneCompress.Tests/Lzx/LzxTestEncoder.cs" Link="Shared/LzxTestEncoder.cs" />
+    <Compile Include="../../../tests/OneArchive.Tests/Cab/CabTestBuilder.cs" Link="Shared/CabTestBuilder.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../../../src/OneCompress/OneCompress.csproj" />
     <ProjectReference Include="../../../src/OneArchive/OneArchive.csproj" />

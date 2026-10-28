@@ -18,6 +18,13 @@ if (args.Length == 2 && args[0] == "seeds-encrypted")
     return 0;
 }
 
+// `fuzz seeds-cab DIR` writes the seed cabinets and LZX streams of the cab-read and lzx-decode targets.
+if (args.Length == 2 && args[0] == "seeds-cab")
+{
+    LzxCabTargets.WriteSeeds(args[1]);
+    return 0;
+}
+
 // Coverage-guided mode: `fuzz afl <target>` reads each input from stdin under afl-fuzz. The library assembly
 // must be instrumented first (see README.md). Expected rejections return quietly; anything else is left
 // unhandled so the process aborts and the fuzzer records the input as a crash.

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Ar;
+using RecursiveAI.OneArchive.Cab;
 using RecursiveAI.OneArchive.Cpio;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Zip;
@@ -34,6 +35,9 @@ public class ArchiveOpenOptions
 
     /// <summary>Gets the cpio reading options (the limits above override <see cref="CpioReaderOptions.Limits"/>). Default: the cpio defaults.</summary>
     public CpioReaderOptions? Cpio { get; init; }
+
+    /// <summary>Gets the cabinet reading options (the limits above override <see cref="CabReaderOptions.Limits"/>). Default: the cabinet defaults.</summary>
+    public CabReaderOptions? Cab { get; init; }
 
     /// <summary>Gets the ar reading options (the limits above override <see cref="ArReaderOptions.Limits"/>). Default: the ar defaults.</summary>
     public ArReaderOptions? Ar { get; init; }
