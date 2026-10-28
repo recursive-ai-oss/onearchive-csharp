@@ -27,7 +27,7 @@ calls. Byte-identical output with the `xz` and `lzip` tools is not a goal: the s
 | `Preset` | 6 | 0 to 9. |
 | `Extreme` | false | The slower variant of the preset (below). |
 | `Lc`, `Lp`, `Pb` | 3, 0, 2 | Literal context bits (0 to 8, LZMA2: 0 to 4), literal position bits (0 to 4), position bits (0 to 4). LZMA2 requires `Lc + Lp <= 4`. |
-| `DictionarySize` | preset's | 4096 to 1.5 GiB. |
+| `DictionarySize` | preset's | 4096 to 768 MiB (a binary-tree finder keeps two 32-bit links per dictionary byte, which must fit one array). |
 | `NiceLength` | preset's | 2 to 273, raised to the match finder's minimum (2, 3 or 4). |
 | `Depth` | 0 = automatic | Candidates examined per position. |
 | `Mode` | preset's | `Fast` or `Normal`. |

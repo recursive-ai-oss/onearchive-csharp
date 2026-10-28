@@ -109,6 +109,9 @@ internal static class LzmaEncoderTargets
         }
     }
 
+    // Dictionaries up to 1 MiB: the presets above that allocate hundreds of megabytes per encoder, which says nothing about the code.
+    private static uint FuzzDictionary(byte b) => 4096u << ((b & 0x0F) % 9);
+
     private static LzmaOptions MakeOptions(ReadOnlySpan<byte> h, bool lzma2)
     {
         int lc = h[3] % 5;
@@ -122,7 +125,7 @@ internal static class LzmaEncoderTargets
             Lc = lc,
             Lp = lp,
             Pb = h[2] % 5,
-            DictionarySize = (h[4] & 0x0F) == 0 ? 0 : 4096u << (h[4] & 0x0F) % 9,
+            DictionarySize = FuzzDictionary(h[4]),
             NiceLength = (h[4] & 0xF0) == 0 ? 0 : minNice + ((h[4] >> 4) * 17 % (274 - minNice)),
             MatchFinder = (h[5] & 0x80) != 0 ? kind : null,
             Mode = (h[5] & 0x40) != 0 ? ((h[5] & 0x20) != 0 ? LzmaMode.Fast : LzmaMode.Normal) : null,
@@ -212,7 +215,7 @@ internal static class LzmaEncoderTargets
                     var lz = new LzipOptions
                     {
                         Level = input[1] % 10,
-                        DictionarySize = (input[4] & 0x0F) == 0 ? 0 : 4096u << (input[4] & 0x0F) % 9,
+                        DictionarySize = FuzzDictionary(input[4]),
                         MatchLength = (input[4] & 0xF0) == 0 ? 0 : 5 + (input[4] >> 4) * 17 % 269,
                         MemberSize = (input[5] & 0x80) != 0 ? 1 + (input[6] * 997 % 100_000) : 0,
                     };

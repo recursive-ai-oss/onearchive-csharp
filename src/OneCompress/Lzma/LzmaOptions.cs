@@ -49,8 +49,8 @@ public sealed class LzmaOptions
     /// <summary>The preset used when none is set: 6, like the reference tool.</summary>
     public const int DefaultPreset = 6;
 
-    /// <summary>The largest dictionary size an encoder accepts: 1.5 GiB, the limit of the reference tool.</summary>
-    public const uint MaxDictionarySize = 3u << 29;
+    /// <summary>The largest dictionary size an encoder accepts: 768 MiB. A binary-tree match finder keeps two 32-bit links per byte of dictionary, which must fit in one .NET array.</summary>
+    public const uint MaxDictionarySize = 3u << 28;
 
     /// <summary>The largest nice length.</summary>
     public const int MaxNiceLength = LzmaModel.MaxMatchLength;
