@@ -523,10 +523,14 @@ public sealed class HuffmanDecodingTable
         }
 
         // Hand each register back to its reader: the bytes at the position, and the bits of them already used.
-        bits1.Restore(Raw.ReadUInt64(stream1, p1), BitOperations.TrailingZeroCount(v1) + 1, (int)p1);
-        bits2.Restore(Raw.ReadUInt64(stream2, p2), BitOperations.TrailingZeroCount(v2) + 1, (int)p2);
-        bits3.Restore(Raw.ReadUInt64(stream3, p3), BitOperations.TrailingZeroCount(v3) + 1, (int)p3);
-        bits4.Restore(Raw.ReadUInt64(stream4, p4), BitOperations.TrailingZeroCount(v4) + 1, (int)p4);
+        // (A stream shorter than eight bytes never ran a round and its reader still holds its own state.)
+        if (i > 0)
+        {
+            bits1.Restore(Raw.ReadUInt64(stream1, p1), BitOperations.TrailingZeroCount(v1) + 1, (int)p1);
+            bits2.Restore(Raw.ReadUInt64(stream2, p2), BitOperations.TrailingZeroCount(v2) + 1, (int)p2);
+            bits3.Restore(Raw.ReadUInt64(stream3, p3), BitOperations.TrailingZeroCount(v3) + 1, (int)p3);
+            bits4.Restore(Raw.ReadUInt64(stream4, p4), BitOperations.TrailingZeroCount(v4) + 1, (int)p4);
+        }
 
         DecodeSymbols(ref bits1, out1[(int)i..]);
         DecodeSymbols(ref bits2, out2[(int)i..]);

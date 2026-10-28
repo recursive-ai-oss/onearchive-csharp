@@ -12,6 +12,26 @@ public class ZstdHostileInputTests
         "dict16-noid", "rawdict-l3", "random64k-l3", "runs1m-l3", "text300k-nocheck",
     ];
 
+    // Four Huffman streams of fewer than eight bytes each: the joint loop cannot run, and handing its registers back to the
+    // readers used to read eight bytes from the start of each short stream.
+    [Fact]
+    public void FourShortHuffmanStreamsDecode()
+    {
+        var table = new HuffmanDecodingTable();
+        table.BuildFromWeights([1]); // two symbols with one-bit codes
+        byte[] source = [1, 0, 1, 0, 1, 0, 0x03, 0x02, 0x03, 0x02];
+        byte[] output = new byte[4];
+        table.DecodeFourStreams(source, output);
+        Assert.Equal(new byte[] { 1, 0, 1, 0 }, output);
+
+        // Streams of seven bytes (48 one-bits and the marker) are still too short for the joint loop.
+        byte[] seven = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01];
+        byte[] longSource = [7, 0, 7, 0, 7, 0, .. seven, .. seven, .. seven, .. seven];
+        byte[] longOutput = new byte[192];
+        table.DecodeFourStreams(longSource, longOutput);
+        Assert.All(longOutput, b => Assert.Equal(1, b));
+    }
+
     // Which compressed sizes get every offset tried and which are sampled, to keep the run short.
     private static IEnumerable<int> Offsets(int length, int maxCount)
     {

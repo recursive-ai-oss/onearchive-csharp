@@ -21,6 +21,28 @@ public class Lz4HostileInputTests
         }
     }
 
+    // The last match must start at least 12 bytes before the end of the block. The decoder's fast loop used to forget where the
+    // matches it decoded started, so a block whose last match was too late was accepted whenever the fast loop took it.
+    [Fact]
+    public void LateLastMatchIsRejectedByDecodingAndMeasuring()
+    {
+        byte[] block =
+        [
+            0x40, (byte)'a', (byte)'b', (byte)'c', (byte)'d', 4, 0,
+            0x90, 1, 2, 3, 4, 5, 6, 7, 8, 9, 4, 0,
+            0x70, 1, 2, 3, 4, 5, 6, 7,
+        ];
+        Assert.Throws<CompressionFormatException>(() => Lz4BlockDecoder.GetDecompressedSize(block));
+        Assert.Throws<CompressionFormatException>(() => Lz4BlockDecoder.TryDecode(block, new byte[1000], 0, out _));
+
+        // One byte more of literals makes the same block valid, and both agree on its size.
+        byte[] valid = [.. block, 8];
+        valid[19] = 0x80;
+        long size = Lz4BlockDecoder.GetDecompressedSize(valid);
+        Assert.True(Lz4BlockDecoder.TryDecode(valid, new byte[1000], 0, out int written));
+        Assert.Equal(size, written);
+    }
+
     [Fact]
     public void EveryPrefixOfAFrameFailsAsTruncated()
     {
