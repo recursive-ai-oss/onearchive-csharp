@@ -134,7 +134,7 @@ under the shared timing lock, recording the machine's load before, during and af
 - `game-prep.sh` samples the game snapshot data into per-game payload directories and builds raw 8 KiB and 64 KiB
   dictionaries from the training set. `game-bar.sh` compresses every payload as its own frame with a reused encoder and a
   dictionary prepared once, against the lz4 library's frame compressor with a prepared dictionary (`refsmall.c`, built
-  against the installed shared library and called as a black box), and prints sizes and payloads per second.
+  against the pinned lz4 install's shared library, never the system one, and called as a black box), and prints sizes and payloads per second.
 - `Lz4Bench size` prints frame sizes only, for tuning.
 
 A row passes when our size is at most 1.01 times the reference's and our compression and decompression times are each at most

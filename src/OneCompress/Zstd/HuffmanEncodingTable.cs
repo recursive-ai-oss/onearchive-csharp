@@ -386,6 +386,26 @@ public sealed class HuffmanEncodingTable
         return true;
     }
 
+    /// <summary>The same as the overload over all counters, for a caller that already lists the symbols that occur (each has a nonzero count).</summary>
+    internal bool TryEncodedBits(ReadOnlySpan<uint> histogram, ReadOnlySpan<byte> symbols, out long bits)
+    {
+        bits = 0;
+        long total = 0;
+        foreach (byte s in symbols)
+        {
+            int length = s < _symbolCount ? _length[s] : 0;
+            if (length == 0)
+            {
+                return false;
+            }
+
+            total += (long)histogram[s] * length;
+        }
+
+        bits = total;
+        return true;
+    }
+
     /// <summary>Gets the size in bits of the literals coded with this table, in one stream or in four (add up to 7 bits of padding per stream).</summary>
     public long EncodedBits(ReadOnlySpan<uint> histogram, int maxSymbol)
     {

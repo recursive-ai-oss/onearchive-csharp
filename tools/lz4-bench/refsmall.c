@@ -2,7 +2,10 @@
 // prepared dictionary, the way a server compresses per-tick messages. It is the reference side of `Lz4Bench small`, driving
 // the installed shared library as a black box through its documented frame API (declarations below follow lz4frame.h's docs).
 //
-//   cc -O2 refsmall.c -o refsmall /usr/lib/x86_64-linux-gnu/liblz4.so.1
+//   cc -O2 refsmall.c -o refsmall <prefix>/lib/liblz4.so -Wl,-rpath,<prefix>/lib
+//
+// <prefix> is the pinned lz4 install (tools/pins.tsv), not the system library: a distribution ships whatever version it likes,
+// and the bar compares against the pinned release.
 //   refsmall <level> <dictionary|-> <directory> [seconds]
 //
 // Level is the lz4 compression level (negative for --fast=N). No checksums, no content size, independent 64 KiB blocks.
