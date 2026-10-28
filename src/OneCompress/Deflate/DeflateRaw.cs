@@ -49,6 +49,17 @@ internal static class DeflateRaw
 #endif
     }
 
+    /// <summary>Writes two bytes at <paramref name="index"/> (the low byte first). The caller guarantees <c>index + 2 &lt;= span.Length</c> (the loop keeps a margin of the longest match plus 8 bytes).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Write16(Span<byte> span, int index, ushort value)
+    {
+#if CHECKED
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(index, 2), value);
+#else
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), (nint)(uint)index), BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value));
+#endif
+    }
+
     /// <summary>Reads <c>span[index]</c>. The caller guarantees <c>index &lt; span.Length</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte Get(Span<byte> span, int index)

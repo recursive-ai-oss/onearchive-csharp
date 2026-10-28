@@ -46,9 +46,9 @@ internal static class DeflateFastLoop
         int count = br.BitCount;
         int ip = br.Position;
         int op = dp;
-        uint[] literals = literalTable.Entries;
+        uint[] literals = literalTable.FastEntries;
         uint[] distances = distanceTable.Entries;
-        if (literalTable.PrimaryBits != LiteralPrimaryBits || distanceTable.PrimaryBits != DistancePrimaryBits)
+        if (literalTable.PrimaryBits != LiteralPrimaryBits || distanceTable.PrimaryBits != DistancePrimaryBits || literalTable.FastEntries.Length == 0)
         {
             return FastResult.Exhausted;
         }
@@ -62,42 +62,45 @@ internal static class DeflateFastLoop
             // Refill: add the next 7 or so bytes above the bits we hold. The bits above `count` may already be the following
             // input bits from the previous refill; they are the same bits, so OR-ing is harmless.
             bits |= DeflateRaw.Read64(src, ip) << count;
-            ip += (63 - count) >> 3;
+            ip += (~count & 63) >> 3;
             count |= 56;
 
             uint e = DeflateRaw.Get(literals, (int)(bits & LiteralMask));
             if ((e & KindMask) == LinkKind)
             {
-                e = DeflateRaw.Get(literals, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits >> LiteralPrimaryBits, (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15)));
+                e = DeflateRaw.Get(literals, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits >> LiteralPrimaryBits, (e >> DeflateHuffmanEntry.ExtraShift) & 15));
             }
 
             // The low byte of an entry is the code length plus the extra bits that follow it, so one shift drops both; the extra
             // bits' value is read from the bits as they were before the shift.
             ulong before = bits;
-            int n = (int)(e & 0xFF);
-            bits >>= n;
-            count -= n;
+            uint used = e;
+            bits >>= (int)e;
+            count -= (int)e;
             uint kind = e & KindMask;
             if (kind == LiteralKind)
             {
-                DeflateRaw.Set(dst, op++, (byte)(e >> DeflateHuffmanEntry.ValueShift));
+                // A fast-table literal entry holds one or two bytes and their count in bits 8 to 11; the second byte of a single
+                // is zero and gets overwritten by the next write.
+                DeflateRaw.Write16(dst, op, (ushort)(e >> DeflateHuffmanEntry.ValueShift));
+                op += (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
 
                 // The refill left at least 56 bits and this code used at most 15, so two more codes found directly in the first-level
                 // table (at most 10 bits each) can be decoded before the next refill. Anything else is left for the loop's next turn.
                 e = DeflateRaw.Get(literals, (int)(bits & LiteralMask));
                 if ((e & KindMask) == LiteralKind)
                 {
-                    n = (int)(e & 0xFF);
-                    bits >>= n;
-                    count -= n;
-                    DeflateRaw.Set(dst, op++, (byte)(e >> DeflateHuffmanEntry.ValueShift));
+                    bits >>= (int)e;
+                    count -= (int)e;
+                    DeflateRaw.Write16(dst, op, (ushort)(e >> DeflateHuffmanEntry.ValueShift));
+                    op += (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
                     e = DeflateRaw.Get(literals, (int)(bits & LiteralMask));
                     if ((e & KindMask) == LiteralKind)
                     {
-                        n = (int)(e & 0xFF);
-                        bits >>= n;
-                        count -= n;
-                        DeflateRaw.Set(dst, op++, (byte)(e >> DeflateHuffmanEntry.ValueShift));
+                        bits >>= (int)e;
+                        count -= (int)e;
+                        DeflateRaw.Write16(dst, op, (ushort)(e >> DeflateHuffmanEntry.ValueShift));
+                        op += (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15);
                     }
                 }
 
@@ -110,25 +113,25 @@ internal static class DeflateFastLoop
                 break;
             }
 
-            int length = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)(LowBits(before, n) >> (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15));
+            int length = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)(LowBits(before, used) >> (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15));
 
             e = DeflateRaw.Get(distances, (int)(bits & DistanceMask));
             if ((e & KindMask) == LinkKind)
             {
-                e = DeflateRaw.Get(distances, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits >> DistancePrimaryBits, (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15)));
+                e = DeflateRaw.Get(distances, (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)LowBits(bits >> DistancePrimaryBits, (e >> DeflateHuffmanEntry.ExtraShift) & 15));
             }
 
             before = bits;
-            n = (int)(e & 0xFF);
-            bits >>= n;
-            count -= n;
+            used = e;
+            bits >>= (int)e;
+            count -= (int)e;
             if ((e & KindMask) != DistanceKind)
             {
                 result = FastResult.InvalidDistance;
                 break;
             }
 
-            int distance = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)(LowBits(before, n) >> (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15));
+            int distance = (int)(e >> DeflateHuffmanEntry.ValueShift) + (int)(LowBits(before, used) >> (int)((e >> DeflateHuffmanEntry.ExtraShift) & 15));
 
             int end = op + length;
             if (distance >= 8 && distance <= op)
@@ -167,6 +170,7 @@ internal static class DeflateFastLoop
         }
 
         // Give back the whole bytes still in the buffer so the slow path (and the caller) see exactly the bytes in use.
+        count &= 63;
         ip -= count >> 3;
         count &= 7;
         bits &= (1UL << count) - 1;
@@ -175,10 +179,12 @@ internal static class DeflateFastLoop
         return result;
     }
 
-    // The low `count` bits of `value` (count 0 to 31). The same result with or without BMI2.
+    // The low `count & 63` bits of `value`. Callers pass a table entry whose low byte is a bit count below 64, so the upper
+    // bits of `count` are ignored by both paths (BZHI reads the low byte, the shift is taken modulo 64). The same result with
+    // or without BMI2.
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    private static ulong LowBits(ulong value, int count) =>
-        System.Runtime.Intrinsics.X86.Bmi2.X64.IsSupported ? System.Runtime.Intrinsics.X86.Bmi2.X64.ZeroHighBits(value, (uint)count) : value & ((1UL << count) - 1);
+    private static ulong LowBits(ulong value, uint count) =>
+        System.Runtime.Intrinsics.X86.Bmi2.X64.IsSupported ? System.Runtime.Intrinsics.X86.Bmi2.X64.ZeroHighBits(value, count) : value & ((1UL << (int)(count & 63)) - 1);
 
     // The matches the main loop does not copy eight bytes at a time: distances below 8, and distances reaching into the history
     // (earlier calls' output). Returns false when the distance reaches before the start of the unit.
