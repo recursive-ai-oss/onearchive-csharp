@@ -297,7 +297,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                 return new ZipReader(stream, zip, leaveOpen: !ownsTop);
             case ArchiveFormat.SevenZip:
                 SevenZipReaderOptions sz = options.SevenZip is { } s7
-                    ? new SevenZipReaderOptions { Limits = options.Limits, VerifyChecksum = s7.VerifyChecksum, MaxHeaderSize = s7.MaxHeaderSize, MaxCodersPerFolder = s7.MaxCodersPerFolder }
+                    ? new SevenZipReaderOptions { Limits = options.Limits, VerifyChecksum = s7.VerifyChecksum, MaxHeaderSize = s7.MaxHeaderSize, MaxDictionarySize = s7.MaxDictionarySize, MaxCodersPerFolder = s7.MaxCodersPerFolder }
                     : new SevenZipReaderOptions { Limits = options.Limits };
                 if (!stream.CanSeek)
                 {

@@ -34,9 +34,13 @@ documents do not settle was fixed by a black-box run of 7-Zip 26.00 (`testdata/7
 
 ## Coders
 
-Decoded: Copy (`00`), Deflate (`04 01 08`), BZip2 (`04 02 02`), and Zstandard under the ID `F7 11 01` that
-`Methods.txt` lists for external codecs (the frame is self-describing, so the coder's properties are ignored). Any other
-coder, or one with several streams, raises `ArchiveUnsupportedException` naming the method ID, when the content is opened;
+Decoded: Copy (`00`), Deflate (`04 01 08`), BZip2 (`04 02 02`), LZMA (`03 01 01`, 5 property bytes: lc/lp/pb and the
+dictionary size; the unpack size comes from the header, an end marker is optional), LZMA2 (`21`, one property byte, the
+dictionary size code, at most 40), Delta (`03`, one property byte: distance minus one), the branch filters x86, PowerPC,
+IA-64, ARM, ARM Thumb, SPARC, ARM64 and RISC-V (short IDs `04`–`0B`; the older long IDs `03 03 xx xx` for the first six;
+an optional 4-byte start offset as property), and Zstandard under the ID `F7 11 01` that `Methods.txt` lists for external
+codecs (the frame is self-describing, so the coder's properties are ignored). Any other coder, or one with several
+streams (BCJ2), raises `ArchiveUnsupportedException` naming the method ID, when the content is opened;
 listing works. Each coder's output is cut to the unpack size the header gives; a coder that ends early is a truncated-data
 error naming the folder's first packed stream offset.
 
@@ -44,6 +48,9 @@ error naming the folder's first packed stream offset.
 
 - `SevenZipReaderOptions.MaxHeaderSize` (default 64 MiB) bounds the next header and any encoded header, checked on the
   declared size before allocating.
+- `MaxDictionarySize` (default 64 MiB) bounds an LZMA or LZMA2 dictionary, checked on the header's property bytes before
+  the decoder allocates (a typed limit error otherwise). It is separate from `ArchiveLimits.MaxWindowSize` because 7-Zip's
+  own default dictionary is 16 MiB. The zip LZMA and xz entries use `MaxWindowSize`.
 - `MaxCodersPerFolder` (default 32) and 64 streams per folder; every count read from the header is checked against the
   remaining header bytes or the limit before an array is allocated.
 - File count against `ArchiveLimits.MaxEntryCount`; each folder's unpack size against `MaxTotalSize` before any decoding;
@@ -58,11 +65,20 @@ error naming the folder's first packed stream offset.
 
 ## Random access and streaming
 
-`OpenEntryStream(entry)` decodes the entry's folder from its start up to the entry (a solid folder is read once per open;
-a second open of an earlier entry decodes again). In sequential reading the reader keeps the folder's decoder open, so an
+`OpenEntryStream(entry)` leases a decoder for the entry's folder and gives it back when the entry stream is disposed; the
+reader keeps the two most recently used idle decoders, so opening a solid folder's entries in archive order decodes the
+folder once, while going back to an earlier entry decodes from the folder's start. A decoder that threw is discarded and
+the next use starts the folder over. In sequential reading the reader keeps the folder's decoder open, so an
 archive read in order decodes each folder once. An entry stream can seek; seeking backwards re-decodes, and a seek turns
 off the CRC check for that stream.
 
 ## Not done yet
 
-PPMd, BCJ2, AES, Deflate64, and the LZMA-family coders and branch filters (these wait for their decoders); writing.
+PPMd, BCJ2, AES and Deflate64 coders; writing.
+
+## Zip entries (methods 14 and 95)
+
+Method 14 is read as APPNOTE 5.8 describes: a 4-byte header (LZMA SDK major and minor version, then the properties size,
+which must be 5), the 5 property bytes, then raw LZMA data. The uncompressed size comes from the zip headers; a streamed
+entry (size unknown) must end with an end marker. Method 95 is one xz stream. Both use `ArchiveLimits.MaxWindowSize` for
+the dictionary. Both are read only.

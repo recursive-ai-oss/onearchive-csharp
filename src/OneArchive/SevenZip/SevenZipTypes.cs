@@ -135,6 +135,9 @@ public sealed class SevenZipReaderOptions
     /// <summary>The default for <see cref="MaxCodersPerFolder"/>: 32.</summary>
     public const int DefaultMaxCodersPerFolder = 32;
 
+    /// <summary>The default for <see cref="MaxDictionarySize"/>: 64 MiB.</summary>
+    public const long DefaultMaxDictionarySize = 64L << 20;
+
     /// <summary>Gets the shared default options.</summary>
     public static SevenZipReaderOptions Default { get; } = new();
 
@@ -153,6 +156,12 @@ public sealed class SevenZipReaderOptions
     /// before anything is allocated. Default 64 MiB.
     /// </summary>
     public long MaxHeaderSize { get; init; } = DefaultMaxHeaderSize;
+
+    /// <summary>
+    /// Gets the largest LZMA or LZMA2 dictionary a coder may declare, which bounds the decoder's memory. Checked against the
+    /// header before anything is allocated. Default 64 MiB (7-Zip's default is 16 MiB at its default level).
+    /// </summary>
+    public long MaxDictionarySize { get; init; } = DefaultMaxDictionarySize;
 
     /// <summary>Gets the most coders a folder may have; a longer graph is refused. Default 32.</summary>
     public int MaxCodersPerFolder { get; init; } = DefaultMaxCodersPerFolder;

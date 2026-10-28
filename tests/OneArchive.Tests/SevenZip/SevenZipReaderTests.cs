@@ -12,6 +12,7 @@ public class SevenZipReaderTests
     [
         "copy-solid", "copy-nonsolid", "copy-multifolder", "copy-times", "copy-chain",
         "deflate-solid", "deflate-nonsolid", "bzip2-solid", "bzip2-nonsolid",
+        "default", "lzma-solid", "lzma-header", "lzma2-nonsolid", "bcj-lzma", "delta-lzma2", "arm64-lzma2",
     ];
 
     private static byte[] ReadAll(Stream s)
@@ -104,7 +105,64 @@ public class SevenZipReaderTests
         Assert.Equal(4, f.PackedStreams.Count);
         Assert.Equal(60000, r.GetNextEntry()!.Size);
         var ex = Assert.Throws<ArchiveUnsupportedException>(() => r.OpenEntryStream().ReadByte());
-        Assert.Contains("method ID 0x", ex.Message);
+        Assert.Contains("0x303011B", ex.Message);
+    }
+
+    [Fact]
+    public void DefaultOutputHasAnEncodedLzmaHeaderAndLzma2Folder()
+    {
+        using var fs = File.OpenRead(Vector("default"));
+        using var r = new SevenZipReader(fs);
+        Assert.Equal(0x21UL, r.Folders[0].Coders[^1].MethodId);
+        Assert.True(r.IsHeaderEncoded);
+        using var fs2 = File.OpenRead(Vector("bcj-lzma"));
+        using var r2 = new SevenZipReader(fs2);
+        Assert.Contains(r2.Folders[0].Coders, c => c.MethodId == 0x030101);
+        Assert.Contains(r2.Folders[0].Coders, c => c.MethodId is 0x04 or 0x03030103);
+    }
+
+    [Fact]
+    public void AFailedEntryDoesNotBreakLaterReads()
+    {
+        byte[] full = File.ReadAllBytes(Vector("deflate-solid"));
+        // Damage the packed data near its end: the last entries of the solid folder fail, the first ones do not.
+        full[32 + 20000] ^= 0xFF;
+        var expected = Files();
+        using var r = new SevenZipReader(new MemoryStream(full));
+        var files = r.Items.Where(e => e.Kind == ArchiveEntryKind.File).ToList();
+        SevenZipEntry first = files.First(e => e.Name == "a.txt");
+        SevenZipEntry? bad = null;
+        foreach (SevenZipEntry e in files.OrderBy(e => e.FolderOffset))
+        {
+            try
+            {
+                ReadAll(r.OpenEntryStream(e));
+            }
+            catch (CompressionException)
+            {
+                bad = e;
+                break;
+            }
+        }
+
+        Assert.NotNull(bad);
+        Assert.ThrowsAny<CompressionException>(() => ReadAll(r.OpenEntryStream(bad)));
+        Assert.Equal(expected[first.Name], ReadAll(r.OpenEntryStream(first)));
+        Assert.ThrowsAny<CompressionException>(() => ReadAll(r.OpenEntryStream(bad)));
+        Assert.Equal(expected[first.Name], ReadAll(r.OpenEntryStream(first)));
+    }
+
+    [Fact]
+    public void ForwardRandomAccessReusesTheFolderDecoder()
+    {
+        var expected = Files();
+        using var fs = File.OpenRead(Vector("lzma-solid"));
+        using var r = new SevenZipReader(fs);
+        foreach (SevenZipEntry e in r.Items.Where(e => e.Kind == ArchiveEntryKind.File).OrderBy(e => e.FolderOffset))
+        {
+            using Stream s = r.OpenEntryStream(e);
+            Assert.Equal(expected[e.Name], ReadAll(s));
+        }
     }
 
     [Theory]
@@ -318,7 +376,7 @@ public class SevenZipReaderTests
     [Fact]
     public void TruncationAtEveryOffsetIsATypedError()
     {
-        foreach (string vec in new[] { "deflate-solid", "one-empty-file" })
+        foreach (string vec in new[] { "deflate-solid", "one-empty-file", "default", "delta-lzma2" })
         {
             byte[] full = File.ReadAllBytes(Vector(vec));
             int step = full.Length > 4000 ? 23 : 1;
@@ -341,7 +399,14 @@ public class SevenZipReaderTests
     [Fact]
     public void BitFlipsEndInTypedErrors()
     {
-        byte[] full = File.ReadAllBytes(Vector("deflate-solid"));
+        foreach (string vec in new[] { "deflate-solid", "lzma-solid", "bcj-lzma", "default" })
+        {
+            FlipBits(File.ReadAllBytes(Vector(vec)));
+        }
+    }
+
+    private static void FlipBits(byte[] full)
+    {
         for (int i = 0; i < full.Length; i += 7)
         {
             byte[] bad = (byte[])full.Clone();
@@ -411,6 +476,23 @@ public class SevenZipReaderTests
         byte[] pk = Cat(0x06, 0UL, 1UL, 0x09, 1UL << 40, 0x00, 0x07, 0x0B, 1UL, 0, 1UL, Cat(0x01, 0x00), 0x0C, 3UL, 0x00, 0x00);
         var ex4 = Assert.Throws<CompressionFormatException>(() => new SevenZipReader(new MemoryStream(Build(data, Header(pk, 1, Names("a"))))).GetNextEntry());
         Assert.True(ex4.IsTruncated);
+    }
+
+    [Fact]
+    public void HugeLzmaDictionaryIsRefusedBeforeAllocating()
+    {
+        byte[] data = "abc"u8.ToArray();
+        byte[] streams = Cat(0x06, 0UL, 1UL, 0x09, 3UL, 0x00, 0x07, 0x0B, 1UL, 0, 1UL, Cat(0x23, 0x03, 0x01, 0x01, 5UL, 0x5D, 0, 0, 0, 0xFF), 0x0C, 3UL, 0x00, 0x00);
+        byte[] h = Header(streams, 1, Names("a"));
+        using var r = new SevenZipReader(new MemoryStream(Build(data, h)));
+        r.GetNextEntry();
+        var ex = Assert.Throws<CompressionLimitException>(() => r.OpenEntryStream().ReadByte());
+        Assert.Contains("Dictionary", ex.LimitName);
+        // Bad coder properties are a format error naming the coder.
+        byte[] bad = Cat(0x06, 0UL, 1UL, 0x09, 3UL, 0x00, 0x07, 0x0B, 1UL, 0, 1UL, Cat(0x23, 0x03, 0x01, 0x01, 2UL, 0x5D, 0), 0x0C, 3UL, 0x00, 0x00);
+        using var r2 = new SevenZipReader(new MemoryStream(Build(data, Header(bad, 1, Names("a")))));
+        r2.GetNextEntry();
+        Assert.Throws<CompressionFormatException>(() => r2.OpenEntryStream().ReadByte());
     }
 
     [Fact]

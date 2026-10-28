@@ -36,13 +36,28 @@ public class SevenZipInteropTests
     }
 
     [Theory]
-    [InlineData("-m0=Copy -ms=on")]
-    [InlineData("-m0=Copy -ms=off")]
-    [InlineData("-m0=Deflate -ms=on")]
-    [InlineData("-m0=Deflate -ms=off")]
-    [InlineData("-m0=BZip2 -ms=on")]
-    [InlineData("-m0=BZip2 -ms=e")]
-    [InlineData("-m0=Copy -m1=Copy -ms=on")]
+    [InlineData("-m0=Copy -ms=on -mhc=off")]
+    [InlineData("-m0=Copy -ms=off -mhc=off")]
+    [InlineData("-m0=Deflate -ms=on -mhc=off")]
+    [InlineData("-m0=Deflate -ms=off -mhc=off")]
+    [InlineData("-m0=BZip2 -ms=on -mhc=off")]
+    [InlineData("-m0=BZip2 -ms=e -mhc=off")]
+    [InlineData("-m0=Copy -m1=Copy -ms=on -mhc=off")]
+    [InlineData("")]
+    [InlineData("-mx=9")]
+    [InlineData("-mx=1")]
+    [InlineData("-m0=LZMA -ms=on")]
+    [InlineData("-m0=LZMA -ms=off -mhc=off")]
+    [InlineData("-m0=LZMA2 -ms=e")]
+    [InlineData("-m0=BCJ -m1=LZMA -ms=on")]
+    [InlineData("-m0=Delta:4 -m1=LZMA2 -ms=on")]
+    [InlineData("-mf=ARM64 -m1=LZMA2 -ms=on")]
+    [InlineData("-mf=RISCV -m1=LZMA2 -ms=on")]
+    [InlineData("-mf=ARM -m1=LZMA -ms=on")]
+    [InlineData("-mf=PPC -m1=LZMA2 -ms=on")]
+    [InlineData("-mf=SPARC -m1=LZMA2 -ms=on")]
+    [InlineData("-mf=IA64 -m1=LZMA2 -ms=on")]
+    [InlineData("-mf=ARMT -m1=LZMA2 -ms=on")]
     public void ReadsArchivesWrittenBy7Zip(string switches)
     {
         Assert.SkipUnless(Tools.InteropEnabled, "set ONEARCHIVE_INTEROP=1 to run interop tests");
@@ -50,7 +65,7 @@ public class SevenZipInteropTests
         string src = tmp.Combine("src");
         Tree(src);
         string archive = tmp.Combine("a.7z");
-        Tools.Run("bash", ["-c", $"cd '{src}' && '{Tool}' a -t7z -snl -bso0 -bsp0 -mmt=1 -mhc=off {switches} '{archive}' ."]);
+        Tools.Run("bash", ["-c", $"cd '{src}' && '{Tool}' a -t7z -snl -bso0 -bsp0 -mmt=1 {switches} '{archive}' ."]);
 
         string outDir = tmp.Combine("out");
         Archive.Extract(archive, outDir);
@@ -84,9 +99,9 @@ public class SevenZipInteropTests
         }
 
         // bsdtar's listing names the same entries (directories with a trailing slash, a "./" prefix is not used by 7z).
-        if (switches.Contains("-m1="))
+        if (switches.Contains("-m1=Copy") || switches.Contains("Delta") || switches.Contains("-mf="))
         {
-            return; // bsdtar cannot read a chained Copy folder.
+            return; // bsdtar cannot read these filter chains.
         }
 
         var listed = new SortedSet<string>(StringComparer.Ordinal);
@@ -96,5 +111,68 @@ public class SevenZipInteropTests
         }
 
         Assert.Equal(listed, names);
+    }
+
+    [Theory]
+    [InlineData("LZMA")]
+    [InlineData("xz")]
+    [InlineData("LZMA:d=64k")]
+    public void ReadsZipEntriesWrittenBy7Zip(string method)
+    {
+        Assert.SkipUnless(Tools.InteropEnabled, "set ONEARCHIVE_INTEROP=1 to run interop tests");
+        using var tmp = new TempDir();
+        string src = tmp.Combine("src");
+        Tree(src);
+        string archive = tmp.Combine("a.zip");
+        Tools.Run("bash", ["-c", $"cd '{src}' && '{Tool}' a -tzip -snl -bso0 -bsp0 -mmt=1 -mm={method} '{archive}' ."]);
+        string outDir = tmp.Combine("out");
+        Archive.Extract(archive, outDir);
+        foreach (string file in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
+        {
+            string rel = Path.GetRelativePath(src, file);
+            if (new FileInfo(file).LinkTarget is { } target)
+            {
+                Assert.Equal(target, new FileInfo(Path.Combine(outDir, rel)).LinkTarget);
+            }
+            else
+            {
+                Assert.Equal(File.ReadAllBytes(file), File.ReadAllBytes(Path.Combine(outDir, rel)));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("-m0=LZMA2:d=1m:c=256k -mmt=4")]
+    [InlineData("-m0=LZMA:d=8m -mx=7")]
+    [InlineData("-m0=LZMA2 -mx=9 -mmt=4")]
+    public void ReadsABigMultiChunkArchive(string switches)
+    {
+        Assert.SkipUnless(Tools.InteropEnabled, "set ONEARCHIVE_INTEROP=1 to run interop tests");
+        using var tmp = new TempDir();
+        string src = tmp.Combine("src");
+        Directory.CreateDirectory(src);
+        // 14 MB: words drawn from a small vocabulary (compressible), then noise, then a long repeat.
+        byte[] noise = SevenZipFixtures.Lcg(11, 3_000_000);
+        var words = new System.Text.StringBuilder();
+        var rnd = new Random(42);
+        string[] vocab = Enumerable.Range(0, 500).Select(i => "w" + (i * 7919 % 10007)).ToArray();
+        while (words.Length < 9_000_000)
+        {
+            words.Append(vocab[rnd.Next(vocab.Length)]).Append(' ');
+        }
+
+        byte[] text = System.Text.Encoding.ASCII.GetBytes(words.ToString());
+        File.WriteAllBytes(Path.Combine(src, "words.txt"), text);
+        File.WriteAllBytes(Path.Combine(src, "noise.bin"), noise);
+        File.WriteAllBytes(Path.Combine(src, "repeat.bin"), SevenZipFixtures.Repeat("0123456789abcdef", 100_000));
+        string archive = tmp.Combine("big.7z");
+        Tools.Run("bash", ["-c", $"cd '{src}' && '{Tool}' a -t7z -bso0 -bsp0 -ms=on {switches} '{archive}' ."]);
+        string outDir = tmp.Combine("out");
+        var limits = new ArchiveLimits { MaxTotalSize = 1L << 31 };
+        Archive.Extract(archive, outDir, new ArchiveExtractOptions { Limits = limits });
+        foreach (string file in Directory.GetFiles(src))
+        {
+            Assert.Equal(File.ReadAllBytes(file), File.ReadAllBytes(Path.Combine(outDir, Path.GetFileName(file))));
+        }
     }
 }

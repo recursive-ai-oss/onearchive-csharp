@@ -167,6 +167,8 @@ internal sealed class ZipEntryStream : Stream
     private readonly ZipReader _owner;
     private readonly DeflateDecoder? _deflate;
     private readonly ZstdDecoder? _zstd;
+    private readonly ZipLzmaDecoder? _lzma;
+    private readonly RecursiveAI.OneCompress.Xz.XzDecoder? _xz;
     private readonly RecursiveAI.OneCompress.BZip2.BZip2Decoder? _bzip2;
     private long _compRemaining;             // -1 when the compressed size is unknown (the decoder finds the end)
     private long _consumed;
@@ -202,6 +204,12 @@ internal sealed class ZipEntryStream : Stream
                 break;
             case ZipMethod.Zstd:
                 _zstd = new ZstdDecoder(new ZstdDecompressionOptions { MaxWindowSize = limits.MaxWindowSize, MaxOutputSize = long.MaxValue });
+                break;
+            case ZipMethod.Lzma:
+                _lzma = new ZipLzmaDecoder(size, input.Offset, new RecursiveAI.OneCompress.Lzma.LzmaDecompressionOptions { MaxDictionarySize = limits.MaxWindowSize, MaxOutputSize = long.MaxValue });
+                break;
+            case ZipMethod.Xz:
+                _xz = new RecursiveAI.OneCompress.Xz.XzDecoder(new RecursiveAI.OneCompress.Xz.XzDecompressionOptions { MaxDictionarySize = limits.MaxWindowSize, MaxOutputSize = long.MaxValue });
                 break;
             default:
                 throw new ArchiveUnsupportedException(ZipFormat.Name, $"compression method {(int)method} ({ZipFormat.MethodName((int)method)})");
@@ -347,6 +355,14 @@ internal sealed class ZipEntryStream : Stream
             else if (_bzip2 is not null)
             {
                 status = _bzip2.Decompress(src, dest.Span[..cap], out consumed, out written);
+            }
+            else if (_lzma is not null)
+            {
+                status = _lzma.Decompress(src, dest.Span[..cap], out consumed, out written);
+            }
+            else if (_xz is not null)
+            {
+                status = _xz.Decompress(src, dest.Span[..cap], out consumed, out written);
             }
             else
             {

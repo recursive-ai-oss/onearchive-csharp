@@ -428,21 +428,21 @@ public class ZipTests
     public void UnsupportedMethodIsListedAndRefusedWhenOpened()
     {
         var raw = new RawZip();
-        var e = RawZip.Stored("lzma.bin", [9, 9, 9]);
-        e.Method = 14;
+        var e = RawZip.Stored("ppmd.bin", [9, 9, 9]);
+        e.Method = 98;
         raw.Add(e);
         raw.Add(RawZip.Stored("ok", [1]));
         byte[] zip = raw.Finish();
         using var reader = new ZipReader(new MemoryStream(zip));
         ZipEntry first = reader.GetNextEntry()!;
-        Assert.Equal(ZipMethod.Lzma, first.Method);
+        Assert.Equal(ZipMethod.Ppmd, first.Method);
         var ex = Assert.Throws<ArchiveUnsupportedException>(() => reader.OpenEntryStream());
-        Assert.Contains("14", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("98", ex.Message, StringComparison.Ordinal);
         Assert.Equal("ok", reader.GetNextEntry()!.Name);
 
         // Forward-only: the unsupported entry has a known length, so it is skipped.
         using var forward = new ZipReader(new ForwardOnly(new MemoryStream(zip)));
-        Assert.Equal("lzma.bin", forward.GetNextEntry()!.Name);
+        Assert.Equal("ppmd.bin", forward.GetNextEntry()!.Name);
         Assert.Equal("ok", forward.GetNextEntry()!.Name);
     }
 

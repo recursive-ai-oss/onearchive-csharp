@@ -102,6 +102,16 @@ def main():
                 print("FAILED", name, r.stdout[-300:], r.stderr[-300:])
                 sys.exit(1)
             print(name, os.path.getsize(dest))
+        # Zip archives with LZMA (method 14) and xz (method 95) entries.
+        for name, mm in ("zip-lzma", "LZMA"), ("zip-lzma-eos", "LZMA:eos"), ("zip-xz", "xz"):
+            dest = os.path.join(OUT, name + ".zip")
+            if os.path.exists(dest):
+                os.remove(dest)
+            r = subprocess.run([os.path.abspath(TOOL), "a", "-tzip", "-snl", "-bso0", "-bsp0", "-mmt=1", "-mm=" + mm, dest, "."], cwd=tree, capture_output=True, text=True)
+            if r.returncode != 0:
+                print("FAILED", name, r.stdout[-300:], r.stderr[-300:])
+                sys.exit(1)
+            print(name, os.path.getsize(dest))
         # A BCJ2 folder (four coders, four packed streams) from the first 60000 bytes of an x86-64 executable named by
         # SEVENZIP_EXE; the reader tests only look at its coder graph, so any machine code works.
         exe = os.environ.get("SEVENZIP_EXE")

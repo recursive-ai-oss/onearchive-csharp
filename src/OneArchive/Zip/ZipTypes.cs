@@ -19,13 +19,13 @@ public enum ZipMethod : ushort
     /// <summary>bzip2. Listed, not yet supported.</summary>
     BZip2 = 12,
 
-    /// <summary>LZMA. Listed, not yet supported.</summary>
+    /// <summary>LZMA with the APPNOTE 5.8 header. Read only.</summary>
     Lzma = 14,
 
     /// <summary>Zstandard (RFC 8878), one frame per entry.</summary>
     Zstd = 93,
 
-    /// <summary>xz. Listed, not yet supported.</summary>
+    /// <summary>xz. Read only.</summary>
     Xz = 95,
 
     /// <summary>PPMd. Listed, not yet supported.</summary>
