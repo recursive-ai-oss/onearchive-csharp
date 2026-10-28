@@ -55,6 +55,12 @@ public static class ArchiveDetector
     /// <returns>The format, or <see cref="ArchiveFormat.Unknown"/>.</returns>
     public static ArchiveFormat DetectFormat(ReadOnlySpan<byte> prefix)
     {
+        // PKWARE APPNOTE 4.3.7 (local header), 4.3.16 (an empty archive is just an end record), 8.5.3 (span marker).
+        if (prefix.StartsWith("PK\x03\x04"u8) || prefix.StartsWith("PK\x05\x06"u8) || prefix.StartsWith("PK\x07\x08"u8) || prefix.StartsWith("PK00"u8))
+        {
+            return ArchiveFormat.Zip;
+        }
+
         if (prefix.Length >= TarHeader.BlockSize && LooksLikeTar(prefix[..TarHeader.BlockSize]))
         {
             return ArchiveFormat.Tar;
@@ -106,6 +112,11 @@ public static class ArchiveDetector
     {
         ArgumentNullException.ThrowIfNull(fileName);
         string name = Path.GetFileName(fileName).ToLowerInvariant();
+        if (name.EndsWith(".zip", StringComparison.Ordinal))
+        {
+            return (ArchiveFormat.Zip, ArchiveCompression.None);
+        }
+
         foreach ((string suffix, ArchiveCompression c) in s_tarSuffixes)
         {
             if (name.EndsWith(suffix, StringComparison.Ordinal))

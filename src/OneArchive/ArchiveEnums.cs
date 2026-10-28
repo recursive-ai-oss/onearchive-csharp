@@ -11,6 +11,12 @@ public enum ArchiveFormat
 
     /// <summary>tar: ustar, pax and GNU variants (see <c>RecursiveAI.OneArchive.Tar</c>).</summary>
     Tar = 1,
+
+    /// <summary>zip (see <c>RecursiveAI.OneArchive.Zip</c>): zip64, data descriptors, store, deflate and zstd entries.</summary>
+    Zip = 2,
+
+    /// <summary>One compressed file with no container, such as <c>notes.txt.gz</c>, <c>.zst</c> or <c>.lz4</c>: an archive of one entry.</summary>
+    SingleStream = 3,
 }
 
 /// <summary>A compression layer wrapped around a whole archive, as in <c>.tar.zst</c>.</summary>

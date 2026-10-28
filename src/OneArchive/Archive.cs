@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Tar;
+using RecursiveAI.OneArchive.Zip;
+using RecursiveAI.OneCompress.Deflate;
 using RecursiveAI.OneCompress;
 
 namespace RecursiveAI.OneArchive;
@@ -25,13 +27,17 @@ public sealed class Archive : IDisposable, IAsyncDisposable
     private readonly bool _seekable;
     private readonly long _origin;
     private readonly ArchiveOpenOptions _options;
+    private readonly string? _singleName;
+    private readonly DateTimeOffset? _singleTime;
     private ArchiveReader? _pending;
     private ArchiveReader? _indexReader;
     private List<ArchiveEntry>? _entries;
     private bool _disposed;
 
-    private Archive(Stream source, bool leaveOpen, long origin, ArchiveOpenOptions options, ArchiveFormat format, ArchiveCompression compression, ArchiveReader first)
+    private Archive(Stream source, bool leaveOpen, long origin, ArchiveOpenOptions options, ArchiveFormat format, ArchiveCompression compression, ArchiveReader first, string? singleName, DateTimeOffset? singleTime)
     {
+        _singleName = singleName;
+        _singleTime = singleTime;
         _source = source;
         _leaveOpen = leaveOpen;
         _options = options;
@@ -173,12 +179,14 @@ public sealed class Archive : IDisposable, IAsyncDisposable
 
         ArchiveFormat format = options.Format ?? ArchiveFormat.Unknown;
         Stream top = raw;
+        Stream? plainStream = null;
         ExpansionMeter? meter = null;
         if (compression != ArchiveCompression.None)
         {
             meter = new ExpansionMeter(options.Limits, "archive");
             Stream counted = new CountingStream(raw, meter, leaveOpen: true);
             Stream plain = new ProducedStream(CompressionFilters.OpenDecompress(compression, counted, options.Limits), meter);
+            plainStream = plain;
             byte[] inner = new byte[ArchiveDetector.PrefixLength];
             int innerGot;
             try
@@ -212,6 +220,15 @@ public sealed class Archive : IDisposable, IAsyncDisposable
             format = nameFormat;
         }
 
+        string? singleName = null;
+        DateTimeOffset? singleTime = null;
+        if (format == ArchiveFormat.Unknown && compression != ArchiveCompression.None)
+        {
+            // A compressed file that holds no container is an archive of one file.
+            format = ArchiveFormat.SingleStream;
+            (singleName, singleTime) = SingleStreamName(compression, plainStream, name);
+        }
+
         if (format == ArchiveFormat.Unknown)
         {
             if (top != raw)
@@ -219,17 +236,62 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                 top.Dispose();
             }
 
-            throw new CompressionFormatException("archive", 0, "a recognised archive format (tar) in the data or in the file name's extension");
+            throw new CompressionFormatException("archive", 0, "a recognised archive format (zip, tar, or a compressed single file) in the data or in the file name's extension");
         }
 
-        ArchiveReader reader = CreateReader(format, top, ownsTop: top != raw, options, meter);
-        return new Archive(source, leaveOpen, origin, options, format, compression, reader);
+        ArchiveReader reader = CreateReader(format, top, ownsTop: top != raw, options, meter, singleName, singleTime);
+        return new Archive(source, leaveOpen, origin, options, format, compression, reader, singleName, singleTime);
     }
 
-    private static TarReader CreateReader(ArchiveFormat format, Stream stream, bool ownsTop, ArchiveOpenOptions options, ExpansionMeter? meter)
+    // The entry name of a single compressed file: the gzip header's FNAME if it has one (the decompressor has already read
+    // the start of the data, so the header is known), otherwise the file name without the compression extension.
+    private static (string Name, DateTimeOffset? Time) SingleStreamName(ArchiveCompression compression, Stream? plain, string? archiveName)
+    {
+        string? name = null;
+        DateTimeOffset? time = null;
+        if (compression == ArchiveCompression.Gzip && plain is ProducedStream { Inner: DeflateCodecStream gz })
+        {
+            GZipHeader header = gz.CurrentGZipHeader;
+            if (header.GetName() is { Length: > 0 } stored)
+            {
+                name = stored;
+            }
+
+            if (header.ModificationTime != 0)
+            {
+                time = DateTimeOffset.FromUnixTimeSeconds(header.ModificationTime);
+            }
+        }
+
+        if (name is null)
+        {
+            string file = archiveName is null ? string.Empty : Path.GetFileName(archiveName);
+            foreach (string suffix in new[] { ".gz", ".zst", ".zstd", ".lz4" })
+            {
+                if (file.Length > suffix.Length && file.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    file = file[..^suffix.Length];
+                    break;
+                }
+            }
+
+            name = file.Length > 0 ? file : "data";
+        }
+
+        return (name, time);
+    }
+
+    private static ArchiveReader CreateReader(ArchiveFormat format, Stream stream, bool ownsTop, ArchiveOpenOptions options, ExpansionMeter? meter, string? singleName, DateTimeOffset? singleTime)
     {
         switch (format)
         {
+            case ArchiveFormat.Zip:
+                ZipReaderOptions zip = options.Zip is { } z
+                    ? new ZipReaderOptions { Limits = options.Limits, VerifyChecksum = z.VerifyChecksum, ForceStreaming = z.ForceStreaming, LegacyNameEncoding = z.LegacyNameEncoding, MaxCentralDirectorySize = z.MaxCentralDirectorySize }
+                    : new ZipReaderOptions { Limits = options.Limits };
+                return new ZipReader(stream, zip, leaveOpen: !ownsTop);
+            case ArchiveFormat.SingleStream:
+                return new SingleStreamReader(stream, singleName ?? "data", singleTime, options.Limits, leaveOpen: !ownsTop);
             case ArchiveFormat.Tar:
                 TarReaderOptions tar = options.Tar is { } t
                     ? new TarReaderOptions
@@ -273,7 +335,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
             owns = true;
         }
 
-        return CreateReader(Format, top, owns, _options, meter);
+        return CreateReader(Format, top, owns, _options, meter, _singleName, _singleTime);
     }
 
     // ---- reading ----
