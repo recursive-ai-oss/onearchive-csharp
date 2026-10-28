@@ -70,9 +70,10 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
 
     private uint[] _head = [];
     private uint[] _links = [];
-    private uint[] _scratch = [];
     private int _hashLog;
     private int _linkLog;
+    private int _linkGrowAt; // the first position that needs a larger table (int.MaxValue when whole)
+    private int _linkSlots; // nodes the table holds now: a power of two, at most 1 << _linkLog
     private int _shift;
     private int _minMatch;
     private int _repeatMinMatch;
@@ -148,7 +149,7 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
         _windowSize = parameters.WindowSize;
         _linkLog = Math.Clamp(parameters.ChainLog - 1, 4, 25);
         Prepare(ref _head, 1 << _hashLog);
-        Prepare(ref _links, 2 << _linkLog);
+        PrepareLinks();
         _next = 1;
         _blockSeen = false;
         _statsReady = false;
@@ -191,22 +192,89 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
         }
 
         // A node is stored at the slot of its position modulo the table size, so moving every position down by delta turns
-        // the table around by delta slots as well.
+        // the table around by delta slots as well. The table must be whole before it is turned.
+        GrowLinks(1 << _linkLog);
         int slotCount = 1 << _linkLog;
-        int size = slotCount * 2;
-        if (_scratch.Length < size)
+        int rotation = (int)(d & (uint)(slotCount - 1));
+        if (rotation != 0)
         {
-            _scratch = new uint[size];
+            // Rotating left by `rotation` slots in place: reverse each part, then the whole.
+            ReverseNodes(_links, 0, rotation);
+            ReverseNodes(_links, rotation, slotCount);
+            ReverseNodes(_links, 0, slotCount);
         }
 
-        Array.Copy(_links, _scratch, size);
-        int rotation = (int)(d & (uint)(slotCount - 1));
-        for (int i = 0; i < slotCount; i++)
+        for (int i = 0; i < slotCount * 2; i++)
         {
-            int source = ((i + rotation) & (slotCount - 1)) * 2;
-            _links[i * 2] = Rebase(_scratch[source], d);
-            _links[(i * 2) + 1] = Rebase(_scratch[source + 1], d);
+            _links[i] = Rebase(_links[i], d);
         }
+    }
+
+    private static void ReverseNodes(uint[] links, int from, int to)
+    {
+        for (int i = from, j = to - 1; i < j; i++, j--)
+        {
+            (links[i * 2], links[j * 2]) = (links[j * 2], links[i * 2]);
+            (links[(i * 2) + 1], links[(j * 2) + 1]) = (links[(j * 2) + 1], links[(i * 2) + 1]);
+        }
+    }
+
+    // The tree table is allocated small and enlarged as positions reach its end, so a stream of unknown length that never fills the
+    // window does not pay for the whole table. A node lives at the slot of its position modulo the full size; below the current
+    // size that is the position itself, so growing keeps every node where it is and the output does not depend on the growth.
+    private const int InitialLinkSlots = 1 << 16;
+
+    private void PrepareLinks()
+    {
+        int slots = GrowTables ? Math.Min(1 << _linkLog, InitialLinkSlots) : 1 << _linkLog;
+        if (_links.Length >= 2 * slots)
+        {
+            Array.Clear(_links, 0, 2 * slots);
+        }
+        else
+        {
+            _links = new uint[2 * slots];
+        }
+
+        SetLinkSlots(slots);
+    }
+
+    private void SetLinkSlots(int slots)
+    {
+        _linkSlots = slots;
+        _linkGrowAt = slots < (1 << _linkLog) ? slots : int.MaxValue;
+    }
+
+    private void GrowLinks(int needSlots)
+    {
+        int full = 1 << _linkLog;
+        if (needSlots > full)
+        {
+            needSlots = full;
+        }
+
+        if (needSlots <= _linkSlots)
+        {
+            return;
+        }
+
+        // Four times the old size, or the whole table once a quarter of it is needed or the step would pass half of it, so the
+        // copies left behind stay a fraction of the final table.
+        long step = BitOperations.RoundUpToPowerOf2((uint)Math.Max(needSlots, 4 * _linkSlots));
+        int slots = needSlots > full / 4 || step > full / 2 ? full : (int)step;
+        if (_links.Length >= 2 * slots)
+        {
+            // Memory left from a larger frame: it was cleared only up to the old size.
+            Array.Clear(_links, 2 * _linkSlots, (2 * slots) - (2 * _linkSlots));
+        }
+        else
+        {
+            var grown = new uint[2 * slots];
+            Array.Copy(_links, grown, 2 * _linkSlots);
+            _links = grown;
+        }
+
+        SetLinkSlots(slots);
     }
 
     private static uint Rebase(uint stored, uint d)
@@ -249,7 +317,7 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
             Array.Copy(_ofCount, _ofStat, 32);
             BuildPrices(false);
             Array.Clear(_head, 0, 1 << _hashLog);
-            Array.Clear(_links, 0, 2 << _linkLog);
+            Array.Clear(_links, 0, 2 * _linkSlots);
             _next = 1;
         }
 
@@ -873,8 +941,14 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
     // node's children is marked as well.
     private void TreeWalk(ReadOnlySpan<byte> window, int p, int end, bool record, ref int budget, ref int bestLength)
     {
+        if (p >= _linkGrowAt)
+        {
+            GrowLinks(p + 1);
+        }
+
         uint[] head = _head;
         uint[] tree = _links;
+        // Bound: p is below the table's current slot count (grown above), and so is every position c < p read from it.
         int mask = (1 << _linkLog) - 1;
         int h = Hash(window, p);
         int maxLength = Math.Min(end - p, _compareLimit);

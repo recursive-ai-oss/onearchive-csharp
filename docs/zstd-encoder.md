@@ -325,6 +325,45 @@ What a decoder accepts: this library's `ZstdDecompressionOptions.MaxWindowSize` 
 plays the part of `zstd -d --long=N` and `--memory`); it holds up to two windows, so it refuses windows of 2^30 and above. The `zstd`
 command line decodes up to 2^27 by default.
 
+## Memory
+
+What an encoder holds depends on the parameters and on whether it is told the size.
+
+- **Known size** (one call, or `ContentSize`): the window and tables are sized to the source as the parameter table above says, and
+  allocated whole when the frame starts.
+- **Unknown size** (a stream without `ContentSize`): the parameters are those of the largest size class, as `zstd` itself uses for a
+  pipe, so the output is the same as before. What the encoder allocates is not: the window buffer and the binary-tree link table of
+  btopt, btultra and btultra2 start small (1 MiB; 65,536 positions) and are enlarged as data arrives, to four times their size, or to
+  the whole once a quarter of it is needed. A node of the link table lives at the slot of its position modulo the full table size;
+  below the current size that slot is the position itself, so enlarging moves nothing and cannot change a match. Where the window
+  slides depends on the full capacity, never on how much is allocated. The hash tables are indexed by hash and are allocated whole
+  (up to 128 MiB at level 22), as are the chain tables of the other strategies (up to 16 MiB at level 12).
+- **`SizeHint`**: for a stream whose length is only roughly known. The window and tables are chosen as for a source of that size and
+  allocated whole; the header states no content size, and its window log is at least 17 (a block may not exceed the window,
+  RFC 8878 section 3.1.1.2.3) while matching keeps to the smaller window. Input beyond the hint is still compressed correctly, with
+  that smaller window. `ContentSize`, when given, wins.
+- **Dictionary search index**: the index a dictionary builds for a parameter set holds one entry per content position, so its tables
+  are capped by the content, not by the source: the chain index at `ceil(log2(content length))` (at least 10), which keeps every
+  position and so cannot change a match, and the hash tables at four bits more (sixteen slots per position). A 4 KiB dictionary at
+  level 22 used to build 256 MiB of index for a large source and now builds under 1 MiB.
+- Sliding the tree-link table is done in place (reverse the two parts, then the whole) rather than through a copy of the table.
+
+Peak memory, one process per row, managed bytes allocated and peak working set in MiB, before and after, for generated text
+(`GC.GetTotalAllocatedBytes` and `Process.PeakWorkingSet64`; levels 1 and 3 did not change). Each cell is the no-dictionary row / the
+row with a 4 KiB dictionary.
+
+| level, input | one call | stream, no size | stream, size known |
+|---|---|---|---|
+| 9, 16 MiB | 30/73 > 30/73 / 42/77 > 30/74 | 24/80 > 25/82 / 36/85 > 26/83 | 24/81 > 24/81 / 36/85 > 25/82 |
+| 19, 1 KiB | 0/39 > 0/39 / 1/40 > 1/40 | 80/119 > 17/56 / 160/122 > 17/57 | 0/39 > 0/39 / 1/40 > 1/40 |
+| 19, 64 KiB | 2/41 > 2/41 / 3/43 > 2/43 | 81/120 > 17/57 / 161/124 > 18/58 | 2/41 > 2/41 / 3/43 > 2/42 |
+| 19, 16 MiB | 99/142 > 99/142 / 180/146 > 100/144 | 161/217 > 145/194 / 242/221 > 145/195 | 161/217 > 97/153 / 242/221 > 98/155 |
+| 22, 1 KiB | 0/39 > 0/39 / 1/40 > 1/40 | 384/423 > 129/168 / 640/427 > 129/169 | 0/39 > 0/39 / 1/40 > 1/40 |
+| 22, 64 KiB | 2/41 > 2/41 / 3/43 > 2/43 | 385/425 > 129/169 / 641/428 > 130/170 | 2/41 > 2/41 / 3/43 > 2/42 |
+| 22, 16 MiB | 275/318 > 275/318 / 532/322 > 276/320 | 521/465 > 393/401 / 778/469 > 393/402 | 281/337 > 281/337 / 554/341 > 298/339 |
+
+The compressed bytes of all 90 rows are unchanged.
+
 ## Long-distance matching
 
 `LongDistanceMatching` is `zstd --long`: with it on and no `WindowLog`, the window is 2^27 (smaller when the content size is known to be

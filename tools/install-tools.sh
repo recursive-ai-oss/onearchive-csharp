@@ -136,6 +136,11 @@ install_pigz() {
   mk CFLAGS="-O3 -I$z/include" LDFLAGS="-L$z/lib" >/dev/null; mkdir -p "$p/bin"; cp pigz "$p/bin/"
   link "$p/bin/pigz" pigz
 }
+install_gzip() {
+  local p; p="$(prefix_of gzip)"; unpack gzip
+  ./configure --prefix="$p" >/dev/null; mk >/dev/null; make install >/dev/null
+  link "$p/bin/gzip" gzip
+}
 install_libarchive() {
   local p; p="$(prefix_of libarchive)"; unpack libarchive
   local z; z="$(prefix_of zlib)"
@@ -160,7 +165,7 @@ install_cabextract() {
   link "$p/bin/cabextract" cabextract
 }
 
-all_ids="cmake zlib zstd lz4 zlib-ng libdeflate brotli xz lzip bzip2 7zz pigz libarchive tar xorriso cabextract rar"
+all_ids="cmake zlib zstd lz4 zlib-ng libdeflate brotli xz lzip bzip2 7zz pigz gzip libarchive tar xorriso cabextract rar"
 
 # Operating-system tools: recorded, not pinned.
 link_system() {
@@ -184,6 +189,7 @@ versions() {
   line lzip "$("$T/bin/lzip" --version 2>&1 | head -1)"
   line bzip2 "$("$T/bin/bzip2" --help 2>&1 | head -1 | sed 's/,.*//;s/^bzip2: //') (pin $(version_of bzip2))"
   line 7zz "$("$T/bin/7zz" 2>&1 | grep -m1 '7-Zip' | cut -c1-80)"
+  line gzip "$("$T/bin/gzip" --version 2>&1 | head -1)"
   line pigz "$("$T/bin/pigz" --version 2>&1 | head -1)"
   line bsdtar "$("$T/bin/bsdtar" --version 2>&1 | head -1)"
   line gnutar "$("$T/bin/gnutar" --version 2>&1 | head -1)"

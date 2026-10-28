@@ -15,6 +15,13 @@ namespace RecursiveAI.OneCompress.Zstd;
 [Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public abstract class ZstdMatchFinder
 {
+    /// <summary>
+    /// Gets or sets whether tables indexed by position may start small and grow as the frame's data arrives, which a stream of unknown length
+    /// wants (it may never fill the window). Set before <see cref="BeginFrame"/>; false allocates every table whole. Growing never changes
+    /// what a finder finds.
+    /// </summary>
+    internal bool GrowTables { get; set; }
+
     /// <summary>Prepares for a new frame: empties the search tables and attaches the dictionary, if any.</summary>
     /// <param name="parameters">The parameters to search with.</param>
     /// <param name="dictionary">The dictionary whose content precedes the frame's data, or <see langword="null"/>.</param>

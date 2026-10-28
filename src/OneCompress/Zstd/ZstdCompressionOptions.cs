@@ -37,6 +37,17 @@ public sealed class ZstdCompressionOptions
     /// </summary>
     public long? ContentSize { get; init; }
 
+    /// <summary>
+    /// Gets an estimate of the frame's content size for a streaming encoder that is not given <see cref="ContentSize"/>, or
+    /// <see langword="null"/> (the default) for none. Without a size the encoder assumes the largest input the level is tuned for,
+    /// which at the high levels means a window of up to 128 MiB and tables of hundreds of megabytes (the window buffer and the
+    /// binary-tree links grow with the data; the hash tables are allocated whole). The estimate picks the window and table sizes as
+    /// a known size would, so a stream of small frames at a high level does not pay for tables it cannot fill. It is not written
+    /// to the header and not enforced: input beyond the estimate is compressed with the smaller window, at a lower ratio.
+    /// Ignored when <see cref="ContentSize"/> is given. Must not be negative.
+    /// </summary>
+    public long? SizeHint { get; init; }
+
     /// <summary>Gets the dictionary to compress with, or <see langword="null"/> for none. The decoder must be given the same dictionary.</summary>
     public ZstdCompressionDictionary? Dictionary { get; init; }
 
