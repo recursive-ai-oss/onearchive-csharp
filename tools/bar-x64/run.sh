@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Full speed, ratio and memory bar for the Zstandard and LZ4 codecs against the reference tools, in two chunks that each fit
+# Full speed, ratio and memory bar for the Zstandard and LZ4 codecs against the reference tools, in chunks that each fit
 # in about two hours on a shared benchmark host.
 #
-#   run.sh <1|2> [--only "step step"] [--list]
+#   run.sh <1|2|3> [--only "step step"] [--list]
 #
 #   chunk 1: Zstandard levels -5..19 on whole files (compress, and decode of our own output), decode of the tool's frames,
 #            small game snapshot payloads with trained dictionaries (compress and decode), LZ4 whole files and small payloads.
-#   chunk 2: Zstandard levels 20 and 22, long-distance matching, multithreaded jobs, dictionary training time and memory,
-#            and the bar runner on a few files.
+#   chunk 2: the decode rows again (the tool frames, LZ4 whole files, small payloads), Zstandard levels 20 and 22,
+#            long-distance matching.
+#   chunk 3: multithreaded jobs, dictionary training time and memory, Zstandard level 19 on small payloads, and the
+#            bar runner on a few files.
 #
 # Each chunk is one job: it takes the host's bench lock itself (exits 3 if the lock is held, without waiting), builds the
 # benchmark programs in Release, runs its steps one after another, records load every minute next to a list of the busiest
@@ -39,7 +41,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
-case "$chunk" in 1|2) ;; *) echo "usage: run.sh <1|2> [--only \"step ...\"] [--list]" >&2; exit 2 ;; esac
+case "$chunk" in 1|2|3) ;; *) echo "usage: run.sh <1|2|3> [--only \"step ...\"] [--list]" >&2; exit 2 ;; esac
 
 home="${ONEARCHIVE_HOME:-$HOME/onearchive}"
 [ -d "$HOME/dotnet10" ] && export DOTNET_ROOT="$HOME/dotnet10"
@@ -70,11 +72,16 @@ steps() {
     echo "enc-16-19|25|enc_run --levels '16 17 18 19'"
     echo "game-enc|20|game_enc"
     echo "game-dec|15|game_dec"
-  else
+  elif [ "$chunk" = 2 ]; then
+    echo "dec-tool|20|dec_run"
+    echo "lz4|18|lz4_run"
+    echo "game-dec|14|game_dec"
     echo "enc-20-22|30|enc_run --levels '20 22'"
     echo "ldm|10|ldm_run"
+  else
     echo "jobs|14|jobs_run"
     echo "train|15|train_run"
+    echo "game-enc|5|game_enc19"
     echo "bar-runner|15|bar_runner"
   fi
 }
@@ -155,6 +162,12 @@ game_enc() {
     BENCH_DLL="$enc_dll" "$zenc/game.sh" --kinds "$k" --sizes "16384 114688" --levels "$lv" --train-files 5000 --test-files 5000 --timing
   done
 }
+game_enc19() {
+  local k
+  for k in snapshots saves; do
+    BENCH_DLL="$enc_dll" "$zenc/game.sh" --kinds "$k" --sizes "16384 114688" --levels "19" --train-files 5000 --test-files 5000 --timing
+  done
+}
 game_dec() {
   local k lv
   for kl in "frames:1 3" "snapshots:3 9 19" "saves:3 9 19"; do
@@ -177,7 +190,7 @@ jobs_run() {
 }
 train_run() {
   local sil=""; [ -d "$ONEARCHIVE_CORPORA/silesia" ] && sil="$ONEARCHIVE_CORPORA/silesia"
-  TRAIN_DLL="$train_dll" "$ztrain/timing.sh" --runs 3 ${sil:+--silesia "$sil"}
+  TRAIN_DLL="$train_dll" bash "$ztrain/timing.sh" --runs 3 ${sil:+--silesia "$sil"}
 }
 bar_runner() {
   BAR_LOCK="$out/bar.lock" BAR_OUT="$out/bar-runner" BAR_BUSY_MAX=32 BAR_WAIT_MIN=1 \
