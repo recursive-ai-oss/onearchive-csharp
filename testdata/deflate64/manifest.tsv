@@ -1,0 +1,18 @@
+# Deflate64 vectors: name, kind (ok = decodes to the length and SHA-256; bad = format error; truncated = format error with IsTruncated), output length, output SHA-256, note
+# 7-Zip vectors written by: 7-Zip 26.00 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-02-12
+far-distances	ok	65625	11a177b46f3f0322f461c99c086ed328835d2a51c8faa970bade4196daa1901a	a 65538-byte match, then 10-byte matches at distances 32769 to 65536 (symbols 30 and 31)
+long-lengths	ok	107057	a6190651e608ec966d8bf21cb837aa1d9762bd500ec2a9082fc40c5e7ce8b35b	matches of 258, 259, 1000, 40000 and 65538 bytes (symbol 285 with 16 extra bits)
+length-258-via-284	ok	261	a21e436bf2df949962ab73956a26411287ae4b4a6a59914cb38a1bf0b9853871	length 258 written as symbol 284 plus extra 31 (accepted by 7-Zip)
+dynamic-hlit288-hdist32	ok	40004	b719ac50a19ab52b1fa0f74676bd970657b06293151fd11787e236d9df1b8a7d	dynamic block declaring 288 literal/length and 32 distance codes; uses distance symbol 30
+empty-final-block	ok	0	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	a single empty fixed block
+bad-distance-before-start	bad			distance 32769 after 2 bytes of output
+bad-symbol-286	bad			literal/length symbol 286 in a fixed block
+bad-block-type-3	bad			reserved block type 3
+bad-stored-nlen	bad			stored block whose NLEN is not the complement of LEN
+truncated-far-distances	truncated			a valid stream cut in half
+7z-text-mx1	ok	100000	f4f8d16af515d941f2eef06a7d1ffe7c35bf9c61579ab6d17d1591e7847a089c	7-Zip 26.00 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-02-12 -mm=Deflate64 -mx=1
+7z-text-mx9	ok	100000	f4f8d16af515d941f2eef06a7d1ffe7c35bf9c61579ab6d17d1591e7847a089c	7-Zip 26.00 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-02-12 -mm=Deflate64 -mx=9
+7z-far-mx5	ok	113100	0e9ec00e2c7c1f24d6f23a88e1dc2efbb19243b740488173fc2c44ecd4fc3fa5	7-Zip 26.00 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-02-12 -mm=Deflate64 -mx=5
+7z-runs-mx3	ok	184010	2e858ccc43c9ad1d7fa12f00d5132fa76cd7497569ab78697f7e53289d004312	7-Zip 26.00 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-02-12 -mm=Deflate64 -mx=3
+7z-tiny-mx1	ok	36	a3b80a2ed3d9747c0cd0d6458f91be92b7efb97bd22de3ba16e0cf8dc61c9bd9	7-Zip 26.00 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-02-12 -mm=Deflate64 -mx=1
+7z-tiny-mx9	ok	36	a3b80a2ed3d9747c0cd0d6458f91be92b7efb97bd22de3ba16e0cf8dc61c9bd9	7-Zip 26.00 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-02-12 -mm=Deflate64 -mx=9
