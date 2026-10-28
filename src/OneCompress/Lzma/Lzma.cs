@@ -4,7 +4,7 @@ namespace RecursiveAI.OneCompress.Lzma;
 
 /// <summary>One-call decompression of the <c>.lzma</c> format ("LZMA alone"). Everything here is built on <see cref="LzmaDecoder"/>.</summary>
 [Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
-public static class Lzma
+public static partial class Lzma
 {
     /// <summary>Decompresses a buffer holding one <c>.lzma</c> stream.</summary>
     /// <param name="source">The compressed data.</param>
@@ -35,7 +35,7 @@ public static class Lzma
 
 /// <summary>One-call decompression of a raw LZMA2 stream, as stored inside xz, 7z and zip. Everything here is built on <see cref="Lzma2Decoder"/>.</summary>
 [Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
-public static class Lzma2
+public static partial class Lzma2
 {
     /// <summary>Decompresses a buffer holding one raw LZMA2 stream.</summary>
     /// <param name="source">The compressed data, ending with the zero control byte.</param>
