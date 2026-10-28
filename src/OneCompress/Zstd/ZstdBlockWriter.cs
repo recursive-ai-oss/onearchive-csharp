@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Zstd;
 
@@ -74,6 +75,7 @@ public sealed class ZstdBlockWriter
     private readonly uint[] _literalHistogram = new uint[256];
     private readonly byte[] _symbolList = new byte[257];
     private readonly uint[][] _codeHistogram = [new uint[64], new uint[64], new uint[64]];
+    private readonly uint[][] _codeHistogramB = [new uint[64], new uint[64], new uint[64]];
     private readonly byte[] _description = new byte[160];
     private readonly short[][] _normalizedByKind = [new short[64], new short[64], new short[64]];
     private readonly byte[][] _descriptionByKind = [new byte[160], new byte[160], new byte[160]];
@@ -578,13 +580,16 @@ public sealed class ZstdBlockWriter
     }
 
     // Turns the sequences into codes, extra bits and code histograms, resolving repeat offsets as it goes. A method of its own so
-    // that its few live values stay in registers.
+    // that its few live values stay in registers. Neighbouring sequences very often share a code, and two increments of the same
+    // counter in a row wait on each other's store, so even and odd sequences count into separate histograms (histograms B), which
+    // are added into the real ones at the end; the sums are the same as a single pass.
     private static void ComputeCodes(
         ReadOnlySpan<ZstdSequence> sequences,
         SequenceCode[] seqCodes,
         uint[] llHistogram,
         uint[] ofHistogram,
         uint[] mlHistogram,
+        uint[][] histogramsB,
         ReadOnlySpan<uint> offsetValues,
         Span<ulong> present,
         out int maxLl,
@@ -592,47 +597,76 @@ public sealed class ZstdBlockWriter
         out int maxMl)
     {
         int nseq = sequences.Length;
-        maxLl = 0;
-        maxOf = 0;
-        maxMl = 0;
         ulong llPresent = 0, ofPresent = 0, mlPresent = 0;
-        ReadOnlySpan<byte> llLookup = s_literalLengthCodes;
-        ReadOnlySpan<byte> mlLookup = s_matchLengthCodes;
-        for (int i = 0; i < nseq; i++)
+        uint[] llB = histogramsB[0], ofB = histogramsB[1], mlB = histogramsB[2];
+        Array.Clear(llB);
+        Array.Clear(ofB);
+        Array.Clear(mlB);
+        int i = 0;
+        for (; i + 2 <= nseq; i += 2)
         {
-            // i < nseq <= every code array's length (EnsureCodeCapacity); codes are at most 52, inside the histograms' 53+ entries.
-            ZstdSequence s = Raw.Get(sequences, i);
-            uint ofValue = Raw.Get(offsetValues, i);
-            uint lls = s.LiteralLength;
-            int ll = lls < 64 ? Raw.Get(llLookup, (int)lls) : BitOperations.Log2(lls) + 19;
-            uint m = s.MatchLength - 3;
-            int ml = m < 128 ? Raw.Get(mlLookup, (int)m) : BitOperations.Log2(m) + 36;
-            int of = BitOperations.Log2(ofValue);
-            int llBitCount = Raw.Get(ZstdFormat.LiteralLengthBits, ll);
-            int mlBitCount = Raw.Get(ZstdFormat.MatchLengthBits, ml);
-            ref SequenceCode record = ref Raw.RefRw(seqCodes, i);
-            record.Ll = (byte)ll;
-            record.Ml = (byte)ml;
-            record.Of = (byte)of;
-            record.LlMlBits = (byte)(llBitCount + mlBitCount);
-            record.LlMlExtra = (lls - Raw.Get(ZstdFormat.LiteralLengthBase, ll)) | ((s.MatchLength - Raw.Get(ZstdFormat.MatchLengthBase, ml)) << llBitCount);
-            record.OfExtra = ofValue - (1u << of);
-            Raw.RefRw(llHistogram, ll)++;
-            Raw.RefRw(mlHistogram, ml)++;
-            Raw.RefRw(ofHistogram, of)++;
-            maxLl = Math.Max(maxLl, ll);
-            maxMl = Math.Max(maxMl, ml);
-            maxOf = Math.Max(maxOf, of);
-            // Codes are at most 52, so one bit each fits a word.
-            llPresent |= 1UL << ll;
-            ofPresent |= 1UL << of;
-            mlPresent |= 1UL << ml;
+            // i + 1 < nseq <= every code array's length (EnsureCodeCapacity); codes are at most 52, inside the histograms' 64 entries.
+            Code(sequences, offsetValues, seqCodes, i, llHistogram, ofHistogram, mlHistogram, ref llPresent, ref ofPresent, ref mlPresent);
+            Code(sequences, offsetValues, seqCodes, i + 1, llB, ofB, mlB, ref llPresent, ref ofPresent, ref mlPresent);
+        }
+
+        if (i < nseq)
+        {
+            Code(sequences, offsetValues, seqCodes, i, llHistogram, ofHistogram, mlHistogram, ref llPresent, ref ofPresent, ref mlPresent);
+        }
+
+        for (int c = 0; c < 56; c++)
+        {
+            llHistogram[c] += llB[c];
+            ofHistogram[c] += ofB[c];
+            mlHistogram[c] += mlB[c];
         }
 
         present[0] = llPresent;
         present[1] = ofPresent;
         present[2] = mlPresent;
 
+        // Codes are at most 52, so one bit each fits a word; the highest set bit is the largest code.
+        maxLl = llPresent == 0 ? 0 : 63 - BitOperations.LeadingZeroCount(llPresent);
+        maxOf = ofPresent == 0 ? 0 : 63 - BitOperations.LeadingZeroCount(ofPresent);
+        maxMl = mlPresent == 0 ? 0 : 63 - BitOperations.LeadingZeroCount(mlPresent);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Code(
+        ReadOnlySpan<ZstdSequence> sequences,
+        ReadOnlySpan<uint> offsetValues,
+        SequenceCode[] seqCodes,
+        int i,
+        uint[] llHistogram,
+        uint[] ofHistogram,
+        uint[] mlHistogram,
+        ref ulong llPresent,
+        ref ulong ofPresent,
+        ref ulong mlPresent)
+    {
+        ZstdSequence s = Raw.Get(sequences, i);
+        uint ofValue = Raw.Get(offsetValues, i);
+        uint lls = s.LiteralLength;
+        int ll = lls < 64 ? Raw.Get<byte>(s_literalLengthCodes, (int)lls) : BitOperations.Log2(lls) + 19;
+        uint m = s.MatchLength - 3;
+        int ml = m < 128 ? Raw.Get<byte>(s_matchLengthCodes, (int)m) : BitOperations.Log2(m) + 36;
+        int of = BitOperations.Log2(ofValue);
+        int llBitCount = Raw.Get(ZstdFormat.LiteralLengthBits, ll);
+        int mlBitCount = Raw.Get(ZstdFormat.MatchLengthBits, ml);
+        ref SequenceCode record = ref Raw.RefRw(seqCodes, i);
+        record.Ll = (byte)ll;
+        record.Ml = (byte)ml;
+        record.Of = (byte)of;
+        record.LlMlBits = (byte)(llBitCount + mlBitCount);
+        record.LlMlExtra = (lls - Raw.Get(ZstdFormat.LiteralLengthBase, ll)) | ((s.MatchLength - Raw.Get(ZstdFormat.MatchLengthBase, ml)) << llBitCount);
+        record.OfExtra = ofValue - (1u << of);
+        Raw.RefRw(llHistogram, ll)++;
+        Raw.RefRw(mlHistogram, ml)++;
+        Raw.RefRw(ofHistogram, of)++;
+        llPresent |= 1UL << ll;
+        ofPresent |= 1UL << of;
+        mlPresent |= 1UL << ml;
     }
 
     // Sequences with no literals are rare; they use the shifted repeat-offset meaning (RFC 8878 §3.1.2.5), kept in one place.
@@ -680,7 +714,7 @@ public sealed class ZstdBlockWriter
         }
 
         Span<ulong> present = stackalloc ulong[3];
-        ComputeCodes(sequences, seqCodes, llHistogram, ofHistogram, mlHistogram, offsetValues, present, out int maxLl, out int maxOf, out int maxMl);
+        ComputeCodes(sequences, seqCodes, llHistogram, ofHistogram, mlHistogram, _codeHistogramB, offsetValues, present, out int maxLl, out int maxOf, out int maxMl);
         int exactLimit = _estimatedPricing ? 0 : ExactCostLimit;
         if (nseq <= exactLimit)
         {
@@ -987,10 +1021,29 @@ public sealed class ZstdBlockWriter
                 bitCount += (int)nb;
                 llState = Raw.Get(llNext, (llState >> (int)nb) + t.FindState);
 
-                // At most 27 bits of states and 7 left over make 34; literal-length and match-length extras of up to 28 bits
-                // fit beside them. Larger ones (rare) go in two halves with a flush between.
+                // At most 26 bits of states and 7 left over make 33; when the extras of all three codes fit in the remaining 31 bits
+                // (nearly every sequence of an ordinary block) they join the states in one flush, which shortens the chain of
+                // dependent bit-count updates. Larger ones (rare) go in two halves with a flush between.
                 uint extra = sc.LlMlExtra;
                 int extraBits = sc.LlMlBits;
+                if ((uint)(extraBits + sc.Of) <= 31)
+                {
+                    container |= (ulong)extra << bitCount;
+                    bitCount += extraBits;
+                    container |= (ulong)sc.OfExtra << bitCount;
+                    bitCount += sc.Of;
+                    Raw.WriteUInt64(output, position, container);
+                    position += bitCount >> 3;
+                    container >>= bitCount & ~7;
+                    bitCount &= 7;
+                    if (start + position > limit)
+                    {
+                        return -1;
+                    }
+
+                    continue;
+                }
+
                 if (extraBits > 28)
                 {
                     container |= (ulong)(extra & 0xFFFF) << bitCount;
