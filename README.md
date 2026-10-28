@@ -25,22 +25,36 @@ for example one directory per git worktree.
 ## Preview codecs
 
 Zstandard and LZ4 are preview while their speed is below the reference tools'. Their compression ratio and
-byte-identical output are already at the target; speed is what is still being tuned. Their public types
+byte-identical output are already at the target; speed is what is still being tuned. The archive layer
+(`Archive`, the tar reader and writer) is preview while the containers are being added and the formats' interop and fuzz
+coverage grows. Their public types
 carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
 
 | Codec | Diagnostic ID |
 |---|---|
 | Zstandard (including dictionary training and the seekable format) | `ONECOMPRESS001` |
 | LZ4 | `ONECOMPRESS002` |
+| OneArchive: `Archive`, the entry model, readers and writers, tar | `ONEARCHIVE001` |
 
 ```xml
 <PropertyGroup>
-  <NoWarn>$(NoWarn);ONECOMPRESS001</NoWarn>
+  <NoWarn>$(NoWarn);ONECOMPRESS001;ONEARCHIVE001</NoWarn>
 </PropertyGroup>
 ```
 
 or `#pragma warning disable ONECOMPRESS001` around the code that uses it. The marker comes off once the codec
 meets its speed target.
+
+## Archives
+
+```csharp
+Archive.Extract("data.tar.zst", "out");                         // safe by default: no writes outside "out", limits on
+Archive.Create("backup.tar.zst").Add("assets/").Save();          // format and compression from the extension
+using var archive = Archive.Open("data.tar");                  // entries, random access when the source can seek
+```
+
+tar (ustar, pax, GNU, sparse files) is implemented, plain and as `.tar.zst`/`.tar.lz4`; the other containers plug into the same
+reader and writer interfaces. The model, the safety defaults and limits, and the tar coverage are in `docs/archive.md`.
 
 ## Layout
 

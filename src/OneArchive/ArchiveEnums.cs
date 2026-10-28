@@ -1,0 +1,63 @@
+using System.Diagnostics.CodeAnalysis;
+
+namespace RecursiveAI.OneArchive;
+
+/// <summary>The container formats OneArchive can read or write. More members are added as containers land.</summary>
+[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
+public enum ArchiveFormat
+{
+    /// <summary>The format is not known.</summary>
+    Unknown = 0,
+
+    /// <summary>tar: ustar, pax and GNU variants (see <c>RecursiveAI.OneArchive.Tar</c>).</summary>
+    Tar = 1,
+}
+
+/// <summary>A compression layer wrapped around a whole archive, as in <c>.tar.zst</c>.</summary>
+[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
+public enum ArchiveCompression
+{
+    /// <summary>The archive is stored as is.</summary>
+    None = 0,
+
+    /// <summary>Zstandard (<c>.zst</c>).</summary>
+    Zstd = 1,
+
+    /// <summary>LZ4 frame format (<c>.lz4</c>).</summary>
+    Lz4 = 2,
+
+    /// <summary>gzip (<c>.gz</c>). Detected, but not yet supported: opening raises <see cref="ArchiveUnsupportedException"/>.</summary>
+    Gzip = 3,
+
+    /// <summary>bzip2 (<c>.bz2</c>). Detected, but not yet supported.</summary>
+    Bzip2 = 4,
+
+    /// <summary>xz (<c>.xz</c>). Detected, but not yet supported.</summary>
+    Xz = 5,
+}
+
+/// <summary>What kind of filesystem object an archive entry describes.</summary>
+[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
+public enum ArchiveEntryKind
+{
+    /// <summary>A regular file; its data is the entry's content.</summary>
+    File = 0,
+
+    /// <summary>A directory.</summary>
+    Directory = 1,
+
+    /// <summary>A symbolic link; <see cref="ArchiveEntry.LinkTarget"/> is the path it points to.</summary>
+    Symlink = 2,
+
+    /// <summary>A hard link to another entry of the same archive; <see cref="ArchiveEntry.LinkTarget"/> names it.</summary>
+    HardLink = 3,
+
+    /// <summary>A character device node.</summary>
+    CharacterDevice = 4,
+
+    /// <summary>A block device node.</summary>
+    BlockDevice = 5,
+
+    /// <summary>A named pipe.</summary>
+    Fifo = 6,
+}

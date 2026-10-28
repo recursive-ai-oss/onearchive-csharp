@@ -33,5 +33,8 @@ internal static class FuzzTargets
         Lz4EncoderTargets.Block,
         ZstdSeekableTargets.Read,
         ZstdSeekableTargets.RoundTrip,
+        ArchiveTargets.TarRead,
+        ArchiveTargets.Open,
+        ArchiveTargets.TarRoundTrip,
     ];
 }

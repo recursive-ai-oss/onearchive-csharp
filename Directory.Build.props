@@ -55,12 +55,12 @@
   </PropertyGroup>
 
   <!--
-    zstd (ONECOMPRESS001) and LZ4 (ONECOMPRESS002) are marked [Experimental] while they are preview.
+    zstd (ONECOMPRESS001), LZ4 (ONECOMPRESS002) and the OneArchive API (ONEARCHIVE001) are marked [Experimental] while they are preview.
     Every project in this repository opts in here, the packages included: the compiler reports uses of
     an experimental type from the internal code of the same assembly too.
   -->
   <PropertyGroup>
-    <NoWarn>$(NoWarn);ONECOMPRESS001;ONECOMPRESS002</NoWarn>
+    <NoWarn>$(NoWarn);ONECOMPRESS001;ONECOMPRESS002;ONEARCHIVE001</NoWarn>
   </PropertyGroup>
 
 </Project>
