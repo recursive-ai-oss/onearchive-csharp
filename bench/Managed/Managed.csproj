@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Compares our codecs with the fastest implementations written entirely in managed code.
+       The only project that references these packages (used as black boxes for comparison rows;
+       never shipped). Third-party APIs are driven as their package pages document them, so
+       warnings from them are reported but do not fail this build, and the vulnerability audit is
+       off because one of the comparison packages is a known-vulnerable zip library that is only
+       ever fed our own benchmark data. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>OneArchive.ManagedBench</AssemblyName>
+    <RootNamespace>RecursiveAI.ManagedBench</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>false</TieredPGO>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
+    <!-- Exact versions; nothing else in the repository references these. -->
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
+    <PackageReference Include="K4os.Compression.LZ4" Version="1.3.8" />
+    <PackageReference Include="SharpCompress" Version="1.0.0" />
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
+    <PackageReference Include="DotNetZip" Version="1.16.0" />
+    <PackageReference Include="BrotliSharpLib" Version="0.3.3" />
+    <PackageReference Include="BrotliManagedFast" Version="1.1.0" />
+    <PackageReference Include="Lzma.Net" Version="5.8.4.3" />
+    <PackageReference Include="LZMA-SDK" Version="22.1.1" />
+  </ItemGroup>
+
+</Project>
