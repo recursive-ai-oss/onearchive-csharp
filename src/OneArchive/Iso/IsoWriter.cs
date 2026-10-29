@@ -14,7 +14,8 @@ namespace RecursiveAI.OneArchive.Iso;
 /// <see cref="ArchiveWriter.Finish()"/> runs, because directory sizes depend on every name, so file content is spooled (in memory
 /// up to <see cref="IsoWriterOptions.MaxMemoryBuffer"/>, then in a temporary file).</para>
 /// <para>The layout is: 16 sectors of zeros, the volume descriptors (primary, Joliet, terminator), the path tables, the directories
-/// of the primary hierarchy and of the Joliet hierarchy, the SUSP continuation areas, then the file data in the order the files were
+/// of the primary hierarchy, the SUSP continuation areas (they belong to the primary hierarchy), the directories of the Joliet
+/// hierarchy, then the file data in the order the files were
 /// written, each starting on a sector. Directory records are sorted as clause 9.3 asks, path tables as clause 6.9.1 asks. Names that
 /// collide after cutting to the interchange level get a three-digit counter, in the order the entries were written. The image
 /// depends only on the entries and options.</para>
@@ -416,6 +417,7 @@ public sealed class IsoWriter : ArchiveWriter
             next += Sectors(ptSize[t]);
         }
 
+        long ceBase = 0;
         for (int t = 0; t < TreeCount; t++)
         {
             foreach (Node d in dirs[t])
@@ -423,10 +425,16 @@ public sealed class IsoWriter : ArchiveWriter
                 d.Trees[t].Extent = next;
                 next += d.Trees[t].Length / Sector;
             }
+
+            if (t == 0)
+            {
+                // Only the primary hierarchy carries Rock Ridge. Its continuation areas follow its directories directly: a reader
+                // that looks ahead only a little past the directory it is parsing finds them there.
+                ceBase = next;
+                next += Sectors(zone);
+            }
         }
 
-        long ceBase = next;
-        next += Sectors(zone);
         var files = new List<Node>();
         foreach (Node n in _nodes)
         {
@@ -474,9 +482,13 @@ public sealed class IsoWriter : ArchiveWriter
             {
                 await WriteAsync(BuildDirectory(d, t, ceBase), async, ct).ConfigureAwait(false);
             }
+
+            if (t == 0)
+            {
+                await WriteAsync(BuildZone(dirs, zone, ceBase), async, ct).ConfigureAwait(false);
+            }
         }
 
-        await WriteAsync(BuildZone(dirs, zone, ceBase), async, ct).ConfigureAwait(false);
         await CopyFilesAsync(files, async, ct).ConfigureAwait(false);
         if (async)
         {

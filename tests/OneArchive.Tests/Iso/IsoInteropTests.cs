@@ -23,7 +23,7 @@ public class IsoInteropTests
     private static void Skip() => Assert.SkipUnless(Tools.InteropEnabled, "set ONEARCHIVE_INTEROP=1 to run interop tests");
 
     // A tree on disk with a symlink, modes and fixed times, then an ISO made from it by the happy path.
-    private static string BuildTree(TempDir temp)
+    private static string BuildTree(TempDir temp, bool withLinks = true)
     {
         string root = temp.Combine("tree");
         Directory.CreateDirectory(Path.Combine(root, "sub", "deeper"));
@@ -37,8 +37,11 @@ public class IsoInteropTests
         File.WriteAllBytes(Path.Combine(root, "empty"), []);
         File.SetUnixFileMode(Path.Combine(root, "run.sh"), (UnixFileMode)0x1ED);
         File.SetUnixFileMode(Path.Combine(root, "big.bin"), (UnixFileMode)0x180);
-        File.CreateSymbolicLink(Path.Combine(root, "link"), "a.txt");
-        File.CreateSymbolicLink(Path.Combine(root, "sub", "up"), "../a.txt");
+        if (withLinks)
+        {
+            File.CreateSymbolicLink(Path.Combine(root, "link"), "a.txt");
+            File.CreateSymbolicLink(Path.Combine(root, "sub", "up"), "../a.txt");
+        }
         foreach (string f in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
         {
             if (new FileInfo(f).LinkTarget is null)
@@ -48,6 +51,15 @@ public class IsoInteropTests
         }
 
         return root;
+    }
+
+    // xorriso extracts a plain image read-only; the temporary directory must be removable afterwards.
+    private static void MakeWritable(string dir)
+    {
+        foreach (string path in Directory.EnumerateFileSystemEntries(dir, "*", SearchOption.AllDirectories).Prepend(dir))
+        {
+            File.SetUnixFileMode(path, File.GetUnixFileMode(path) | UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     private static string MakeIso(TempDir temp, string tree, IsoWriterOptions? options = null)
@@ -100,8 +112,8 @@ public class IsoInteropTests
         string outDir = temp.Combine("xorriso-out");
         Tools.Run(Xorriso, ["-osirrox", "on", "-indev", iso, "-extract", "/", outDir]);
         CompareTrees(tree, outDir);
-        string report = Tools.Run(Xorriso, ["-indev", iso, "-pwd", "-lsl", "/"]);
-        Assert.Contains("link -> a.txt", report, StringComparison.Ordinal);
+        string links = Tools.Run(Xorriso, ["-indev", iso, "-find", "/", "-type", "l"]);
+        Assert.Contains("'/link'", links, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -124,13 +136,14 @@ public class IsoInteropTests
     {
         Skip();
         using var temp = new TempDir();
-        string tree = BuildTree(temp);
+        string tree = BuildTree(temp, withLinks: false);
         string iso = MakeIso(temp, tree, new IsoWriterOptions { Joliet = false, RockRidge = false, Level = 1 });
         string outDir = temp.Combine("plain-out");
         Tools.Run(Xorriso, ["-joliet", "off", "-rockridge", "off", "-osirrox", "on", "-indev", iso, "-extract", "/", outDir]);
         Assert.Equal("hello\n", File.ReadAllText(Path.Combine(outDir, "A.TXT")));
         Assert.Equal("bee\n", File.ReadAllText(Path.Combine(outDir, "SUB", "B.TXT")));
         Assert.Equal(ContainerVectors.Big(3_000_000), File.ReadAllBytes(Path.Combine(outDir, "BIG.BIN")));
+        MakeWritable(outDir);
     }
 
     [Fact]
@@ -150,11 +163,24 @@ public class IsoInteropTests
     }
 
     [Fact]
-    public void BsdtarReadsTheJolietNamesWhenRockRidgeIsAbsent()
+    public void BsdtarReadsARockRidgeOnlyImage()
     {
         Skip();
         using var temp = new TempDir();
         string tree = BuildTree(temp);
+        string iso = MakeIso(temp, tree, new IsoWriterOptions { Joliet = false });
+        string outDir = temp.Combine("bsdtar-rr-out");
+        Directory.CreateDirectory(outDir);
+        Tools.Run(BsdTar, ["-xf", iso, "-C", outDir]);
+        CompareTrees(tree, outDir);
+    }
+
+    [Fact]
+    public void BsdtarReadsTheJolietNamesWhenRockRidgeIsAbsent()
+    {
+        Skip();
+        using var temp = new TempDir();
+        string tree = BuildTree(temp, withLinks: false);
         string iso = MakeIso(temp, tree, new IsoWriterOptions { RockRidge = false });
         string outDir = temp.Combine("bsdtar-joliet-out");
         Directory.CreateDirectory(outDir);
