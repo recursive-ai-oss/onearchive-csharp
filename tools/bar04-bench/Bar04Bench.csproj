@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Timing loops for the brotli decoder, the bzip2 and Deflate64 encoders, the Deflate64 decoder and the cab LZX decoder.
+       The cabinet builder and the LZX compressor are the test helpers, compiled in so that cabinets of corpus size can be made. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Bar04Bench</AssemblyName>
+    <RootNamespace>RecursiveAI.Bench</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
+    <ProjectReference Include="../../src/OneArchive/OneArchive.csproj" />
+    <Compile Include="../../tests/OneCompress.Tests/Lzx/LzxTestEncoder.cs" Link="Helpers/LzxTestEncoder.cs" />
+    <Compile Include="../../tests/OneArchive.Tests/Cab/CabTestBuilder.cs" Link="Helpers/CabTestBuilder.cs" />
+  </ItemGroup>
+
+</Project>

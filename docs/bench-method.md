@@ -167,6 +167,33 @@ at level N, all one call in memory over a buffer provided by the caller (`tools/
   Chunk `0.3` of `tools/bar-x64/run.sh` runs the steps in order of cost (presets 0-3, decode, lzip 0-3, 7z sizes, then presets
   4-6, then 7-9 with a single repeat) so that a deadline drops the slowest rows first.
 
+## brotli, bzip2, Deflate64 and LZX (chunk 0.4)
+
+References: `brotli` 1.2.1, `bzip2` 1.0.8, `7zz` 26.05 and `cabextract` 1.11, all pinned and run as command-line programs. The tools' time
+is the wall time of one run with output to `/dev/null` (or a RAM file for 7-Zip archives) minus the wall time of the same command on a
+one-byte input, best of the repeats; ours is the best of the repeats of the in-process call (`tools/bar04-bench`, and
+`tools/brotli-bench` for the brotli encoder). Rates are MB/s of uncompressed data; peak memory comes from `/usr/bin/time` around both
+sides (for the brotli encoder, around the tool inside `BrotliBench` and from the process's own peak for ours).
+
+- **brotli encode** (`tools/brotli-bench/bar.sh`): qualities 0-11 at window 22, `brotli -q N -w 22`. Qualities 0-4, 5-9 and 10-11 are
+  separate steps (3, 2 and 1 repeats) so a deadline drops the slowest first.
+- **brotli decode** (`bar04-bench/bar.sh --mode brotli-dec`): the tool's stream and ours at qualities 1, 5, 9, decoded by `brotli -d -c`
+  and by `Brotli.TryDecompress` into a buffer that is already allocated. Our output is compared with the original after the timing.
+- **bzip2 encode** (`--mode bz2-enc`): levels 1, 5, 9 (2-4 and 6-8 in a second step) against `bzip2 -N -c` on stdin. Our stream is decoded
+  by `bzip2 -dc` and compared with the input (column `interop`; a mismatch is a MISS).
+- **Deflate64** (`--mode d64-enc|d64-dec`): levels 1, 5, 9 against `7zz a -tzip -mm=Deflate64 -mx=N -mmt=1`. 7-Zip has no raw-stream
+  mode, so its compress time includes reading the file, CRC-32 and writing the zip (visible at `-mx=1`, which favours the reference
+  there), and its size is the entry's compressed size from the central directory. Decode compares our raw-stream decode with
+  `7zz e -so` on a zip (which also verifies the CRC-32); the zip around our stream is written by `d64-zip`, which `7zz` must read
+  back to the original bytes (column `interop`).
+- **LZX decode** (`--mode lzx-dec`): there are no Microsoft-made cabinets of corpus size, so a one-file cabinet (window 2^21, 32 KiB
+  frames, verbatim and aligned blocks) is made by the test compressor in `tests/OneCompress.Tests/Lzx`, compiled into the bench. `cabextract -q -p`
+  must extract it byte-exact before it is timed. Both sides read the same bytes; ours goes through `CabReader` with checksums verified.
+  The rate depends on how the test compressor parses (greedy, no optimal parsing), so it says how fast the decoder is on such streams only.
+- **Quick mode.** `BAR_QUICK=1` (with `tools/bar-x64/run.sh 0.4` or either `bar.sh`) cuts each input to its first 1 MiB and uses one
+  repeat, to prove the scripts run; its numbers mean nothing. Use a private `BAR_LOCK_FILE` and `BAR_OUT`.
+- **Pass rule** as above. `run.sh 0.4 --list` shows the steps and their expected minutes.
+
 ## Running
 
 ```

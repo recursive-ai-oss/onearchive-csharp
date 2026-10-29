@@ -2,7 +2,7 @@
 # Full speed, ratio and memory bar for the Zstandard and LZ4 codecs against the reference tools, in chunks that each fit
 # in about two hours on a shared benchmark host.
 #
-#   run.sh <1|2|3|0.2|0.3> [--only "step step"] [--list]
+#   run.sh <1|2|3|0.2|0.3|0.4> [--only "step step"] [--list]
 #
 #   chunk 1: Zstandard levels -5..19 on whole files (compress, and decode of our own output), decode of the tool's frames,
 #            small game snapshot payloads with trained dictionaries (compress and decode), LZ4 whole files and small payloads.
@@ -15,6 +15,12 @@
 #            file, in memory against the CLI with start-up subtracted), decode of the tools' output and of ours by us and by the
 #            tools, and the sizes of our 7z writer against `7zz -mx=1/5/9`; silesia.tar and enwik8. The cheap presets come first and
 #            7-9 last with one repeat, so a deadline drops the slowest rows. Also runs on the Mac (BAR_LOCK_FILE=~/onearchive/BENCH.lock).
+#   chunk 0.4 (output dir chunk0.4): brotli, bzip2, Deflate64 and LZX. brotli encode q0-11 (window 22) against `brotli` (tools/brotli-bench),
+#            brotli decode of the tool's output and of ours, bzip2 encode against `bzip2` levels 1-9 with `bzip2 -d` reading ours back,
+#            Deflate64 compress and decompress against 7-Zip `-tzip -mm=Deflate64 -mx=N -mmt=1`, and cab LZX decode against `cabextract`
+#            on cabinets built by the test compressor (tools/bar04-bench/bar.sh describes each method and its caveats); silesia.tar and
+#            enwik8. The cheap rows come first and brotli q10-11 last, so a deadline drops the slowest rows. Also runs on the Mac
+#            (BAR_LOCK_FILE=~/onearchive/BENCH.lock).
 #   chunk 3: multithreaded jobs, dictionary training time and memory, Zstandard level 19 on small payloads, the small
 #            synthetic payload rows (256 B to 16 KiB, tools/small-bench), and the bar runner on a few files.
 #
@@ -32,6 +38,8 @@
 #   BAR_LOCK_LABEL   text at the start of the lock file entry (default "onearchive bar")
 #   BAR_COMMIT       free text recorded in machine.txt (for example the commit hash)
 #   BAR_FILES        whole-file inputs (default "silesia.tar enwik8")
+#   BAR_QUICK        1: cut every input to its first 1 MiB with one repeat and divide the step times by 1000 (a run of the whole chunk
+#                    in a few minutes to prove the scripts; chunk 0.4 only; the numbers mean nothing). Use a private BAR_LOCK_FILE and BAR_OUT.
 #   BAR_SCALE        divides every step's expected duration (for dry runs on tiny inputs; default 1)
 #   DOTNET_ROOT      dotnet install (~/dotnet10 when it exists, whatever the environment says)
 # Pass/miss rule: compressed size within 1% of the reference and our rate at least 0.87 of the reference's rate.
@@ -48,7 +56,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
-case "$chunk" in 1|2|3|0.2|0.3) ;; *) echo "usage: run.sh <1|2|3|0.2|0.3> [--only \"step ...\"] [--list]" >&2; exit 2 ;; esac
+case "$chunk" in 1|2|3|0.2|0.3|0.4) ;; *) echo "usage: run.sh <1|2|3|0.2|0.3|0.4> [--only \"step ...\"] [--list]" >&2; exit 2 ;; esac
 
 home="${ONEARCHIVE_HOME:-$HOME/onearchive}"
 [ -d "$HOME/dotnet10" ] && export DOTNET_ROOT="$HOME/dotnet10"
@@ -68,6 +76,8 @@ if [ -n "${BAR_DEADLINE:-}" ]; then
   budget=$(( ( deadline - $(date +%s) ) / 60 - 5 ))
 fi
 scale="${BAR_SCALE:-1}"
+[ -n "${BAR_QUICK:-}" ] && [ -z "${BAR_SCALE:-}" ] && scale=1000
+export BAR_QUICK="${BAR_QUICK:-}"
 files="${BAR_FILES:-silesia.tar enwik8}"
 if [ "$(uname)" = Darwin ]; then lock="${BAR_LOCK_FILE:-$HOME/onearchive/BENCH.lock}"; else lock="${BAR_LOCK_FILE:-$HOME/WORKER-BENCH.lock}"; fi
 
@@ -75,7 +85,17 @@ if [ "$(uname)" = Darwin ]; then lock="${BAR_LOCK_FILE:-$HOME/onearchive/BENCH.l
 # deliberately generous; a step whose expected time no longer fits in the budget is skipped, not started.
 zenc="$repo/tools/zstd-encode-bench"; zdec="$repo/tools/zstd-decode-bench"; ztrain="$repo/tools/zstd-train-bench"; l4="$repo/tools/lz4-bench"; sb="$repo/tools/small-bench"
 steps() {
-  if [ "$chunk" = 0.3 ]; then
+  if [ "$chunk" = 0.4 ]; then
+    echo "bzip2-enc|12|b04_run bz2-enc '1 5 9' 3"
+    echo "d64-dec|10|b04_run d64-dec '1 5 9' 5"
+    echo "lzx-dec|20|b04_run lzx-dec '' 5"
+    echo "d64-enc|25|b04_run d64-enc '1 5 9' 3"
+    echo "brotli-dec|40|b04_run brotli-dec '1 5 9' 5"
+    echo "brotli-enc-a|30|brotli_run '0 1 2 3 4' 3"
+    echo "bzip2-enc-b|20|b04_run bz2-enc '2 3 4 6 7 8' 2"
+    echo "brotli-enc-b|60|brotli_run '5 6 7 8 9' 2"
+    echo "brotli-enc-c|90|brotli_run '10 11' 1"
+  elif [ "$chunk" = 0.3 ]; then
     echo "xz-enc-a|25|lzma_run enc xz '0 1 2 3' 3"
     echo "xz-dec|25|lzma_run dec xz '0 6 9' 5"
     echo "lzip-enc-a|30|lzma_run enc lzip '0 1 2 3' 2"
@@ -142,7 +162,13 @@ elapsed_min() { echo $(( ($(date +%s) - start) / 60 )); }
   echo "load before: $(load)"
   echo "running now (top by cpu):"; ps -eo pcpu,user,comm | sort -rn | head -6
   echo "sdk: $(dotnet --version)"
-  if [ "$chunk" = 0.3 ]; then
+  if [ "$chunk" = 0.4 ]; then
+    echo "brotli: $(brotli --version 2>&1 | head -1)"
+    echo "bzip2: $(bzip2 --help 2>&1 | head -1 | sed 's/,.*//')"
+    echo "7zz: $( (7zz 2>&1 || 7z 2>&1) | sed -n 2p)"
+    echo "cabextract: $(cabextract --version 2>&1 | head -1)"
+    [ -n "${BAR_QUICK:-}" ] && echo "QUICK: 1 MiB prefixes, one repeat, no timing claims"
+  elif [ "$chunk" = 0.3 ]; then
     echo "xz: $(xz --version | head -1)"
     echo "lzip: $(lzip --version 2>&1 | head -1)"
     echo "7zz: $( (7zz 2>&1 || 7z 2>&1) | sed -n 2p)"
@@ -174,7 +200,9 @@ build() {
   echo "$art/bin/$name/release/$name.dll"
 }
 echo "# building ($(date +%T))"
-if [ "$chunk" = 0.3 ]; then
+if [ "$chunk" = 0.4 ]; then
+  b04_dll="$(build Bar04Bench "$repo/tools/bar04-bench/Bar04Bench.csproj")" || exit 4
+elif [ "$chunk" = 0.3 ]; then
   lzma_dll="$(build LzmaBench "$repo/tools/lzma-bench/LzmaBench.csproj")" || exit 4
 elif [ "$chunk" = 0.2 ]; then
   defl_dll="$(build DeflateBench "$repo/tools/deflate-bench/DeflateBench.csproj")" || exit 4
@@ -211,6 +239,16 @@ lzma_run() {
   export BENCH_DLL="$lzma_dll" TMPDIR="$tmp"
   if [ "$mode" = sevenz ]; then "$repo/tools/lzma-bench/bar.sh" --mode sevenz --files "$files"
   else "$repo/tools/lzma-bench/bar.sh" --mode "$mode" --codec "$codec" --files "$files" --levels "$lv" --reps "$reps"; fi
+}
+# The 0.4 rows. b04_run: tools/bar04-bench/bar.sh, one mode per step (arguments: mode levels reps; empty levels = the mode's own).
+b04_run() {
+  local mode="$1" lv="$2" reps="$3"
+  export BENCH_DLL="$b04_dll" TMPDIR="$tmp"
+  "$repo/tools/bar04-bench/bar.sh" --mode "$mode" --files "$files" ${lv:+--levels "$lv"} --reps "$reps"
+}
+# brotli_run: tools/brotli-bench/bar.sh at the given qualities (arguments: qualities reps). It must not take the lock this job holds.
+brotli_run() {
+  TMPDIR="$tmp" ONEARCHIVE_ARTIFACTS="$art" BAR_LOCK_FILE= "$repo/tools/brotli-bench/bar.sh" --files "$files" --levels "$1" --reps "$2" --slow-files ""
 }
 enc_run() { BENCH_DLL="$enc_dll" "$zenc/run.sh" --files "$files" "$@"; }
 dec_run() { BENCH_DLL="$dec_dll" OURS_MAX_LEVEL=19 "$zdec/run.sh" --files "$files" --levels "1 3 9 19" --reps 3; }

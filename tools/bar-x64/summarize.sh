@@ -306,6 +306,75 @@ if [ -s "$dir/sevenz.tsv" ]; then
     END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$dir/sevenz.tsv"
 fi
 
+# brotli encode against `brotli` (window 22, start-up subtracted). Our rate is one call in memory.
+# cols: file q ours_size tool_size size_ratio ours_MBps tool_MBps speed_ratio(tool/ours time) ours_peak_KB tool_peak_KB verdict
+for f in "$dir"/brotli-enc*.tsv; do
+  [ -s "$f" ] || continue
+  name="$(basename "$f" .tsv)"
+  echo; echo "## $name (brotli compress, window 22; ours/ref rate is the best of the repeats)"; echo
+  grep '^# \(cpu\)' "$f" | sed 's/^# */- /' | head -1
+  echo
+  echo "| file | quality | ref bytes | our bytes | size | ours/ref rate | ref MB/s | peak MB: ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 11 { next }
+    {
+      sz = $5 + 0; rr = ($7 > 0) ? $6 / $7 : 0
+      ok = (sz <= 1.01 && rr >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s q%s (size %+.2f%%, rate %.2f)", $1, $2, (sz - 1) * 100, rr) }
+      printf "| %s | %s | %s | %s | %+.2f%% | %.2f | %s | %d / %d | %s |\n", $1, $2, $4, $3, (sz - 1) * 100, rr, $7, $10 / 1024, $9 / 1024, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$f"
+done
+
+# bzip2 and Deflate64 compress rows (bzip2 -N, 7-Zip -mx=N); interop is whether the reference read our stream back to the original.
+# cols: file codec level ref_size ours_size size_ratio ref_MBps ours_MBps ours_med ours_min time_ratio ref_peak_KB ours_peak_KB interop verdict
+for f in "$dir"/bzip2-enc*.tsv "$dir"/d64-enc.tsv; do
+  [ -s "$f" ] || continue
+  name="$(basename "$f" .tsv)"
+  echo; echo "## $name (compress; ours/ref rate is best-of-repeats, with median and slowest of ours)"; echo
+  grep '^# \(cpu\|reference\)' "$f" | sed 's/^# */- /' | head -3
+  echo
+  echo "| file | codec | level | ref bytes | our bytes | size | ours/ref rate best (median, min) | ref MB/s | peak MB: ref / ours | ref reads ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 15 { next }
+    {
+      sz = $6 + 0; rr = ($7 > 0) ? $8 / $7 : 0; rm = ($7 > 0) ? $9 / $7 : 0; rn = ($7 > 0) ? $10 / $7 : 0
+      ok = (sz <= 1.01 && rr >= smin && $14 == "ok")
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s %s L%s (size %+.2f%%, rate %.2f, interop %s)", $1, $2, $3, (sz - 1) * 100, rr, $14) }
+      printf "| %s | %s | %s | %s | %s | %+.2f%% | %.2f (%.2f, %.2f) | %s | %d / %d | %s | %s |\n", $1, $2, $3, $4, $5, (sz - 1) * 100, rr, rm, rn, $7, $12 / 1024, $13 / 1024, $14, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$f"
+done
+
+# brotli, Deflate64 and cab LZX decode: the reference against ours, on the reference's output and on ours (LZX: one cabinet from the test compressor).
+# cols: file codec level source ref_MBps ours_MBps ours_med ours_min time_ratio ref_peak_KB ours_peak_KB verdict
+for f in "$dir/brotli-dec.tsv" "$dir/d64-dec.tsv" "$dir/lzx-dec.tsv"; do
+  [ -s "$f" ] || continue
+  name="$(basename "$f" .tsv)"
+  echo; echo "## $name (decode speed, ours/reference rate; source = whose compressed bytes are decoded)"; echo
+  grep '^# \(cpu\|reference\)' "$f" | sed 's/^# */- /' | head -3
+  echo
+  echo "| file | codec | level | source | ours/ref rate best (median, min) | ref MB/s | peak MB: ref / ours | verdict |"
+  echo "|---|---|---|---|---|---|---|---|"
+  awk -F'\t' -v smin="$SPEED_MIN" '
+    /^#/ { next }
+    $1 == "file" { next }
+    NF < 12 { next }
+    {
+      rr = ($5 > 0) ? $6 / $5 : 0; rm = ($5 > 0) ? $7 / $5 : 0; rn = ($5 > 0) ? $8 / $5 : 0
+      ok = (rr >= smin)
+      n++; if (ok) p++; else { m++; worst[m] = sprintf("%s %s L%s on %s output (%.2f)", $1, $2, $3, $4, rr) }
+      printf "| %s | %s | %s | %s | %.2f (%.2f, %.2f) | %s | %d / %d | %s |\n", $1, $2, $3, $4, rr, rm, rn, $5, $10 / 1024, $11 / 1024, ok ? "PASS" : "MISS"
+    }
+    END { printf "\n%d rows: %d PASS, %d MISS\n", n, p, m; for (i = 1; i <= m; i++) printf "- MISS %s\n", worst[i] }' "$f"
+done
+
 if [ -d "$dir/bar-runner" ]; then
   echo; echo "## bar-runner"; echo; ls "$dir/bar-runner" | sed 's/^/- /'
 fi
