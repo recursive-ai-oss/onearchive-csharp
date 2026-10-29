@@ -181,7 +181,9 @@ public class ZstdEncoderTests
     [Theory]
     [InlineData(5, 20_000_000, 21, 18, 19, 3, 5, 2, ZstdStrategy.Greedy)]
     [InlineData(9, 20_000_000, 22, 20, 21, 4, 5, 16, ZstdStrategy.Lazy2)]
-    [InlineData(12, 20_000_000, 22, 22, 23, 6, 5, 32, ZstdStrategy.Lazy2)]
+    [InlineData(10, 20_000_000, 22, 21, 22, 4, 5, 16, ZstdStrategy.Lazy2)]
+    [InlineData(11, 20_000_000, 22, 21, 22, 5, 5, 16, ZstdStrategy.Lazy2)]
+    [InlineData(12, 20_000_000, 22, 22, 23, 5, 5, 32, ZstdStrategy.Lazy2)]
     [InlineData(15, 20_000_000, 22, 23, 23, 6, 5, 32, ZstdStrategy.BinaryTreeLazy2)]
     [InlineData(16, 2_000_000_000, 22, 22, 22, 5, 5, 48, ZstdStrategy.BinaryTreeOptimal)]
     [InlineData(19, 2_000_000_000, 23, 24, 22, 7, 3, 256, ZstdStrategy.BinaryTreeUltra2)]
@@ -199,7 +201,8 @@ public class ZstdEncoderTests
     [InlineData(12, 262_144, 18, 19, 19, 7, 4, 12, ZstdStrategy.BinaryTreeLazy2)]
     public void LevelTablesFollowTheReferenceForEachSizeClass(int level, long size, int windowLog, int chainLog, int hashLog, int searchLog, int minMatch, int targetLength, ZstdStrategy strategy)
     {
-        // Values read off `zstd --show-default-cparams` for sources of these sizes (the window shrinks to the source for small ones).
+        // Values read off `zstd --show-default-cparams` for sources of these sizes (the window shrinks to the source for small ones),
+        // except the search log of levels 10 to 12 above 256 KiB, which is one less than the tool's (see docs/zstd-encoder.md).
         ZstdCompressionParameters p = ZstdCompressionParameters.Resolve(level, size, 0);
         Assert.Equal((windowLog, chainLog, hashLog, searchLog, minMatch, targetLength, strategy), (p.WindowLog, p.ChainLog, p.HashLog, p.SearchLog, p.MinMatch, p.TargetLength, p.Strategy));
     }

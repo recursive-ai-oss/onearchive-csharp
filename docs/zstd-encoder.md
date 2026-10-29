@@ -39,9 +39,9 @@ applies.
 |  | 7 | 21 | 19 | 20 | 4 | 5 | 8 | lazy |
 |  | 8 | 21 | 19 | 20 | 4 | 5 | 16 | lazy2 |
 |  | 9 | 22 | 20 | 21 | 4 | 5 | 16 | lazy2 |
-|  | 10 | 22 | 21 | 22 | 5 | 5 | 16 | lazy2 |
-|  | 11 | 22 | 21 | 22 | 6 | 5 | 16 | lazy2 |
-|  | 12 | 22 | 22 | 23 | 6 | 5 | 32 | lazy2 |
+|  | 10 | 22 | 21 | 22 | 4 | 5 | 16 | lazy2 |
+|  | 11 | 22 | 21 | 22 | 5 | 5 | 16 | lazy2 |
+|  | 12 | 22 | 22 | 23 | 5 | 5 | 32 | lazy2 |
 |  | 13 | 22 | 22 | 22 | 4 | 5 | 32 | btlazy2 |
 |  | 14 | 22 | 22 | 23 | 5 | 5 | 32 | btlazy2 |
 |  | 15 | 22 | 23 | 23 | 6 | 5 | 32 | btlazy2 |
@@ -121,6 +121,13 @@ applies.
 |  | 20 | 14 | 15 | 15 | 8 | 3 | 512 | btultra2 |
 |  | 21 | 14 | 15 | 15 | 9 | 3 | 512 | btultra2 |
 |  | 22 | 14 | 15 | 15 | 10 | 3 | 999 | btultra2 |
+
+**Levels 10 to 12 above 256 KiB search one step less deep than the tool.** The search log is 4, 5 and 5 where the tool's is 5, 6 and 6
+(every other value is the tool's). The row search spends most of its time on candidates that fail the longer-match check, and its time is
+almost proportional to the candidates visited, so the tool's depth costs about 1.4 times the tool's own time for under 1% of size here.
+With the shallower search the sizes on silesia.tar and enwik8 stay within 0.6% of the tool's, and level 10 also has 16-entry rows, which
+take the insert stride (see Match finders). The ladder stays monotone in size and in time (levels 10, 11, 12 are 11.66, 11.58 and
+11.57 MB on the first 32 MiB of silesia.tar).
 
 The strategies above btlazy2 (btopt, btultra, btultra2) take levels 13 to 15 of the 256 KiB and 128 KiB classes, 11 to 15 of the 16 KiB class
 and levels 16 to 22 of every class; they are the optimal parsers described below.
