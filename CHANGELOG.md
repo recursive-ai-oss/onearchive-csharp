@@ -11,6 +11,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - LZ4: faster high-compression levels (3-12) through a tighter search, and a lazy level 2 that is within 0.2% of the `lz4` tool's size (it was +2.2%). Levels 2 and 4-9 are retuned, so their compressed bytes differ from 0.5 while staying within 1% of the tool's size; levels 1, 3 and 10-12 are unchanged.
 - Zstandard: levels 1-2 compress 3-11% faster (most on text), with identical output.
 - Zstandard dictionary training: COVER and fast-COVER training is 3-9 times faster and uses 4-12 times less memory (a 1024 x 8 KiB sample set trains in under a second in under 100 MiB, from 6.6 s and 1.2 GiB). D-mers are counted once per size and the parameter search is guided; sets up to 256 KiB are searched exhaustively. The new `SearchMode` option selects the search. Trained dictionaries differ from 0.5 (still identical on every platform and thread count) and compress held-out game data within about 1% of the previous ones and of `zstd --train` (the worst case is +1.2% against the tool, at a 4 KiB dictionary).
+- Zstandard: levels 10-15 compress 25-45% faster. Levels 10-12 search one step less deep than the `zstd` tool, so their bytes change (within 0.6% in size); levels 13-15 are unchanged.
 
 ### Added
 
