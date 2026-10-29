@@ -15,8 +15,9 @@
 #            file, in memory against the CLI with start-up subtracted), decode of the tools' output and of ours by us and by the
 #            tools, and the sizes of our 7z writer against `7zz -mx=1/5/9`; silesia.tar and enwik8. The cheap presets come first and
 #            7-9 last with one repeat, so a deadline drops the slowest rows. Also runs on the Mac (BAR_LOCK_FILE=~/onearchive/BENCH.lock).
-#   chunk 0.4 (output dir chunk0.4): brotli, bzip2, Deflate64 and LZX. brotli encode q0-11 (window 22) against `brotli` (tools/brotli-bench),
-#            brotli decode of the tool's output and of ours, bzip2 encode against `bzip2` levels 1-9 with `bzip2 -d` reading ours back,
+#   chunk 0.4 (output dir chunk0.4): brotli, bzip2, Deflate64 and LZX, on silesia.tar, at each codec's fastest, default and maximum
+#            level, at most 3 repeats. brotli encode q0, q5, q11 (window 22) against `brotli` (tools/brotli-bench), brotli decode of
+#            the tool's q5/q11 output and of ours, bzip2 encode levels 1 and 9 against `bzip2` with `bzip2 -d` reading ours back,
 #            Deflate64 compress and decompress against 7-Zip `-tzip -mm=Deflate64 -mx=N -mmt=1`, and cab LZX decode against `cabextract`
 #            on cabinets built by the test compressor (tools/bar04-bench/bar.sh describes each method and its caveats); silesia.tar and
 #            enwik8. The cheap rows come first and brotli q10-11 last, so a deadline drops the slowest rows. Also runs on the Mac
@@ -78,7 +79,7 @@ fi
 scale="${BAR_SCALE:-1}"
 [ -n "${BAR_QUICK:-}" ] && [ -z "${BAR_SCALE:-}" ] && scale=1000
 export BAR_QUICK="${BAR_QUICK:-}"
-files="${BAR_FILES:-silesia.tar enwik8}"
+if [ "$chunk" = 0.4 ]; then files="${BAR_FILES:-silesia.tar}"; else files="${BAR_FILES:-silesia.tar enwik8}"; fi
 if [ "$(uname)" = Darwin ]; then lock="${BAR_LOCK_FILE:-$HOME/onearchive/BENCH.lock}"; else lock="${BAR_LOCK_FILE:-$HOME/WORKER-BENCH.lock}"; fi
 
 # Step table: name, chunk, expected minutes, command. Expected minutes come from the per-row times in the bench docs and are
@@ -86,15 +87,14 @@ if [ "$(uname)" = Darwin ]; then lock="${BAR_LOCK_FILE:-$HOME/onearchive/BENCH.l
 zenc="$repo/tools/zstd-encode-bench"; zdec="$repo/tools/zstd-decode-bench"; ztrain="$repo/tools/zstd-train-bench"; l4="$repo/tools/lz4-bench"; sb="$repo/tools/small-bench"
 steps() {
   if [ "$chunk" = 0.4 ]; then
-    echo "bzip2-enc|12|b04_run bz2-enc '1 5 9' 3"
-    echo "d64-dec|10|b04_run d64-dec '1 5 9' 5"
-    echo "lzx-dec|20|b04_run lzx-dec '' 5"
-    echo "d64-enc|25|b04_run d64-enc '1 5 9' 3"
-    echo "brotli-dec|40|b04_run brotli-dec '1 5 9' 5"
-    echo "brotli-enc-a|30|brotli_run '0 1 2 3 4' 3"
-    echo "bzip2-enc-b|20|b04_run bz2-enc '2 3 4 6 7 8' 2"
-    echo "brotli-enc-b|60|brotli_run '5 6 7 8 9' 2"
-    echo "brotli-enc-c|90|brotli_run '10 11' 1"
+    # Fastest, default and maximum level of each codec, plus decode; silesia.tar only; at most 3 repeats.
+    echo "bzip2-enc|5|b04_run bz2-enc '1 9' 3"
+    echo "d64-dec|4|b04_run d64-dec '1 5 9' 3"
+    echo "lzx-dec|7|b04_run lzx-dec '' 3"
+    echo "brotli-enc|7|brotli_run '0 5' 3"
+    echo "brotli-enc-max|10|brotli_run '11' 1"
+    echo "d64-enc|10|b04_run d64-enc '1 5 9' 3"
+    echo "brotli-dec|10|b04_run brotli-dec '5 11' 3"
   elif [ "$chunk" = 0.3 ]; then
     echo "xz-enc-a|25|lzma_run enc xz '0 1 2 3' 3"
     echo "xz-dec|25|lzma_run dec xz '0 6 9' 5"

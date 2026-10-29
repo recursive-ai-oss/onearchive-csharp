@@ -175,11 +175,11 @@ one-byte input, best of the repeats; ours is the best of the repeats of the in-p
 `tools/brotli-bench` for the brotli encoder). Rates are MB/s of uncompressed data; peak memory comes from `/usr/bin/time` around both
 sides (for the brotli encoder, around the tool inside `BrotliBench` and from the process's own peak for ours).
 
-- **brotli encode** (`tools/brotli-bench/bar.sh`): qualities 0-11 at window 22, `brotli -q N -w 22`. Qualities 0-4, 5-9 and 10-11 are
-  separate steps (3, 2 and 1 repeats) so a deadline drops the slowest first.
-- **brotli decode** (`bar04-bench/bar.sh --mode brotli-dec`): the tool's stream and ours at qualities 1, 5, 9, decoded by `brotli -d -c`
+- **brotli encode** (`tools/brotli-bench/bar.sh`): qualities 0 and 5 (3 repeats) and 11 (1 repeat) at window 22, `brotli -q N -w 22`.
+  Chunk 0.4 measures each codec at its fastest, default and maximum level on silesia.tar, to keep a run under about 45 minutes.
+- **brotli decode** (`bar04-bench/bar.sh --mode brotli-dec`): the tool's stream and ours at qualities 5 and 11, decoded by `brotli -d -c`
   and by `Brotli.TryDecompress` into a buffer that is already allocated. Our output is compared with the original after the timing.
-- **bzip2 encode** (`--mode bz2-enc`): levels 1, 5, 9 (2-4 and 6-8 in a second step) against `bzip2 -N -c` on stdin. Our stream is decoded
+- **bzip2 encode** (`--mode bz2-enc`): levels 1 and 9 against `bzip2 -N -c` on stdin. Our stream is decoded
   by `bzip2 -dc` and compared with the input (column `interop`; a mismatch is a MISS).
 - **Deflate64** (`--mode d64-enc|d64-dec`): levels 1, 5, 9 against `7zz a -tzip -mm=Deflate64 -mx=N -mmt=1`. 7-Zip has no raw-stream
   mode, so its compress time includes reading the file, CRC-32 and writing the zip (visible at `-mx=1`, which favours the reference
