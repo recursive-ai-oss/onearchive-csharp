@@ -18,7 +18,8 @@
 #   chunk 0.4 (output dir chunk0.4): brotli, bzip2, Deflate64 and LZX, on silesia.tar, at each codec's fastest, default and maximum
 #            level, at most 3 repeats. brotli encode q0, q5, q11 (window 22) against `brotli` (tools/brotli-bench), brotli decode of
 #            the tool's q5/q11 output and of ours, bzip2 encode levels 1 and 9 against `bzip2` with `bzip2 -d` reading ours back,
-#            Deflate64 compress and decompress against 7-Zip `-tzip -mm=Deflate64 -mx=N -mmt=1`, and cab LZX decode against `cabextract`
+#            Deflate64 compress and decompress against 7-Zip `-tzip -mm=Deflate64 -mx=N -mmt=1`, PPMd (7z PPMD, variant H) compress and
+#            decompress at -mx 1, 5 and 9 against `7zz -m0=PPMd` (step ppmd, two repeats), and cab LZX decode against `cabextract`
 #            on cabinets built by the test compressor (tools/bar04-bench/bar.sh describes each method and its caveats); silesia.tar and
 #            enwik8. The cheap rows come first and brotli q10-11 last, so a deadline drops the slowest rows. Also runs on the Mac
 #            (BAR_LOCK_FILE=~/onearchive/BENCH.lock).
@@ -95,6 +96,7 @@ steps() {
     echo "brotli-enc-max|10|brotli_run '11' 1"
     echo "d64-enc|10|b04_run d64-enc '1 5 9' 3"
     echo "brotli-dec|10|b04_run brotli-dec '5 11' 3"
+    echo "ppmd|22|ppmd_run"
   elif [ "$chunk" = 0.3 ]; then
     echo "xz-enc-a|25|lzma_run enc xz '0 1 2 3' 3"
     echo "xz-dec|25|lzma_run dec xz '0 6 9' 5"
@@ -246,6 +248,9 @@ b04_run() {
   export BENCH_DLL="$b04_dll" TMPDIR="$tmp"
   "$repo/tools/bar04-bench/bar.sh" --mode "$mode" --files "$files" ${lv:+--levels "$lv"} --reps "$reps"
 }
+# ppmd_run: PPMd (7z PPMD, variant H) encode then decode at -mx 1, 5 and 9 against 7zz, two repeats because the codec runs at a few MB/s
+# on silesia.tar. The decode rows reuse the 7z files the encode rows cache.
+ppmd_run() { b04_run ppmd-enc '1 5 9' 2; b04_run ppmd-dec '1 5 9' 2; }
 # brotli_run: tools/brotli-bench/bar.sh at the given qualities (arguments: qualities reps). It must not take the lock this job holds.
 brotli_run() {
   TMPDIR="$tmp" ONEARCHIVE_ARTIFACTS="$art" BAR_LOCK_FILE= "$repo/tools/brotli-bench/bar.sh" --files "$files" --levels "$1" --reps "$2" --slow-files ""
