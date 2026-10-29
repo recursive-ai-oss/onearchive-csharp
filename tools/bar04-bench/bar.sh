@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bar rows for the codecs of the 0.4 chunk that are not brotli's encoder: brotli decode, the bzip2 encoder, Deflate64 and cab LZX decode.
 #
-#   bar.sh --mode brotli-dec|bz2-enc|d64-enc|d64-dec|lzx-dec [--files "silesia.tar enwik8"] [--levels "1 5 9"] [--reps 3]
+#   bar.sh --mode brotli-dec|bz2-enc|d64-enc|d64-dec|ppmd-enc|ppmd-dec|lzx-dec [--files "silesia.tar enwik8"] [--levels "1 5 9"] [--reps 3]
 #
 # brotli-dec: ours against `brotli -d -c`, each on the tool's output and on ours at quality N (window 22).
 # bz2-enc:    ours (one call, in memory) against `bzip2 -N -c` (stdin to a file); size, rate, peak memory, and whether `bzip2 -dc`
@@ -13,6 +13,12 @@
 #             Our stream is also wrapped in a zip (d64-zip) and read back by `7zz t` (column interop).
 # d64-dec:    ours on the raw stream against `7zz e -so` on the zip (CRC-32 checked by 7-Zip, not by us; the difference is small), on the
 #             stream 7-Zip wrote and on ours.
+# ppmd-enc:   ours (one call, in memory, PPMd variant H) at the order and model memory 7-Zip uses for -mx=N (docs/ppmd.md) against 7-Zip
+#             `a -t7z -m0=PPMd -mx=N -mmt=1`. As for d64-enc, 7-Zip's time is the whole archive run minus the start-up of the same command on a
+#             one-byte file; its size is the PPMd pack stream's size from `7zz l -slt` (the 7z framing is not counted). Interop: 7-Zip must
+#             test (`7zz t`) a one-entry 7z written by our SevenZipWriter at that level, and our decoder must read 7-Zip's pack stream
+#             (bytes 32 onwards of its archive) back to the original bytes.
+# ppmd-dec:   ours on the raw stream against `7zz e -so` on the 7z, on the stream 7-Zip wrote and on ours (decoded by 7-Zip from our 7z).
 # lzx-dec:    a one-file cabinet of the whole input, LZX window 2^21, built by the test compressor in the test helpers (slow, not timed,
 #             cached for the job); cabextract must extract it to the original bytes. Ours reads it through CabReader (checksums verified)
 #             into a null sink; cabextract is timed as `cabextract -q -p` to /dev/null. Same bytes for both sides.
@@ -78,6 +84,15 @@ dec_row() { # file codec level source size ref_time startup ref_time_file ours_o
   local tr; tr="$(ratio "$(rate "$5" "$6" "$7")" "$(field dec_MBps < "$9")" 3)"
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$(rate "$5" "$6" "$7")" "$(field dec_MBps < "$9")" "$(field dec_MBps_med < "$9")" "$(field dec_MBps_min < "$9")" "$tr" "$(peak "$8")" "$(peak "${10}")" "$(awk -v t="$tr" 'BEGIN { print (t <= 1.15) ? "pass" : "FAIL" }')"
 }
+
+# A one-entry 7z written with PPMd has its pack stream right after the 32-byte signature header; its size is the entry's packed size.
+ppmd_packed() { "$sz" l -slt -bd "$1" | sed -n 's/^Packed Size = //p' | head -1; }
+# The coder's order and memory as 7-Zip reports them ("PPMD:o6:mem24", memory 2^24 bytes). 7-Zip shrinks the model for small inputs, so
+# decode uses the stream's own parameters and the encode row fails when they differ from the level's table (docs/ppmd.md).
+ppmd_props() { "$sz" l -slt -bd "$1" | sed -n 's/^Method = PPMD:o\([0-9]*\):mem\([0-9]*\)$/\1 \2/p' | head -1; }
+ppmd_expect() { case "$1" in 1) echo "4 20" ;; 2) echo "4 21" ;; 3) echo "5 22" ;; 4) echo "5 23" ;; 5) echo "6 24" ;; 6) echo "8 25" ;; 7) echo "16 26" ;; 8) echo "24 26" ;; *) echo "32 26" ;; esac; }
+ppmd_decargs() { local p; p="${2:-$(ppmd_expect "$1")}"; set -- $p; echo "--order $1 --memlog $(($2 - 20))"; }
+ppmd_raw() { tail -c +33 "$1" | head -c "$(ppmd_packed "$1")" > "$2"; }
 
 case "$mode" in
 brotli-dec)
@@ -170,6 +185,62 @@ d64-dec)
         tv perl -e "$WT" "$sz" e -so "${sz_args[@]}" "$z" > /dev/null 2> "$tmp/ref.time"
         tv "$dotnet" "$dll" d64-dec "$raw" --size "$size" --reps "$reps" --expect "$path" > "$tmp/our.out" 2> "$tmp/our.time"
         dec_row "$f" deflate64 "$L" "$src" "$size" "$t" "$su" "$tmp/ref.time" "$tmp/our.out" "$tmp/our.time"
+      done
+    done
+  done
+  ;;
+ppmd-enc)
+  [ -n "$sz" ] || { echo "no 7zz or 7z on PATH" >&2; exit 1; }
+  [ -n "$levels" ] || levels="1 5 9"
+  header "$("$sz" 2>&1 | sed -n 2p), 7-Zip -t7z -m0=PPMd -mmt=1, start-up subtracted"
+  printf 'x' > "$tmp/tiny"
+  su=""; for _ in $(seq 1 10); do rm -f "$tmp/tiny.7z"; t="$(walltime "$sz" a -t7z -m0=PPMd -mx=5 -mmt=1 "${sz_args[@]}" "$tmp/tiny.7z" "$tmp/tiny")"; su="$(awk -v a="$su" -v t="$t" 'BEGIN { print (a == "" || t < a) ? t : a }')"; done; echo "# start-up: $su s"
+  printf 'file\tcodec\tlevel\tref_size\tours_size\tsize_ratio\tref_MBps\tours_MBps\tours_med\tours_min\ttime_ratio\tref_peak_KB\tours_peak_KB\tinterop\tverdict\n'
+  for f in $files; do
+    path="$(find_file "$f")"; size="$(fsize "$path")"; b="$(basename "$path")"
+    for L in $levels; do
+      z="$cache/7z-ppmd-$b-$L.7z"; rm -f "$z"
+      tv perl -e "$WT" "$sz" a -t7z -m0=PPMd -mx="$L" -mmt=1 "${sz_args[@]}" "$z" "$path" > /dev/null 2> "$tmp/ref.time"
+      t="$(sed -n 's/^WALL //p' "$tmp/ref.time")"
+      for _ in $(seq 2 "$reps"); do rm -f "$tmp/r.7z"; t2="$(walltime "$sz" a -t7z -m0=PPMd -mx="$L" -mmt=1 "${sz_args[@]}" "$tmp/r.7z" "$path")"; t="$(awk -v a="$t" -v b="$t2" 'BEGIN { print (b < a) ? b : a }')"; done
+      rm -f "$tmp/r.7z"
+      rs="$(ppmd_packed "$z")"
+      tv "$dotnet" "$dll" ppmd-enc "$path" "$L" --reps "$reps" --out "$cache/ours-ppmd-$b-$L.raw" > "$tmp/our.out" 2> "$tmp/our.time"
+      "$dotnet" "$dll" ppmd-7z "$path" "$L" --out "$cache/ours-ppmd-$b-$L.7z" > /dev/null
+      interop=ok
+      "$sz" t "${sz_args[@]}" "$cache/ours-ppmd-$b-$L.7z" > /dev/null 2>&1 || interop=FAIL
+      ppmd_raw "$z" "$tmp/ref.raw"
+      [ "$(ppmd_props "$z")" = "$(ppmd_expect "$L")" ] || { echo "# $f -mx=$L: 7-Zip used order/memory '$(ppmd_props "$z")', the level table says '$(ppmd_expect "$L")' (7-Zip shrinks the model for small inputs); row fails" >&2; interop=FAIL; }
+      "$dotnet" "$dll" ppmd-dec "$tmp/ref.raw" "$L" $(ppmd_decargs "$L" "$(ppmd_props "$z")") --size "$size" --reps 0 --expect "$path" > /dev/null 2>&1 || interop=FAIL
+      os="$(field size < "$tmp/our.out")"; rr="$(rate "$size" "$t" "$su")"; orate="$(field comp_MBps < "$tmp/our.out")"
+      sr="$(ratio "$os" "$rs" 4)"; tr="$(ratio "$rr" "$orate" 3)"; v="$(verdict_enc "$sr" "$tr")"; [ "$interop" = ok ] || v=FAIL
+      printf '%s\tppmd7\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$f" "$L" "$rs" "$os" "$sr" "$rr" "$orate" "$(field comp_MBps_med < "$tmp/our.out")" "$(field comp_MBps_min < "$tmp/our.out")" "$tr" "$(peak "$tmp/ref.time")" "$(peak "$tmp/our.time")" "$interop" "$v"
+    done
+  done
+  ;;
+ppmd-dec)
+  [ -n "$sz" ] || { echo "no 7zz or 7z on PATH" >&2; exit 1; }
+  [ -n "$levels" ] || levels="1 5 9"
+  header "$("$sz" 2>&1 | sed -n 2p), 7-Zip e -so, start-up subtracted"
+  printf 'x' > "$tmp/tiny"; "$dotnet" "$dll" ppmd-7z "$tmp/tiny" 5 --out "$tmp/tiny.7z" > /dev/null
+  su="$(besttime 20 "$sz" e -so "${sz_args[@]}" "$tmp/tiny.7z")"; echo "# start-up: $su s"
+  dec_header
+  for f in $files; do
+    path="$(find_file "$f")"; size="$(fsize "$path")"; b="$(basename "$path")"
+    for L in $levels; do
+      for src in ref ours; do
+        if [ "$src" = ref ]; then
+          z="$cache/7z-ppmd-$b-$L.7z"
+          [ -s "$z" ] || "$sz" a -t7z -m0=PPMd -mx="$L" -mmt=1 "${sz_args[@]}" "$z" "$path"
+          raw="$tmp/ref.raw"; ppmd_raw "$z" "$raw"
+        else
+          z="$cache/ours-ppmd-$b-$L.7z"; raw="$cache/ours-ppmd-$b-$L.raw"
+          if [ ! -s "$z" ]; then "$dotnet" "$dll" ppmd-enc "$path" "$L" --reps 0 --out "$raw" > /dev/null; "$dotnet" "$dll" ppmd-7z "$path" "$L" --out "$z" > /dev/null; fi
+        fi
+        t="$(besttime "$reps" "$sz" e -so "${sz_args[@]}" "$z")"
+        tv perl -e "$WT" "$sz" e -so "${sz_args[@]}" "$z" > /dev/null 2> "$tmp/ref.time"
+        tv "$dotnet" "$dll" ppmd-dec "$raw" "$L" $(ppmd_decargs "$L" "$([ "$src" = ref ] && ppmd_props "$z")") --size "$size" --reps "$reps" --expect "$path" > "$tmp/our.out" 2> "$tmp/our.time"
+        dec_row "$f" ppmd7 "$L" "$src" "$size" "$t" "$su" "$tmp/ref.time" "$tmp/our.out" "$tmp/our.time"
       done
     done
   done

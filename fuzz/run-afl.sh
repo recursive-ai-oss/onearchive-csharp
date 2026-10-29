@@ -27,6 +27,7 @@ build="$work/build"
 artifacts="${ONEARCHIVE_ARTIFACTS:-$work/artifacts}"
 export ONEARCHIVE_ARTIFACTS="$artifacts" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 MSBUILDDISABLENODEREUSE=1
 
+# Seed generators run from the uninstrumented Checked output: the instrumented copy only works under afl-fuzz.
 # Checked build (unchecked accessors become bounds-checked), then instrument a copy of the output.
 (cd "$root" && nice dotnet build fuzz -c Checked -v quiet -clp:NoSummary)
 rm -rf "$build"; mkdir -p "$build"
@@ -35,7 +36,7 @@ for dll in RecursiveAI.OneCompress.dll RecursiveAI.OneArchive.dll; do
   [ -f "$build/$dll" ] && sharpfuzz "$build/$dll" >/dev/null
 done
 
-if [ ! -d "$work/seeds" ]; then "$here/make-seeds.sh" "$work/seeds" >/dev/null; "$here/seeds-ppmd.sh" "$work/seeds" "$build/OneArchive.Fuzz.dll" >/dev/null; fi
+if [ ! -d "$work/seeds" ]; then "$here/make-seeds.sh" "$work/seeds" >/dev/null; "$here/seeds-ppmd.sh" "$work/seeds" "$artifacts/bin/Fuzz/checked/OneArchive.Fuzz.dll" >/dev/null; fi
 
 if [ $# -eq 0 ]; then set -- $(dotnet "$artifacts/bin/Fuzz/checked/OneArchive.Fuzz.dll" list | grep -v '^noop$'); fi
 targets=("$@")

@@ -1,12 +1,16 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
+using System.Buffers;
+using RecursiveAI.OneArchive;
 using RecursiveAI.OneArchive.Cab;
+using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Tests.Cab;
 using RecursiveAI.OneCompress.Brotli;
 using RecursiveAI.OneCompress.BZip2;
 using RecursiveAI.OneCompress.Checksums;
 using RecursiveAI.OneCompress.Deflate64;
+using RecursiveAI.OneCompress.Ppmd;
 using RecursiveAI.OneCompress.Tests.Lzx;
 
 // Bar04Bench <mode> ... [--reps N] [--out <file>]
@@ -17,13 +21,17 @@ using RecursiveAI.OneCompress.Tests.Lzx;
 //   d64-dec <raw>                     Deflate64 decode of a raw stream (the payload of a zip entry); needs --size <uncompressed bytes>
 //   d64-zip <file> <level> --out <z>  writes a one-entry zip (method 9) around our Deflate64 stream, for 7-Zip to read
 //   d64-payload <zip> --out <raw>     extracts the raw stream of a one-entry zip's entry; prints method, sizes and CRC-32
+//   ppmd-enc <file> <level>           PPMd variant H compress in memory with one call, at the order and memory 7-Zip uses for -mx<level> (docs/ppmd.md); --out writes the raw stream (checked)
+//   ppmd-dec <raw> <level>            PPMd H decode of a raw stream written at that level; needs --size <uncompressed bytes>;
+//                                     --order N --memlog M (model memory 2^M MiB) replace the level's parameters
+//   ppmd-7z <file> <level> --out <z>  writes a one-entry 7z (PPMD coder) with our writer at that level's order and memory, for 7-Zip to read
 //   lzx-mkcab <file> --out <cab>      builds a one-file cabinet with an LZX folder (window 2^21) using the test compressor
 //   lzx-dec <cab>                     reads the cabinet's file through CabReader into a null sink; prints rates
 // Timing: one warm-up pass (kept as a rep when it takes 8 s or more), then --reps passes; rates are in MB of uncompressed data.
 #pragma warning disable ONECOMPRESS001, ONECOMPRESS002, ONECOMPRESS003, ONECOMPRESS004, ONECOMPRESS005, ONECOMPRESS006, ONECOMPRESS007, ONECOMPRESS008, ONEARCHIVE001
 static int Usage()
 {
-    Console.Error.WriteLine("usage: Bar04Bench brotli-dec|brotli-enc|bz2-enc|d64-enc|d64-dec|d64-zip|d64-payload|lzx-mkcab|lzx-dec <file> [level] [--reps N] [--out f] [--size n]");
+    Console.Error.WriteLine("usage: Bar04Bench brotli-dec|brotli-enc|bz2-enc|d64-enc|d64-dec|d64-zip|d64-payload|ppmd-enc|ppmd-dec|ppmd-7z|lzx-mkcab|lzx-dec <file> [level] [--reps N] [--out f] [--size n]");
     return 2;
 }
 
@@ -39,6 +47,8 @@ long size = 0;
 string? outPath = null;
 string? expectPath = null;
 int level = 0;
+int ppmdOrder = 0;
+int ppmdMemLog = 0;
 for (int i = 2; i < args.Length; i++)
 {
     switch (args[i])
@@ -46,6 +56,8 @@ for (int i = 2; i < args.Length; i++)
         case "--reps": reps = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
         case "--out": outPath = args[++i]; break;
         case "--expect": expectPath = args[++i]; break;
+        case "--order": ppmdOrder = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
+        case "--memlog": ppmdMemLog = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
         case "--size": size = long.Parse(args[++i], CultureInfo.InvariantCulture); break;
         default: level = int.Parse(args[i], CultureInfo.InvariantCulture); break;
     }
@@ -67,9 +79,59 @@ switch (mode)
         return Decode(File.ReadAllBytes(input), (p, b) => Deflate64.TryDecompress(p, b, out int n) ? n : -1, size);
     case "d64-zip": return D64Zip(File.ReadAllBytes(input), level, outPath);
     case "d64-payload": return D64Payload(File.ReadAllBytes(input), outPath);
+    case "ppmd-enc":
+    {
+        // 7z data has no end marker, so the decoder is told the size.
+        byte[] original = File.ReadAllBytes(input);
+        return Encode(original, (d, b) => PpmdH.TryCompress(d, b, out int n, PpmdLevel(level)) ? n : -1,
+            (p) => PpmdH.Decompress(p, PpmdDecodeOptions(PpmdParams(level), original.Length)), reps, outPath);
+    }
+    case "ppmd-dec":
+        return Decode(File.ReadAllBytes(input), (p, b) => PpmdDecode(p, b, ppmdOrder > 0 ? (ppmdOrder, 1 << ppmdMemLog) : PpmdParams(level)), size);
+    case "ppmd-7z": return Ppmd7z(File.ReadAllBytes(input), level, outPath);
     case "lzx-mkcab": return LzxMakeCab(File.ReadAllBytes(input), outPath);
     case "lzx-dec": return LzxDecode(File.ReadAllBytes(input), reps);
     default: return Usage();
+}
+
+// docs/ppmd.md "Levels": the order and model memory 7-Zip uses for -mx in a 7z archive. Levels above 9 behave as 9.
+static (int Order, int MemoryMiB) PpmdParams(int level) => Math.Clamp(level, 1, 9) switch
+{
+    1 => (4, 1), 2 => (4, 2), 3 => (5, 4), 4 => (5, 8), 5 => (6, 16), 6 => (8, 32), 7 => (16, 64), 8 => (24, 64), _ => (32, 64),
+};
+
+static PpmdHOptions PpmdLevel(int level)
+{
+    var (order, mib) = PpmdParams(level);
+    return new PpmdHOptions { Order = order, MemorySize = mib << 20 };
+}
+
+static PpmdHDecompressionOptions PpmdDecodeOptions((int Order, int MemoryMiB) p, long outputSize) =>
+    new() { Order = p.Order, MemorySize = p.MemoryMiB << 20, OutputSize = outputSize };
+
+// One decoder per call, so the model allocation is inside the timing, as it is for the tool's process.
+static int PpmdDecode(byte[] packed, byte[] buffer, (int Order, int MemoryMiB) p)
+{
+    var decoder = new PpmdHDecoder(PpmdDecodeOptions(p, buffer.Length));
+    OperationStatus status = decoder.Decompress(packed, buffer, out _, out int written, isFinalBlock: true);
+    return status == OperationStatus.Done ? written : -1;
+}
+
+static int Ppmd7z(byte[] data, int level, string? path)
+{
+    if (path is null)
+    {
+        return Usage();
+    }
+
+    using var file = File.Create(path);
+    using (var writer = new SevenZipWriter(file, new SevenZipWriterOptions { Method = SevenZipMethod.Ppmd, Ppmd = PpmdLevel(level) }, leaveOpen: true))
+    {
+        writer.WriteEntry(new ArchiveEntry { Name = "data", Size = data.Length, ModifiedTime = DateTimeOffset.UnixEpoch }, data);
+        writer.Finish();
+    }
+
+    return 0;
 }
 
 static int BrotliDecode(byte[] packed, byte[] buffer) => Brotli.TryDecompress(packed, buffer, out int n) ? n : -1;
@@ -96,7 +158,7 @@ int Decode(byte[] packed, Func<byte[], byte[], int> decode, long knownSize = 0)
             throw new InvalidOperationException($"decode failed: got {n}, expected {outSize}");
         }
 
-        if (i > 0 || s >= 8)
+        if (i > 0 || s >= 8 || reps == 0)
         {
             times.Add(s);
         }
