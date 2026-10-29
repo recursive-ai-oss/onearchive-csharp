@@ -60,7 +60,8 @@ internal sealed partial class BrotliEncoderCore
         }
         else
         {
-            _head = new int[1 << _plan.HashBits];
+            // Position and the four bytes there, per slot (see ParseFast).
+            _head = new int[2 << _plan.HashBits];
             Array.Fill(_head, -1);
         }
 
@@ -97,9 +98,11 @@ internal sealed partial class BrotliEncoderCore
     // Data moved down by shift bytes: positions move with it and those that fell off the front are forgotten.
     private void Rebase(int shift)
     {
+        // The table of qualities 0 and 1 holds a position and four bytes per slot; only the positions move.
+        int step = !_plan.BinaryTree && _plan.ChainDepth <= 1 ? 2 : 1;
         foreach (int[] table in new[] { _head, _bucketPositions, _longPositions })
         {
-            for (int i = 0; i < table.Length; i++)
+            for (int i = 0; i < table.Length; i += step)
             {
                 int p = table[i];
                 table[i] = p >= shift ? p - shift : -1;

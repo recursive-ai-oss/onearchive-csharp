@@ -11,6 +11,17 @@ internal sealed partial class BrotliEncoderCore
     // Which positions enter the table: every position that is probed; every position inside a copy shorter than 16 bytes; and the second
     // byte and the last two of a longer copy, so that the text after a long copy can still find the copy's own contents. Copies are
     // searched for only where four bytes are inside the block. See docs/brotli-encoder.md.
+    // A slot holds a position and, beside it, the four bytes found there, so that a candidate that does not match is refused without
+    // touching the input at a far-away position.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Insert(int[] head, byte[] buffer, int p, int shift)
+    {
+        uint w = BrotliEncRaw.Load32(buffer, p);
+        int slot = (int)((w * 0x1E35A7BDu) >> shift) << 1;
+        BrotliEncRaw.Slot(head, slot) = p;
+        BrotliEncRaw.Slot(head, slot + 1) = (int)w;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void ParseFast(int start, int end)
     {
@@ -26,10 +37,12 @@ internal sealed partial class BrotliEncoderCore
         while (pos <= last)
         {
             uint word = BrotliEncRaw.Load32(buffer, pos);
-            int slot = (int)((word * 0x1E35A7BDu) >> shift);
+            int slot = (int)((word * 0x1E35A7BDu) >> shift) << 1;
             ref int cell = ref BrotliEncRaw.Slot(head, slot);
             int candidate = cell;
+            uint candidateWord = (uint)BrotliEncRaw.Slot(head, slot + 1);
             cell = pos;
+            BrotliEncRaw.Slot(head, slot + 1) = (int)word;
             int maxDistance = (int)Math.Min(window, streamBase + pos);
             int length = 0;
             int distance = 0;
@@ -59,7 +72,7 @@ internal sealed partial class BrotliEncoderCore
                 score = (length * LiteralCost) - RingDistanceCost;
             }
 
-            if (candidate >= 0 && pos - candidate <= maxDistance && BrotliEncRaw.Load32(buffer, candidate) == word)
+            if (candidateWord == word && candidate >= 0 && pos - candidate <= maxDistance)
             {
                 int l2 = BrotliEncRaw.CommonLength(buffer, candidate, pos, 4, end - pos);
                 int d2 = pos - candidate;
@@ -89,20 +102,20 @@ internal sealed partial class BrotliEncoderCore
             }
 
             int next = pos + length;
-            if (length < 16)
+            if (length < _plan.FullInsertLength)
             {
                 for (int p = pos + 1; p < Math.Min(next, last + 1); p++)
                 {
-                    BrotliEncRaw.Slot(head, (int)((BrotliEncRaw.Load32(buffer, p) * 0x1E35A7BDu) >> shift)) = p;
+                    Insert(head, buffer, p, shift);
                 }
             }
             else if (next <= last)
             {
-                BrotliEncRaw.Slot(head, (int)((BrotliEncRaw.Load32(buffer, pos + 1) * 0x1E35A7BDu) >> shift)) = pos + 1;
+                Insert(head, buffer, pos + 1, shift);
                 int a = next - 2;
-                BrotliEncRaw.Slot(head, (int)((BrotliEncRaw.Load32(buffer, a) * 0x1E35A7BDu) >> shift)) = a;
+                Insert(head, buffer, a, shift);
                 a++;
-                BrotliEncRaw.Slot(head, (int)((BrotliEncRaw.Load32(buffer, a) * 0x1E35A7BDu) >> shift)) = a;
+                Insert(head, buffer, a, shift);
             }
 
             pos = next;

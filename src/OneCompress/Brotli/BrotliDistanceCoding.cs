@@ -48,6 +48,22 @@ internal static class BrotliDistanceCoding
         return -1;
     }
 
+    /// <summary>
+    /// The short code of a distance that is none of the four last ones, given the last two (RFC 7932 section 4), or -1: the same answer as
+    /// <see cref="ShortCode"/> in that case, without building the ring.
+    /// </summary>
+    internal static int NearCode(int distance, int last, int secondToLast)
+    {
+        int near = Near(distance - last);
+        if (near >= 0)
+        {
+            return 4 + near;
+        }
+
+        near = Near(distance - secondToLast);
+        return near >= 0 ? 10 + near : -1;
+    }
+
     // The position of a difference from the base distance in the order -1, +1, -2, +2, -3, +3, or -1 if it is none of them.
     private static int Near(int difference)
     {
