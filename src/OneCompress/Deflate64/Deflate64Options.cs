@@ -36,8 +36,8 @@ public sealed class Deflate64Options
     public static Deflate64Options Default { get; } = new();
 
     /// <summary>
-    /// Gets the compression level, 0 to 9. 0 stores; 1 to 3 are greedy, 4 to 9 are lazy with deeper searches as the level rises
-    /// (see docs/deflate64-encoder.md). The default is 6.
+    /// Gets the compression level, 0 to 9. 0 stores; 1 to 4 are one fast lazy parse, 5 and 6 and 7 and 8 are optimal parses of two
+    /// strengths and 9 is the strongest (levels within a group give identical output; see docs/deflate64-encoder.md). The default is 6.
     /// </summary>
     public int Level { get; init; } = DefaultLevel;
 }

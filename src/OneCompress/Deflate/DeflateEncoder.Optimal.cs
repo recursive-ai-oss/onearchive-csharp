@@ -1,5 +1,3 @@
-using System.Numerics;
-
 namespace RecursiveAI.OneCompress.Deflate;
 
 public sealed partial class DeflateEncoder
@@ -99,25 +97,7 @@ public sealed partial class DeflateEncoder
             return Math.Max(cost, 1);
         }
 
-        // log2(x) with 8 fractional bits, by integer squaring, so the result is the same on every platform.
-        public static int Log2Q8(uint x)
-        {
-            int exponent = BitOperations.Log2(x);
-            ulong mantissa = (ulong)x << (31 - exponent);
-            int fraction = 0;
-            for (int bit = 0; bit < 8; bit++)
-            {
-                mantissa = (mantissa * mantissa) >> 31;
-                fraction <<= 1;
-                if (mantissa >= (1UL << 32))
-                {
-                    fraction |= 1;
-                    mantissa >>= 1;
-                }
-            }
-
-            return (exponent << 8) | fraction;
-        }
+        public static int Log2Q8(uint x) => DeflateCostMath.Log2Q8(x);
     }
 
     // Optimal parsing: for each run of positions, find every match, then choose the cheapest sequence of literals and matches by

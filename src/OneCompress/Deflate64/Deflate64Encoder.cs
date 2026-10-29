@@ -10,7 +10,7 @@ namespace RecursiveAI.OneCompress.Deflate64;
 /// not on how the caller splits its calls. Levels and block choice are in docs/deflate64-encoder.md.
 /// </summary>
 /// <remarks>
-/// Memory: about 1 MiB (a 192 KiB window, a hash table, a 64 KiB chain array, token arrays and the output buffer), allocated on
+/// Memory: about 1 MiB at levels 1 to 4 (a 192 KiB window, a hash table, a 64 KiB chain array, token arrays and the output buffer) and about 2.5 MiB at levels 5 to 9 (binary-tree finder and price lists instead of the chain), allocated on
 /// construction and reused. The encoder never produces a distance of 65536 (the farthest it uses is 65535).
 /// </remarks>
 [Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
@@ -22,6 +22,7 @@ public sealed partial class Deflate64Encoder
     private const int MaxDistance = HistorySize - 1;
     private const int TokenCapacity = 1 << 15;
     private const int HashBits = 16;
+    private const int CheckInterval = 512;
     private const int Null = -(1 << 30);
 
     private readonly int _level;
@@ -43,7 +44,14 @@ public sealed partial class Deflate64Encoder
         ArgumentOutOfRangeException.ThrowIfGreaterThan(options.Level, 9, nameof(options));
         _level = options.Level;
         _parameters = LevelParameters.For(_level);
-        if (_level > 0)
+        if (_parameters.Passes > 0)
+        {
+            _optimal = new OptimalState();
+            _tokenLength = new int[TokenCapacity];
+            _tokenValue = new int[TokenCapacity];
+            ResetFinder();
+        }
+        else if (_level > 0)
         {
             _head = new int[1 << HashBits];
             _previous = new ushort[HistorySize];
