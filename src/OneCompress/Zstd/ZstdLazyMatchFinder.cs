@@ -67,7 +67,15 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     private bool _flat;
     private bool _warmRows;
     private int _warmed;
+    private int _stride = 1;
     private const int WarmDistance = 8;
+
+    // Positions inside a long match are entered every InsertStride positions, except the last DenseTail before the next search, which
+    // are all entered (see InsertStride).
+    private const int DenseTail = 16;
+
+    // Only tables of 2^19 entries and up (2 MiB of positions) are far enough from the cache for the entering of positions to matter.
+    private const int StrideMinHashLog = 19;
 
     // Tables of 2^20 entries (4 MiB of positions) and up are too big for the cache, and loading rows ahead pays; below that it costs more than it saves.
     private const int WarmMinHashLog = 20;
@@ -126,6 +134,7 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         _dictionaryIndex = null;
         _flat = !_tree && dictionary is null && _minMatch >= 4;
         _warmed = 0;
+        _stride = !_tree && dictionary is null && _minMatch >= 4 && _rowLog == 4 && _hashLog >= StrideMinHashLog ? Math.Max(InsertStride, 1) : 1;
         _warmRows = Raw.CanWarm && !_tree && _hashLog >= WarmMinHashLog;
         if (dictionary is not null && dictionary.Content.Length >= 8)
         {
@@ -136,6 +145,15 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
             _dictionaryIndex = dictionary.GetChainIndex(_minMatch, _dictionaryHashLog, chainLog);
         }
     }
+
+    /// <summary>
+    /// How many positions apart the positions skipped over by a match are entered, once more than 16 lie between the last one entered and
+    /// the next search; the last 16 are always all entered. A long match is usually a repeat of text that is already in the table, and every
+    /// position entered costs a write to a row far from the cache, so entering one in four loses almost no match and saves most of that
+    /// work. 1 enters every position. Applies to row strategies with 16-entry rows, no dictionary and a table of 2^19 entries or more;
+    /// set before <see cref="BeginFrame"/>.
+    /// </summary>
+    internal int InsertStride { get; set; } = 4;
 
     private static void Prepare(ref byte[] table, int size)
     {
@@ -700,6 +718,7 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         int tagShift = _tagShift;
         int rowLog = _rowLog;
         int rowMask = _rowMask;
+        int stride = _stride;
         do
         {
             ulong hash = (Raw.ReadUInt64(window, q) << shift) * 0x9E3779B185EBCA87UL;
@@ -709,7 +728,7 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
             Raw.Set(tags, slot, (byte)(hash >> tagShift));
             Raw.Set(slots, slot, (uint)q);
         }
-        while (++q < p);
+        while ((q += p - q > DenseTail ? stride : 1) < p);
     }
 
     // Brings the table lines of the rows of the next few positions into the cache before they are searched or filled in: the rows are

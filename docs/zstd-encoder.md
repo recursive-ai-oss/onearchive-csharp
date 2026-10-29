@@ -153,6 +153,13 @@ and in how far the parse looks ahead.
   best length differ from the same bytes at the current position (a longer match must agree on them); otherwise the match length
   is measured and the candidate becomes the best if its gain is higher. With the current best shorter than `minMatch - 1` the
   skip test looks at the single byte at index `minMatch - 1` instead (`minMatch` 3 only).
+- **Insert stride** (rows with `rowLog` 4, no dictionary, `minMatch` at least 4, `hashLog` at least 19): positions skipped over by a match are
+  entered into their rows lazily by the next search (see Index). When more than 16 positions lie between the last one entered and the position
+  being searched, they are entered every 4th position (the first of them, then every fourth), and the last 16 are all entered. A long match
+  usually repeats text whose positions are already in the table, and each entered position is a write to a row far from the cache. Entering
+  every fourth loses almost no match, because the parse extends a match backwards over equal bytes. This is a rule of the output bytes: it
+  applies at levels 5 to 9 for sources over 256 KiB (`hashLog` 19 to 21) and at levels 6 to 8 for sources of 128 KiB to 256 KiB when their
+  `hashLog` reaches 19. On silesia.tar it costs 0.04% to 0.17% in size.
 - **Binary tree** (btlazy2): `2^(chainLog-1)` nodes, two links each (smaller and larger), one tree per hash value rooted at
   `head[hash]`. Entering a position compares it against nodes from the root down, splitting them into those below and those above
   it (the standard suffix-tree-like insertion of binary-tree match finders); the comparisons give every match met, in increasing
