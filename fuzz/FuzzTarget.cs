@@ -61,6 +61,8 @@ internal static class FuzzTargets
         CpioArTargets.CpioRoundTrip,
         CpioArTargets.ArRoundTrip,
         CfbTargets.Read,
+        CfbTargets.Rewrite,
+        CfbTargets.Write,
         IsoTargets.Read,
         IsoTargets.RoundTrip,
         ZipTargets.Read,

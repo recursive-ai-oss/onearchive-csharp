@@ -218,6 +218,9 @@ public sealed class ArchiveCreateOptions
     /// <summary>Gets the ISO 9660 writing options. Default: level 3 with Joliet and Rock Ridge.</summary>
     public IsoWriterOptions? Iso { get; init; }
 
+    /// <summary>Gets the compound file writing options. Default: version 3 with strict names.</summary>
+    public CompoundFileWriterOptions? CompoundFile { get; init; }
+
     /// <summary>Gets the ar writing options. Default: the GNU variant.</summary>
     public ArWriterOptions? Ar { get; init; }
 

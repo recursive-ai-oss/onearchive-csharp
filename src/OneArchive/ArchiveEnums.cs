@@ -36,7 +36,7 @@ public enum ArchiveFormat
     /// <summary>ISO 9660 (see <c>RecursiveAI.OneArchive.Iso</c>): the primary hierarchy with Rock Ridge, and Joliet, read and write.</summary>
     Iso = 9,
 
-    /// <summary>Microsoft Compound File Binary (see <c>RecursiveAI.OneArchive.Cfb</c>): read only; storages are directories and streams are files. Legacy Office documents, Outlook messages and installer packages.</summary>
+    /// <summary>Microsoft Compound File Binary (see <c>RecursiveAI.OneArchive.Cfb</c>): read and write; storages are directories and streams are files. Legacy Office documents, Outlook messages and installer packages.</summary>
     CompoundFile = 10,
 }
 

@@ -39,6 +39,24 @@ if (stream1 is null || stream1.Size != 544 || reader.Header.MajorVersion != 3)
     return Fail("find");
 }
 
+// Writing needs no codec either: rewrite the file in both versions and read each result back.
+foreach (int version in new[] { 3, 4 })
+{
+    var written = new MemoryStream();
+    using (var writer = new CompoundFileWriter(written, new CompoundFileWriterOptions { MajorVersion = version }, leaveOpen: true))
+    {
+        writer.WriteEntry(new ArchiveEntry { Name = "docs", Kind = ArchiveEntryKind.Directory });
+        writer.WriteEntry(new ArchiveEntry { Name = "docs/small", Size = 3 }, new byte[] { 1, 2, 3 });
+        writer.WriteEntry(new ArchiveEntry { Name = "large", Size = 9000 }, new byte[9000]);
+    }
+
+    using var back = new CompoundFileReader(written.ToArray());
+    if (back.Header.MajorVersion != version || back.Find("large")?.Size != 9000 || back.Find("docs/small")?.Size != 3)
+    {
+        return Fail("write v" + version);
+    }
+}
+
 Console.WriteLine("cfb smoke ok");
 return 0;
 

@@ -45,7 +45,7 @@ Archive.Create("backup.tar.zst").Add("assets/").Add("notes.txt", "docs/notes.txt
 ```
 
 `Archive.Create(path)` chooses the format and compression from the extension (`.tar`, `.tar.zst`/`.tzst`, `.tar.lz4`/`.tlz4`,
-`.tar.gz`/`.tgz`, `.tar.xz`/`.txz`, `.tar.lz`/`.tlz`, `.zip`, and `.gz`/`.zst`/`.lz4`/`.xz`/`.lz` for one compressed file) unless `ArchiveCreateOptions.Format`/`Compression` say otherwise. An extension
+`.tar.gz`/`.tgz`, `.tar.xz`/`.txz`, `.tar.lz`/`.tlz`, `.zip`, `.cfb`, and `.gz`/`.zst`/`.lz4`/`.xz`/`.lz` for one compressed file) unless `ArchiveCreateOptions.Format`/`Compression` say otherwise. An extension
 that names no writable format and no `Format` option is an `ArgumentException`. `Archive.Create(Stream)` defaults to
 uncompressed tar. `.tar.bz2` and `.bz2` can be read, not written.
 
@@ -54,7 +54,7 @@ uncompressed tar. `.tar.bz2` and `.bz2` can be read, not written.
 1. Compression from the first bytes: Zstandard `28 B5 2F FD`, LZ4 frame `04 22 4D 18`, gzip `1F 8B`, bzip2 `BZh`, xz `FD 37 7A 58 5A 00`, lzip `LZIP`. Magic bytes win over the file name.
 2. If compressed, the first 512 bytes of the decompressed stream are examined; otherwise the first 512 bytes.
 3. Container from those bytes: `PK\3\4` (also `PK\5\6`, the whole of an empty zip, and the span markers `PK\7\8` and `PK00`) is
-   zip; `MSCF` is a cabinet (see `cab-reader.md`; `.cab` by extension); `ustar` at offset 257 is tar; a block with no magic but a valid header checksum, numeric mode and size fields and a
+   zip; `MSCF` is a cabinet (see `cab-reader.md`; `.cab` by extension); `D0 CF 11 E0 A1 B1 1A E1` is a compound file (see `cfb.md`; `.cfb`, `.doc`, `.xls`, `.ppt`, `.msg` and `.msi` by extension); `ustar` at offset 257 is tar; a block with no magic but a valid header checksum, numeric mode and size fields and a
    non-empty name is a version 7 tar; 512 zero bytes inside a compressed stream are an empty tar, unless a name is known and
    does not say tar (a disk image starts with zeros too).
 4. If nothing matched, the file name's extension decides (this is how an empty uncompressed `.tar` is recognised).
@@ -66,6 +66,20 @@ gzip (RFC 1952, all members in a row), bzip2, xz and lzip are read and written; 
 `CompressionLevel` 1-9, default 9, through `BZip2Stream`; xz at preset `CompressionLevel`, default 6, with a CRC64 check; lzip at level
 `CompressionLevel`, default 6, one member). The xz and lzip dictionary sizes are checked against `MaxWindowSize` before any allocation.
 The place for a new layer is `Internal/CompressionFilters.cs` (`OpenDecompress`, `OpenCompress`, `CanCompress`).
+
+## Formats
+
+| Format | `ArchiveFormat` | Reader / writer | Notes |
+|---|---|---|---|
+| tar | `Tar` | `TarReader` / `TarWriter` | ustar, pax, GNU, sparse files |
+| zip | `Zip` | `ZipReader` / `ZipWriter` | zip64, WinZip AES; ZipCrypto is read only |
+| 7z | `SevenZip` | `SevenZipReader` / `SevenZipWriter` | solid folders, encoded headers, AES-256 |
+| cpio, ar | `Cpio`, `Ar` | `CpioReader`, `ArReader` / `CpioWriter`, `ArWriter` | newc, crc, odc; common, GNU, BSD |
+| ISO 9660 | `Iso` | `IsoReader` / `IsoWriter` | Joliet, Rock Ridge |
+| Compound file (CFB) | `CompoundFile` | `CompoundFileReader` / `CompoundFileWriter` | storages are directories, streams are files; versions 3 and 4 (`cfb.md`) |
+| cab | `Cab` | `CabReader` | read only; stored, MSZIP, LZX |
+| RAR 5 | `Rar` | `RarReader` | read only; stored entries |
+| single stream | `SingleStream` | `SingleStreamReader` / `SingleStreamWriter` | one compressed file |
 
 ## Entry model
 
