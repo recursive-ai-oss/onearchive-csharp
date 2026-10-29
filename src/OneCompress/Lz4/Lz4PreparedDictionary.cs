@@ -57,7 +57,7 @@ internal sealed class Lz4PreparedDictionary
     /// <summary>
     /// The high-compression compressor's index over the dictionary, as if the dictionary were the first bytes of a window
     /// whose origin is a multiple of 64 KiB: head entries are a position plus one (zero for none), and the chain holds the
-    /// distance to the previous position with the same hash, indexed by position.
+    /// distance to the previous position with the same hash (low 16 bits) and to the one before that (high 16 bits), indexed by position.
     /// </summary>
     public HighIndex HighSnapshot
     {
@@ -75,16 +75,30 @@ internal sealed class Lz4PreparedDictionary
                 {
                     var head = new uint[1 << Lz4HighBlockCompressor.HashLog];
                     var chain = new ushort[Content.Length];
+                    var wide = new uint[Content.Length];
                     ReadOnlySpan<byte> c = Content;
                     for (int p = 0; p + 4 <= c.Length; p++)
                     {
                         int h = Lz4HighBlockCompressor.Hash(Lz4EncRaw.Read32(c, p));
                         uint previous = head[h];
-                        chain[p] = previous == 0 ? (ushort)0 : (ushort)(p - (previous - 1));
+                        uint delta = previous == 0 ? 0 : (uint)(p - (previous - 1));
+                        if (delta is 0 or > Lz4Format.MaxOffset)
+                        {
+                            chain[p] = 0;
+                            wide[p] = 0;
+                        }
+                        else
+                        {
+                            // The high half is the distance to the position the previous one links to.
+                            chain[p] = (ushort)delta;
+                            uint second = wide[p - (int)delta] & 0xFFFF;
+                            uint sum = delta + second;
+                            wide[p] = delta | ((second != 0 && sum <= Lz4Format.MaxOffset ? sum : 0) << 16);
+                        }
                         head[h] = (uint)p + 1;
                     }
 
-                    Volatile.Write(ref _highSnapshot, new HighIndex(head, chain));
+                    Volatile.Write(ref _highSnapshot, new HighIndex(head, chain, wide));
                 }
 
                 return _highSnapshot;
@@ -92,5 +106,5 @@ internal sealed class Lz4PreparedDictionary
         }
     }
 
-    internal sealed record HighIndex(uint[] Head, ushort[] Chain);
+    internal sealed record HighIndex(uint[] Head, ushort[] Chain, uint[] ChainWide);
 }
