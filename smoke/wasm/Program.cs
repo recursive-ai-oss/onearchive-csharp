@@ -171,5 +171,40 @@ catch (PlatformNotSupportedException)
 {
 }
 
+// RAR 5: a stored entry hashed with BLAKE2sp (made by the RAR tool) lists and extracts, and a compressed one lists and refuses to extract.
+byte[] rarStored = Convert.FromHexString("526172211a0701003392b5e50a0105060005010180800092dbf7014202032eb70100b701b4830280000105742e747874220200f5aa3407901b8c5193f4f4bb96c85ea3aaa1739556e77bb424694725f6da86680a03137aa0e26a14f2c20248656c6c6f2066726f6d206120524152203520617263686976652c2073746f72656420616e6420686173686564207769746820424c414b453273702e0a48656c6c6f2066726f6d206120524152203520617263686976652c2073746f72656420616e6420686173686564207769746820424c414b453273702e0a48656c6c6f2066726f6d206120524152203520617263686976652c2073746f72656420616e6420686173686564207769746820424c414b453273702e0a1d77565103050400");
+byte[] rarCompressed = Convert.FromHexString("526172211a0701003392b5e50a01050600050101808000ee3c62b22302030bd10004b701b483021e85877f80030105742e7478740a03137aa0e26a14f2c202c3d74e2545432f943eed15fa011e08340441041794a0f45d4d811753760b7ff18d14d198199c32a9f501ea93339cd470cbc82118446009b649787687a2b1ef5beaa213a7cdeca8831d61a657bf7759fc701d77565103050400");
+using (var rarReader = new RecursiveAI.OneArchive.Rar.RarReader(new MemoryStream(rarStored)))
+{
+    var rarEntry = rarReader.GetNextEntry();
+    using var rarContent = new MemoryStream();
+    rarReader.OpenEntryStream().CopyTo(rarContent);
+    if (rarEntry is null || rarEntry.Name != "t.txt" || rarEntry.Size != 183 || rarEntry.Blake2sp is null || Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(rarContent.ToArray())) != "ecbe829874724ab86e012981c6edb0ce49dc8c8fa736a856bfee5b095ba3be85" || rarReader.GetNextEntry() is not null)
+    {
+        Console.Error.WriteLine("rar stored read failed");
+        return 1;
+    }
+}
+
+using (var rarReader = new RecursiveAI.OneArchive.Rar.RarReader(new MemoryStream(rarCompressed)))
+{
+    var rarEntry = rarReader.GetNextEntry();
+    try
+    {
+        rarReader.OpenEntryStream();
+        Console.Error.WriteLine("rar compressed entry opened");
+        return 1;
+    }
+    catch (RecursiveAI.OneArchive.Rar.RarUnsupportedException ex) when (rarEntry is { Method: 3, Size: 183 } && ex.Message.Contains("not supported yet", StringComparison.Ordinal))
+    {
+    }
+}
+
+if (Archive.Open(new MemoryStream(rarStored)).Format != ArchiveFormat.Rar)
+{
+    Console.Error.WriteLine("rar detection failed");
+    return 1;
+}
+
 Console.WriteLine("ok: " + archive);
 return 0;

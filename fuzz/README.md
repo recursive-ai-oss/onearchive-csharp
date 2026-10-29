@@ -68,4 +68,9 @@ properties, encrypted headers and the wrong-password paths. The 7z read target c
 mutated power is a limit error instead of a stall. Round trips write with the salt and IV hooks fixed, so two writes agree.
 Seeds for `cab-read` and `lzx-decode` come from `seeds-cab.sh` (`fuzz seeds-cab DIR`).
 
+`rar-read` reads the input as a RAR 5 archive from a seekable and from a forward-only stream (which must agree), then again after the
+header CRC-32 values along the block chain are repaired, so that mutated fields reach the parsers; later volumes, when asked for, are the
+input again. Stored entries are read to their end and must have the length they declare. Seeds come from `seeds-rar.sh`: the archives
+in `testdata/rar` (made by the RAR tool, see `tools/rar-testdata/generate.sh`).
+
 Seeds come from `seeds-encrypted.sh` (`fuzz seeds-encrypted DIR` writes the library's own encrypted archives).

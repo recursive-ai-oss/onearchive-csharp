@@ -3,6 +3,7 @@ using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cab;
 using RecursiveAI.OneArchive.Cpio;
+using RecursiveAI.OneArchive.Rar;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Zip;
 
@@ -50,6 +51,9 @@ public class ArchiveOpenOptions
 
     /// <summary>Gets the zip reading options (the limits above override <see cref="ZipReaderOptions.Limits"/>). Default: the zip defaults.</summary>
     public ZipReaderOptions? Zip { get; init; }
+
+    /// <summary>Gets the RAR reading options (the limits above override <see cref="RarReaderOptions.Limits"/>). Default: the RAR defaults; for a path source the later volumes of a set are found from the file name.</summary>
+    public RarReaderOptions? Rar { get; init; }
 
     /// <summary>Gets the 7z reading options (the limits above override <see cref="SevenZipReaderOptions.Limits"/>). Default: the 7z defaults.</summary>
     public SevenZipReaderOptions? SevenZip { get; init; }
