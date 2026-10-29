@@ -8,7 +8,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 - Deflate, zlib and gzip: faster one-shot and streaming compression at levels 1-9. The greedy and lazy parsers no longer store literals and the block writer emits literal runs straight from the input (identical bytes by itself); levels 1-3 and 5-9 use shallower hash-chain searches (level 1 enters fewer positions of long matches, levels 6-9 also give up on the lazy look-ahead sooner), so their compressed bytes differ from 0.5 while staying within 1% of libdeflate's size. Levels 0, 4 and 10-12 and Deflate64 are unchanged.
 - Zstandard: levels 5-9 (and 6-8 for sources of 128-256 KiB) enter only every fourth position that a long match skips over into the match table, which saves writes to a table far larger than the cache. Compressed bytes change, within 0.2% in size, and stay identical on every platform.
-- LZ4: faster high-compression levels (3-12) through a tighter search, and a lazy level 2 that is within 0.2% of the `lz4` tool's size (it was +2.2%). Levels 2 and 4-9 are retuned, so their compressed bytes differ from 0.5 while staying within 1% of the tool's size; levels 1, 3 and 10-12 are unchanged.
+- LZ4: faster high-compression levels (3-12) through a tighter search, and a lazy level 2 that is within 0.2% of the `lz4` tool's size (it was +2.2%). Levels 3-9 search deeper where no match is known yet and only briefly for a longer match one or two bytes later, and take a match of 64 bytes or more without looking further; this makes them 8-19% faster at about the same size. Levels 2-9 are retuned, so their compressed bytes differ from 0.5 while staying within 1% of the tool's size; levels 1 and 10-12 are unchanged.
 
 ## [0.5.0-preview.1] - 2026-10-29
 
