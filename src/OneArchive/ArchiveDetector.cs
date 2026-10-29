@@ -19,7 +19,10 @@ public static class ArchiveDetector
 
     /// <summary>Recognises a compression layer from its magic bytes.</summary>
     /// <param name="prefix">The first bytes of the data.</param>
-    /// <returns>The compression layer, or <see cref="ArchiveCompression.None"/> if no magic matches.</returns>
+    /// <returns>
+    /// The compression layer, or <see cref="ArchiveCompression.None"/> if no magic matches. Brotli is never returned: RFC 7932 section
+    /// 9.1 gives its streams no magic, so only <see cref="FromFileName"/> can select it.
+    /// </returns>
     public static ArchiveCompression DetectCompression(ReadOnlySpan<byte> prefix)
     {
         if (prefix.StartsWith(new byte[] { 0x28, 0xB5, 0x2F, 0xFD }))
@@ -198,6 +201,7 @@ public static class ArchiveDetector
         (".cpio.bz2", ArchiveCompression.Bzip2),
         (".cpio.xz", ArchiveCompression.Xz),
         (".cpio.lz", ArchiveCompression.Lzip),
+        (".cpio.br", ArchiveCompression.Brotli),
     ];
 
     private static readonly (string, ArchiveCompression)[] s_tarSuffixes =
@@ -209,12 +213,13 @@ public static class ArchiveDetector
         (".tar.bz2", ArchiveCompression.Bzip2), (".tbz2", ArchiveCompression.Bzip2), (".tbz", ArchiveCompression.Bzip2),
         (".tar.xz", ArchiveCompression.Xz), (".txz", ArchiveCompression.Xz),
         (".tar.lz", ArchiveCompression.Lzip), (".tlz", ArchiveCompression.Lzip),
+        (".tar.br", ArchiveCompression.Brotli), (".tbr", ArchiveCompression.Brotli),
     ];
 
     private static readonly (string, ArchiveCompression)[] s_compressionSuffixes =
     [
         (".zst", ArchiveCompression.Zstd), (".lz4", ArchiveCompression.Lz4), (".gz", ArchiveCompression.Gzip),
         (".bz2", ArchiveCompression.Bzip2), (".xz", ArchiveCompression.Xz),
-        (".lz", ArchiveCompression.Lzip),
+        (".lz", ArchiveCompression.Lzip), (".br", ArchiveCompression.Brotli),
     ];
 }

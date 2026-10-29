@@ -55,6 +55,13 @@ public enum ArchiveCompression
 
     /// <summary>lzip (<c>.lz</c>). Read and written; a read is limited by <see cref="ArchiveLimits.MaxWindowSize"/> (the lzip dictionary size).</summary>
     Lzip = 6,
+
+    /// <summary>
+    /// Brotli (<c>.br</c>). Read and written. RFC 7932 defines no magic number, so brotli is chosen only from a file name
+    /// (<c>.br</c>, <c>.tar.br</c>, <c>.tbr</c>) or <see cref="ArchiveOpenOptions.Compression"/>, never guessed from content. A read is
+    /// limited by <see cref="ArchiveLimits.MaxWindowSize"/>; writing uses quality 5 and a 4 MiB window unless a level is given.
+    /// </summary>
+    Brotli = 7,
 }
 
 /// <summary>What kind of filesystem object an archive entry describes.</summary>
