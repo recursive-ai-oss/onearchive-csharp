@@ -17,6 +17,7 @@ public sealed class BZip2BlockWriter
     private readonly bool[] _used = new bool[256];
     private readonly byte[] _usedList = new byte[256];
     private readonly BZip2MoveToFront _selectorMtf = new();
+    private readonly uint[] _entries = new uint[6 * BZip2HuffmanTable.MaxAlphabetSize];
     private ushort[] _symbols = new ushort[1024];
 
     /// <summary>Writes one block.</summary>
@@ -137,12 +138,16 @@ public sealed class BZip2BlockWriter
         }
 
         // Symbols.
-        for (int i = 0; i < symbols.Length; i++)
+        int stride = BZip2HuffmanTable.MaxAlphabetSize;
+        for (int t = 0; t < tableCount; t++)
         {
-            BZip2HuffmanTable table = _tables[selectors[i / BZip2TableChooser.GroupSize]];
-            int symbol = symbols[i];
-            writer.Write(table.GetCode(symbol), table.GetLength(symbol));
+            for (int s = 0; s < alphabet; s++)
+            {
+                _entries[(t * stride) + s] = (_tables[t].GetCode(s) << 5) | (uint)_tables[t].GetLength(s);
+            }
         }
+
+        writer.WriteSymbols(symbols, selectors, _entries, stride, BZip2TableChooser.GroupSize);
     }
 
     // Move-to-front, then runs of the front value (position 0) as bijective base 2 digits RUNA (0) and RUNB (1), least significant first.
@@ -155,43 +160,8 @@ public sealed class BZip2BlockWriter
 
         ushort[] symbols = _symbols;
         _mtf.Reset(_usedList.AsSpan(0, usedCount));
-        int count = 0;
-        int run = 0;
-        foreach (byte b in lastColumn)
-        {
-            int position = _mtf.Encode(b);
-            if (position == 0)
-            {
-                run++;
-                continue;
-            }
-
-            count = FlushRun(symbols, count, run);
-            run = 0;
-            symbols[count++] = (ushort)(position + 1);
-        }
-
-        count = FlushRun(symbols, count, run);
+        int count = _mtf.EncodeSymbols(lastColumn, symbols);
         symbols[count++] = (ushort)(usedCount + 1);
-        return count;
-    }
-
-    private static int FlushRun(ushort[] symbols, int count, int run)
-    {
-        while (run > 0)
-        {
-            if ((run & 1) != 0)
-            {
-                symbols[count++] = 0;
-                run = (run - 1) >> 1;
-            }
-            else
-            {
-                symbols[count++] = 1;
-                run = (run - 2) >> 1;
-            }
-        }
-
         return count;
     }
 }
