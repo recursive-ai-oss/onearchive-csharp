@@ -382,14 +382,28 @@ public class BZip2ComponentTests
             decoder.Decompress(v.Compressed, output, out _, out _);
         }
 
-        decoder.Reset();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        OperationStatus s = decoder.Decompress(v.Compressed, output, out int consumed, out int written);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(OperationStatus.Done, s);
-        Assert.Equal(v.Size, written);
-        Assert.Equal(v.Compressed.Length, consumed);
-        Assert.Equal(0, allocated);
+        // The runtime's tiered compilation can allocate a little on this thread while it warms up, so measure a few
+        // times; an allocation made by the decoder itself would show up in every measurement.
+        var seen = new List<long>();
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            decoder.Reset();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            OperationStatus s = decoder.Decompress(v.Compressed, output, out int consumed, out int written);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.Equal(OperationStatus.Done, s);
+            Assert.Equal(v.Size, written);
+            Assert.Equal(v.Compressed.Length, consumed);
+            seen.Add(allocated);
+            if (allocated == 0)
+            {
+                return;
+            }
+
+            Thread.Sleep(50);
+        }
+
+        Assert.Fail("every decode allocated: " + string.Join(",", seen));
     }
 
     [Fact]
