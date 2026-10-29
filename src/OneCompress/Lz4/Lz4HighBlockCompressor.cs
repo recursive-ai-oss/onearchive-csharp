@@ -52,6 +52,8 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     private readonly uint[] _chainWide;
     private readonly int _level;
     private readonly int _attempts;
+    private readonly int _attemptsNext;
+    private readonly int _attemptsAfter;
     private readonly int _nice;
     private readonly bool _optimal;
     private readonly bool _lookahead;
@@ -81,7 +83,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         ArgumentOutOfRangeException.ThrowIfLessThan(level, 2);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(level, 12);
         _level = level;
-        (_attempts, _nice, _optimal) = Parameters(level);
+        (_attempts, _attemptsNext, _attemptsAfter, _nice, _optimal) = Parameters(level);
         _lookahead = level is >= 3 and <= 9;
         _wide = level >= 6;
         _chain = _wide ? [] : new ushort[ChainMask + 1];
@@ -91,22 +93,28 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     /// <summary>Gets the level.</summary>
     public int Level => _level;
 
-    // Per level: how many chain candidates are examined at a position, the match length that is good enough to stop
+    // Per level: how many chain candidates are examined at a position where no match is known yet, how many at the position one
+    // byte later and at the one two bytes later when looking for a longer match there (a longer match is rarer and the search is
+    // for an improvement only, so a shorter walk finds nearly all of them), the match length that is good enough to stop
     // searching (and, for the optimal levels, to stop planning), and whether matches are chosen optimally.
-    private static (int Attempts, int Nice, bool Optimal) Parameters(int level) => level switch
+    private static (int Attempts, int Next, int After, int Nice, bool Optimal) Parameters(int level) => level switch
     {
-        2 => (3, 16, false),
-        3 => (7, 256, false),
-        4 => (12, 256, false),
-        5 => (24, 256, false),
-        6 => (44, 256, false),
-        7 => (68, 256, false),
-        8 => (96, 256, false),
-        9 => (128, 256, false),
-        10 => (56, 256, true),
-        11 => (100, 256, true),
-        _ => (128, 256, true),
+        2 => (3, 3, 3, 16, false),
+        3 => (10, 4, 1, 256, false),
+        4 => (24, 9, 2, 256, false),
+        5 => (48, 19, 4, 256, false),
+        6 => (88, 35, 8, 256, false),
+        7 => (136, 54, 13, 256, false),
+        8 => (192, 76, 19, 256, false),
+        9 => (256, 102, 25, 256, false),
+        10 => (56, 56, 56, 256, true),
+        11 => (100, 100, 100, 256, true),
+        _ => (128, 128, 128, 256, true),
     };
+
+    // A match this long is taken without looking for a longer one a byte or two later: such a search almost never finds one
+    // and costs a full walk.
+    private const int LazyLimit = 64;
 
     /// <inheritdoc />
     public override void SetDictionary(Lz4Dictionary? dictionary) =>
@@ -704,7 +712,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
             }
 
             // Lazy: a match starting one byte later and longer than this one wins, and the byte before it becomes a literal.
-            while (length < _nice)
+            while (length < Math.Min(_nice, LazyLimit))
             {
                 if (ip + 1 > mfLimit)
                 {
@@ -712,14 +720,14 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
                 }
 
                 int offset2 = 0;
-                int length2 = Find(src, ip + 1, matchLimit, length, _attempts, _nice, ref offset2);
+                int length2 = Find(src, ip + 1, matchLimit, length, _attemptsNext, _nice, ref offset2);
                 if (length2 <= length)
                 {
                     // Two bytes on, a match that ends further than two literals' cost beyond this one also wins.
                     if (_lookahead && ip + 2 <= mfLimit)
                     {
                         int offset3 = 0;
-                        int length3 = Find(src, ip + 2, matchLimit, length + 1, _attempts, _nice, ref offset3);
+                        int length3 = Find(src, ip + 2, matchLimit, length + 1, _attemptsAfter, _nice, ref offset3);
                         if (length3 > length + 1)
                         {
                             ip += 2;
