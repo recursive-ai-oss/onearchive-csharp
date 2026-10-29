@@ -35,11 +35,14 @@ The range is -65536 to 12 (a level outside it is an `ArgumentOutOfRangeException
 | 1, 0 | hash table | greedy | acceleration 1 |
 | -N | hash table | greedy | acceleration N + 1 (so `--fast=1` skips like acceleration 2) |
 | 2 | hash table (2^18 entries, every second interior position indexed) | lazy, one-byte lookahead | acceleration 1 |
-| 3 to 9 | hash chain | lazy, two-byte lookahead | chain candidates 7, 12, 24, 44, 68, 96, 128; stop at match length 256 |
+| 3 to 9 | hash chain | lazy, two-byte lookahead | chain candidates at a position with no match yet 10, 24, 48, 88, 136, 192, 256; at the next position 4, 9, 19, 35, 54, 76, 102; at the one after 1, 2, 4, 8, 13, 19, 25; stop at match length 256; no look-ahead from a match of 64 or more |
 | 10 to 12 | hash chain | optimal | chain candidates 56, 100, 128; stop at match length 256 |
 
-The candidate counts were chosen so that, on Silesia's tar and enwik8, the output stays within about 0.9% of the `lz4`
-tool's size at the same level, at the least search work that achieves it.
+The candidate counts were chosen so that the output stays within 1% of the `lz4` tool's size at the same level, at the
+least search work that achieves it (the measured sizes are under "Measured sizes" below). A longer match is rarer than a
+first match and is only an improvement, so the look-ahead positions get a shorter walk than the first one: about 40% of
+the candidates one byte on and about 10% two bytes on. A deeper first walk with shallow look-ahead walks gives a smaller
+block for the same work than the same count at every position.
 
 ### Fast levels (hash table, greedy)
 
@@ -69,15 +72,16 @@ tool's size at the same level, at the least search work that achieves it.
   the position that link points to (0 when either link is missing or the sum exceeds 65535). The search reads two
   candidates from one entry, so the dependent load for the third candidate starts sooner. The candidates, their order and
   the output are exactly those of the 16-bit chain; only the speed differs.
-- A search at a position examines at most the level's number of chain candidates, nearest first. A candidate counts when it
+- A search at a position examines at most that search's number of chain candidates (the level's table row above), nearest first. A candidate counts when it
   lies 1 to 65535 bytes back, agrees on the four bytes ending at the current best length, agrees on the first four bytes,
   and extends past the best length so far (ties keep the nearest). A candidate that fails the four-byte test cannot be
   longer than the best, so the test changes no result. The search stops early when the best length reaches the level's stop
   length or the end of the block. Matches end at least 5 bytes before the end of the block and start at least 12 bytes before it.
-- **Lazy parse (levels 3 to 9).** At a position with a match, the next position is searched for a match longer than
-  the current one; one found replaces it (the bytes before it become literals) and the check repeats from there. When the
-  next position has none, the position after it is searched for a match more than one byte longer than the current one,
-  and one found replaces the current match the same way. The chosen match is then extended backwards over pending literals.
+- **Lazy parse (levels 3 to 9).** At a position with a match, the next position is searched (with the level's second
+  candidate count) for a match longer than the current one; one found replaces it (the bytes before it become literals) and
+  the check repeats from there. When the next position has none, the position after it is searched (with the third count)
+  for a match more than one byte longer than the current one, and one found replaces the current match the same way. A match
+  of 64 bytes or more is taken without either search. The chosen match is then extended backwards over pending literals.
 - **Optimal parse (levels 10 to 12).** Starting at a position with a match, the encoder plans the cheapest sequence of
   literals and matches for the stretch ahead, by dynamic programming over byte positions. Prices are bytes of output:
   a literal costs 1, plus 1 more when the run it extends reaches 15 literals and every 255 after; a match costs 3 (token
@@ -128,6 +132,26 @@ chain links; 512 KiB from level 6 up, where the links are 256 KiB), plus 64 KiB 
 buffer (the dictionary and the block) and, for blocks up to 64 KiB, undo records of 6 bytes per input byte. A frame encoder
 adds its staging buffer (one block) and, for independent blocks that arrive in pieces or linked blocks, a window (block
 size, plus 64 KiB when linked).
+
+## Measured sizes
+
+Block sizes (4 MiB independent blocks, as `lz4 -b<level> -B7` reports them) against the `lz4` tool 1.10.0, measured on the
+library at commit 5d6f9e5. A negative figure means ours is smaller. Levels 10 to 12 were not measured again; their bytes are
+the same as before that commit.
+
+| Level | silesia.tar | enwik8 |
+|---|---|---|
+| 1 | -0.001% | +0.000% |
+| 2 | +0.11% | -0.95% |
+| 3 | +0.80% | +0.42% |
+| 4 | +0.72% | +0.49% |
+| 5 | +0.80% | +0.61% |
+| 6 | +0.84% | +0.63% |
+| 7 | +0.90% | +0.64% |
+| 8 | +0.90% | +0.62% |
+| 9 | +0.88% | +0.61% |
+
+The level 2 figures are for the lazy fast parse described above.
 
 ## Measuring
 
