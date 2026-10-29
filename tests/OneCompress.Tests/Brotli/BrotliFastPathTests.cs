@@ -198,4 +198,35 @@ public class BrotliFastPathTests
         byte[] stream = input[1..];
         Assert.Equal(Outcome(stream, fast: false), Outcome(stream, fast: true));
     }
+
+    [Theory]
+    [InlineData("mixed530k-q11", false)]
+    [InlineData("mixed530k-q11", true)]
+    [InlineData("dictwords60k-q5", false)]
+    [InlineData("structured60k-q9", false)]
+    public void ReusedDecoderAllocatesNothingInSteadyState(string name, bool general)
+    {
+        BrotliVector v = BrotliTestData.Vector(name);
+        var decoder = new BrotliDecoder { FastPathDisabled = general };
+        byte[] buffer = new byte[v.Size];
+
+        // The runtime's tiered compilation allocates a little while it warms up, so wait for three clean calls in a row; an allocation
+        // made by every call never gets there.
+        var allocations = new List<long>();
+        int clean = 0;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (clean < 3 && clock.ElapsedMilliseconds < 20_000)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            decoder.Reset();
+            OperationStatus status = decoder.Decompress(v.Compressed, buffer, out _, out int written);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.Equal(OperationStatus.Done, status);
+            Assert.Equal(v.Size, written);
+            allocations.Add(allocated);
+            clean = allocated < 512 ? clean + 1 : 0;
+        }
+
+        Assert.True(clean >= 3, $"{name} kept allocating: {string.Join(",", allocations.TakeLast(10))} bytes per call");
+    }
 }

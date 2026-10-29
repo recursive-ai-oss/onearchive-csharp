@@ -205,6 +205,16 @@ public sealed partial class BrotliDecoder
         public static int Of(byte[] lut, int p1, int p2) => ((BrotliDecRaw.At768(lut, 512 + p1) << 3) | BrotliDecRaw.At768(lut, 512 + p2)) & 63;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void FastLiteral<TContext>(uint[] arena, ReadOnlySpan<int> offsets, byte[] ring, ref ulong buf, ref int cnt, ref int pos, ref int p1, ref int p2)
+        where TContext : struct, ILiteralContext
+    {
+        int literal = FastSymbol(arena, BrotliDecRaw.At64(offsets, TContext.Of(s_contextLut, p1, p2)), ref buf, ref cnt);
+        BrotliDecRaw.Set(ring, pos++, (byte)literal);
+        p2 = p1;
+        p1 = literal;
+    }
+
     // Tests set this to compare the fast loop with the general path.
     internal bool FastPathDisabled { get; set; }
 
@@ -237,6 +247,29 @@ public sealed partial class BrotliDecoder
                 RunFast<SignedContext>(ref br, dest);
                 break;
         }
+    }
+
+    // A transformed dictionary word for a copy whose distance reaches past the window (RFC 7932 section 8), written into the ring at pos.
+    // Returns its length, which can be under two bytes when the transformation omits letters, or -1 when it does not fit before end
+    // (then the general path writes it from the state set here). Kept out of the loop because it is rare and large.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int WriteDictionaryWord(ref BrotliBitReader br, int ip, ulong buf, int cnt, int copy, int distance, int maxDistance, int produced, byte[] ring, int pos, int end)
+    {
+        br.Attach(ip, buf, cnt);
+        _copyLen = copy;
+        int metaAtEntry = _metaRemaining;
+        _metaRemaining = metaAtEntry - produced;
+        StartDictionaryWord(br, distance, maxDistance);
+        _metaRemaining = metaAtEntry;
+        int length = _wordLen;
+        if (pos + length > end)
+        {
+            return -1;
+        }
+
+        _word.AsSpan(0, length).CopyTo(ring.AsSpan(pos, length));
+        _cmd = Cmd.Start;
+        return length;
     }
 
     // Decodes whole commands - insert-and-copy length, literals, distance, copy (RFC 7932 sections 5 to 10) - for as long as the input
@@ -272,9 +305,9 @@ public sealed partial class BrotliDecoder
         ulong buf = br.RawBuffer;
         int cnt = br.RawCount;
 
-        // The positions the commands must stay below: the end of the meta-block, and the nearest of the ring end and the free output.
-        int metaEnd = pos + _metaRemaining;
-        int end = Math.Min(metaEnd, pos + Math.Min(dest.Length - _written - (pos - _flush), _cap - pos));
+        // The position the commands must stay below: the nearest of the end of the meta-block, the ring end and the free output. When the
+        // loop stops at the second or third the general path takes the command that did not fit.
+        int end = Math.Min(pos + _metaRemaining, pos + Math.Min(dest.Length - _written - (pos - _flush), _cap - pos));
 
         // RFC 7932 section 4: how far back a copy may reach, the window or the bytes produced if fewer. Once the stream has produced a
         // whole window it is the window; before that nothing has wrapped, so the output position is the number of bytes produced.
@@ -297,7 +330,7 @@ public sealed partial class BrotliDecoder
         int bailCopy = 0;
         bool bailImplicit = false;
 
-        while (pos < metaEnd && ip <= limit && _blockLeft[InsertAndCopy] > 0)
+        while (pos < end && ip <= limit && _blockLeft[InsertAndCopy] > 0)
         {
             // RFC 7932 section 5: the insert-and-copy length code.
             FastRefill(src, ref ip, ref buf, ref cnt);
@@ -310,7 +343,7 @@ public sealed partial class BrotliDecoder
             bool implicitDistance = (info & (1UL << 42)) != 0;
             if (pos + insert + copy > end || litLeft < insert)
             {
-                if (pos + insert > metaEnd)
+                if (pos + insert > startPos + _metaRemaining)
                 {
                     br.Attach(ip, buf, cnt);
                     throw Error(br, "an insertion length that fits in the meta-block");
@@ -331,13 +364,20 @@ public sealed partial class BrotliDecoder
                 run = Math.Max(0, Math.Min(run, ((limit - ip) / 7) + 1));
             }
 
-            for (int k = 0; k < run; k++)
+            // Three literals take at most 45 bits, so one refill serves a group of three.
+            int k = 0;
+            for (; k + 3 <= run; k += 3)
             {
                 FastRefill(src, ref ip, ref buf, ref cnt);
-                int literal = FastSymbol(arena, BrotliDecRaw.At64(literalOffsets, TContext.Of(s_contextLut, p1, p2)), ref buf, ref cnt);
-                BrotliDecRaw.Set(ring, pos++, (byte)literal);
-                p2 = p1;
-                p1 = literal;
+                FastLiteral<TContext>(arena, literalOffsets, ring, ref buf, ref cnt, ref pos, ref p1, ref p2);
+                FastLiteral<TContext>(arena, literalOffsets, ring, ref buf, ref cnt, ref pos, ref p1, ref p2);
+                FastLiteral<TContext>(arena, literalOffsets, ring, ref buf, ref cnt, ref pos, ref p1, ref p2);
+            }
+
+            for (; k < run; k++)
+            {
+                FastRefill(src, ref ip, ref buf, ref cnt);
+                FastLiteral<TContext>(arena, literalOffsets, ring, ref buf, ref cnt, ref pos, ref p1, ref p2);
             }
 
             litLeft -= run;
@@ -388,20 +428,14 @@ public sealed partial class BrotliDecoder
             int maxDistance = Math.Min(_window, windowFull ? int.MaxValue : pos);
             if (distance > maxDistance)
             {
-                // A static dictionary word (RFC 7932 section 8); the general path decides what it is and writes it here if it fits.
-                br.Attach(ip, buf, cnt);
-                _copyLen = copy;
-                _metaRemaining = metaEnd - pos;
-                StartDictionaryWord(br, distance, maxDistance);
-                int wordLength = _wordLen;
-                if (pos + wordLength > end)
+                // A static dictionary word (RFC 7932 section 8).
+                int wordLength = WriteDictionaryWord(ref br, ip, buf, cnt, copy, distance, maxDistance, pos - startPos, ring, pos, end);
+                if (wordLength < 0)
                 {
                     exitCmd = Cmd.Word;
                     break;
                 }
 
-                // A transformation that omits letters can leave a word of fewer than two bytes, even none.
-                _word.AsSpan(0, wordLength).CopyTo(ring.AsSpan(pos, wordLength));
                 pos += wordLength;
                 if (wordLength >= 2)
                 {
@@ -460,7 +494,7 @@ public sealed partial class BrotliDecoder
         _p1 = p1;
         _p2 = p2;
         _totalOut += produced;
-        _metaRemaining = metaEnd - pos;
+        _metaRemaining -= produced;
         _blockLeft[Literals] = litLeft;
         _d1 = last[0];
         _d2 = last[1];
