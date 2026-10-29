@@ -171,9 +171,9 @@ public sealed partial class BrotliDecoder
         _window = (int)window;
         _maxCap = 1 << wbits;
         _cap = Math.Min(_maxCap, 4096);
-        if (_ring.Length < _cap)
+        if (_ring.Length < _cap + BrotliDecRaw.RingSlack)
         {
-            _ring = new byte[_cap];
+            _ring = new byte[_cap + BrotliDecRaw.RingSlack];
         }
 
         _phase = Phase.MetaStart;
@@ -432,6 +432,7 @@ public sealed partial class BrotliDecoder
         _treeIndex = i + 1;
         if (_treeIndex == literalTrees + insertTrees + _distanceTrees)
         {
+            BuildLiteralOffsets();
             _cmd = Cmd.Start;
             _phase = Phase.Commands;
         }
@@ -777,9 +778,9 @@ public sealed partial class BrotliDecoder
 
     private void GrowRingTo(int newCap)
     {
-        if (_ring.Length < newCap)
+        if (_ring.Length < newCap + BrotliDecRaw.RingSlack)
         {
-            Array.Resize(ref _ring, newCap);
+            Array.Resize(ref _ring, newCap + BrotliDecRaw.RingSlack);
         }
 
         _cap = newCap;
