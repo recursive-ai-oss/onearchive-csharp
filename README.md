@@ -76,27 +76,27 @@ speed at least 0.87 of the reference tool's, at every level. Measured memory to 
 snapshot payloads with trained dictionaries. Speed is ours divided by the reference (1.00 = same speed).
 x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0.402 with the JIT.
 
-The table is the 0.5.0-preview.1 measurement. Since then `main` has changed Deflate compression (levels 1-9), LZ4 levels 2-12,
-Zstandard levels 1-2 and 5-9, and dictionary training (see the CHANGELOG); those rows are marked and will be remeasured at the next release.
+The table is the 0.5.0-preview.1 measurement, with the rows for the codecs that changed in 0.5.1-preview.1 remeasured on Silesia:
+Zstandard levels 1, 3, 5, 9, 12 and 15, LZ4, Deflate in one call, and dictionary training. Those rows say "0.5.1".
 
 | Rows | x64 | arm64 |
 |---|---|---|
-| Zstandard compress, levels 1-4 (levels 1-2 faster on main) | 0.71-0.80; size within +0.94% | 0.76-0.86 |
-| Zstandard compress, levels -5 to 15 (other than 1-4; 5-9 changed on main) | 0.56-0.84; size within +0.93% | 0.63-0.87 (level -5 at the target) |
+| Zstandard compress, levels 1-4 | 0.5.1, levels 1 and 3: 0.76 and 0.81 (0.5: 0.71-0.80); size within +0.94% | 0.5.1: 0.82 and 0.81 (0.5: 0.76-0.86) |
+| Zstandard compress, levels -5 to 15 (other than 1-4) | 0.5.1, levels 5, 9, 12, 15: 0.68, 0.63, 0.81, 0.72; the rest 0.56-0.84 (0.5); size within +0.93% | 0.5.1: 0.74, 0.71, 0.95 (at the target), 0.65; the rest 0.63-0.87 (level -5 at the target) |
 | Zstandard compress, levels 16-19 | 0.76-0.85 (enwik8 16-18 at the target) | 0.78-0.87 |
 | Zstandard compress, levels 20 and 22 | 0.86-1.07; enwik8 level 22 size +1.17% | 0.90-1.02; enwik8 level 22 size +1.17% |
-| Zstandard decompress | 12 of 16 rows at the target; the rest 0.86-0.87 | 5 of 8 at the target; the rest 0.86-0.87 |
+| Zstandard decompress | 0.5.1, Silesia levels 1-15: 0.89-0.98, at the target; 0.5: 12 of 16 rows at the target, the rest 0.86-0.87 | 0.5.1: 0.88-0.93, at the target |
 | Zstandard long-distance matching | 0.60-0.75; Silesia level 3 size +1.04% | 0.66-0.78 |
 | Zstandard multithreaded jobs (levels 1 and 3, 4 to 16 workers) | 0.62-0.86; size within +0.82% | 0.68-0.85 |
 | Game payloads with dictionaries, compress | per-tick frames 1.0-1.4x faster; snapshots and saves 0.26-0.58 at level 3, 0.06-0.39 at level 19 (size -4.8% to +0.44%) | 10 of 48 rows at the target |
 | Game payloads with dictionaries, decompress | 29 of 48 rows at the target; frames 1.02-1.44x faster; the rest 0.83-0.86 | not yet measured |
-| LZ4 compress (changed on main: level 2 is now within 0.2% of the tool's size) | 0.58-0.82; level 2 size +2.2% (Silesia) | 0.54-0.83 |
-| LZ4 decompress | 0.80-0.90 | 0.82-0.89 |
+| LZ4 compress, 0.5.1, levels 1, 2, 3, 5, 9, 12 | 0.82, 1.04, 0.97, 0.87, 1.11, 1.76 (all but level 1 at the target); size within +0.88% | 0.87, 1.10, 0.94, 0.81, 0.92, 1.70 (all but level 5 at the target); same sizes |
+| LZ4 decompress | 0.5.1: 0.85-0.92 | 0.5.1: 0.83-0.93 |
 | Small payloads (256 B to 16 KiB) with a dictionary, reused encoder and decoder, Zstandard levels 1 and 3 | compress 0.26-0.74, decompress 0.68-1.06; size 0.73-1.01; no allocation per payload | not yet measured |
 | Small payloads with a dictionary, LZ4 | compress 0.27-0.86, decompress 0.45-1.31; size within +2.9% (level 3), +2.5% (fast levels) | not yet measured |
-| Deflate compress, one call, levels 1-9 (against libdeflate; changed on main) | 0.58-0.81; size -1.71% to +0.61% | 0.60-0.88 |
+| Deflate compress, one call, levels 1-9 (against libdeflate) | 0.5.1, levels 1, 3, 6, 9: 0.71, 0.68, 0.75, 1.28; size +0.63% to +0.81% | 0.5.1: 0.80, 0.69, 0.76, 1.34; same sizes |
 | Deflate compress, one call, levels 10-12 | Silesia 0.89-0.96, enwik8 0.84-0.86; size within +0.90% | at the target |
-| Deflate compress, streaming in 64 KiB pieces, levels 1-9 (against zlib-ng; changed on main, where enwik8 level 7 is +0.14%) | levels 1-4 0.56-0.79, Silesia 5-8 and enwik8 6, 7, 9 at the target; output 0.5-26% smaller | levels 7 and 8 at the target, the rest 0.64-0.79 |
+| Deflate compress, streaming in 64 KiB pieces, levels 1-9 (against zlib-ng; 0.5 measurement, levels 1-9 changed in 0.5.1, where enwik8 level 7 is +0.14%) | levels 1-4 0.56-0.79, Silesia 5-8 and enwik8 6, 7, 9 at the target; output 0.5-26% smaller | levels 7 and 8 at the target, the rest 0.64-0.79 |
 | Deflate decompress | 0.60-0.71 of libdeflate, 0.88-0.97 of zlib-ng | 0.72-0.78 of libdeflate, 1.14-1.29 of zlib-ng |
 | bzip2 decompress (against `bzip2 -d`, start-up subtracted) | 1.28-1.47, at the target | 1.00-1.10, at the target |
 | xz compress, presets 0-3 | 0.71-1.29; size -0.29% to +0.79%, except preset 1 (+2.29% Silesia, +1.44% enwik8) and enwik8 preset 3 (+1.28%) | 0.69-1.14; same sizes |
@@ -115,7 +115,7 @@ Zstandard levels 1-2 and 5-9, and dictionary training (see the CHANGELOG); those
 | LZX decompress (against `cabextract` 1.11, on a cabinet from our test encoder) | 1.06, at the target | 1.01, at the target |
 | PPMd compress, 7z PPMD, mx 1, 5 and 9 (against `7zz`) | 0.89, 0.87 and 0.86 (mx 1 and 5 at the target); size equal | 0.85, 0.87 and 0.91 (mx 5 and 9 at the target); size equal |
 | PPMd decompress, mx 1, 5 and 9 | 0.91-0.95, at the target | 0.89-0.93, at the target |
-| Dictionary training (changed on main: 3-9 times faster, 4-12 times less memory) | 2.9-73x the tool's time on one thread, 1.4-26x with the default thread count; 5-30x its memory | 3-35x the tool's time, 20-40x its memory; output with our dictionaries within 1% of the tool's overall, up to 2.6% larger on tiny training sets and 1.1-2.1% larger with 64 KiB and larger dictionaries on Silesia |
+| Dictionary training, 0.5.1 (three game sample sets, 110 KiB dictionaries, times include .NET start-up) | 3-17x the tool's time on one thread, 2.2-9x with the default thread count; 2.4-3.8x its memory | 2-17x on one thread, 1.6-9.5x with the default thread count; 3.9-5.9x its memory; output with our dictionaries within about 1% of the tool's (worst +1.2%, at a 4 KiB dictionary) |
 
 Peak memory of the LZMA family's in-memory calls is 0.5-2 GB on these corpora, because they hold the whole input and
 output; the tools stream (5-675 MB). Use the stream types to bound it.
