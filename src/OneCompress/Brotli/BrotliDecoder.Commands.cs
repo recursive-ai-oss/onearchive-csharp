@@ -36,6 +36,12 @@ public sealed partial class BrotliDecoder
             {
                 case Cmd.Start:
                 {
+                    RunFast(ref br, dest);
+                    if (_cmd != Cmd.Start)
+                    {
+                        break;
+                    }
+
                     if (_metaRemaining == 0)
                     {
                         return EndMetaBlock(ref br);
@@ -398,8 +404,13 @@ public sealed partial class BrotliDecoder
             return true;
         }
 
-        // The distance reaches beyond the window and the data produced: a word of the static dictionary (RFC 7932 section 8). Such a
-        // distance is not entered among the last distances.
+        return StartDictionaryWord(br, distance, maxDistance);
+    }
+
+    // The distance reaches beyond the window and the data produced: a word of the static dictionary (RFC 7932 section 8). Such a
+    // distance is not entered among the last distances.
+    private bool StartDictionaryWord(in BrotliBitReader br, int distance, long maxDistance)
+    {
         int length = _copyLen;
         if (length < BrotliWords.MinWordLength || length > BrotliWords.MaxWordLength)
         {

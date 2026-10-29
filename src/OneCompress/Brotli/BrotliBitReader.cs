@@ -84,6 +84,26 @@ internal ref struct BrotliBitReader
     /// <summary>The number of already consumed bits of that byte.</summary>
     internal readonly int BitOffset => (int)(BitPosition & 7);
 
+    /// <summary>True when the reader has never padded past the end of the input, so its state can be carried in plain locals.</summary>
+    internal readonly bool CanDetach => _pad == 0;
+
+    /// <summary>The index of the next input byte to load into the accumulator.</summary>
+    internal readonly int RawPosition => _pos;
+
+    /// <summary>The accumulator.</summary>
+    internal readonly ulong RawBuffer => _buf;
+
+    /// <summary>The number of bits in the accumulator.</summary>
+    internal readonly int RawCount => _count;
+
+    /// <summary>Sets the state of a reader that is not padded, from locals that the fast command loop kept.</summary>
+    internal void Attach(int pos, ulong buf, int count)
+    {
+        _pos = pos;
+        _buf = buf;
+        _count = count;
+    }
+
     internal readonly Checkpoint Save() => new(_pos, _buf, _count, _pad);
 
     internal void Restore(Checkpoint c)

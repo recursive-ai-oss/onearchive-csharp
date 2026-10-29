@@ -32,7 +32,7 @@ internal static class BrotliTargets
         BrotliDecompressionOptions options = Options(input[0]);
         byte[] data = input[1..].ToArray();
         (byte[]? whole, string? wholeError) = Attempt(() => BR.Decompress(data, options));
-        (byte[]? pieces, string? piecesError) = Attempt(() => Pieces(data, options));
+        (byte[]? pieces, string? piecesError) = Attempt(() => Pieces(data, options, fastPath: true));
         if ((wholeError is null) != (piecesError is null))
         {
             throw new InvalidOperationException($"paths disagree: one-shot {wholeError ?? "ok"}, pieces {piecesError ?? "ok"}");
@@ -41,6 +41,14 @@ internal static class BrotliTargets
         if (whole is not null && !whole.AsSpan().SequenceEqual(pieces))
         {
             throw new InvalidOperationException("paths produced different output");
+        }
+
+        // The decoder's fast command loop and its general path must agree on everything, down to the error message and its offset.
+        (byte[]? general, string? generalError) = AttemptWithMessage(() => Pieces(data, options, fastPath: false));
+        (byte[]? fast, string? fastError) = AttemptWithMessage(() => Pieces(data, options, fastPath: true));
+        if (generalError != fastError || (general is null) != (fast is null) || (general is not null && !general.AsSpan().SequenceEqual(fast)))
+        {
+            throw new InvalidOperationException($"fast and general paths disagree: general {generalError ?? "ok"}, fast {fastError ?? "ok"}");
         }
 
         if (!options.AllowTrailingData)
@@ -70,10 +78,22 @@ internal static class BrotliTargets
         }
     }
 
-    // The span decoder with input and output cut at sizes taken from the data itself.
-    private static byte[] Pieces(byte[] data, BrotliDecompressionOptions options)
+    private static (byte[]?, string?) AttemptWithMessage(Func<byte[]> decode)
     {
-        var decoder = new BrotliDecoder(options);
+        try
+        {
+            return (decode(), null);
+        }
+        catch (CompressionException e)
+        {
+            return (null, e.GetType().Name + ": " + e.Message);
+        }
+    }
+
+    // The span decoder with input and output cut at sizes taken from the data itself.
+    private static byte[] Pieces(byte[] data, BrotliDecompressionOptions options, bool fastPath)
+    {
+        var decoder = new BrotliDecoder(options) { FastPathDisabled = !fastPath };
         var output = new MemoryStream();
         byte[] buffer = new byte[1 + (data.Length > 0 ? data[0] * 37 % 3000 : 0)];
         int pos = 0;
