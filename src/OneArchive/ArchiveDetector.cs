@@ -82,6 +82,13 @@ public static class ArchiveDetector
             return ArchiveFormat.Cab;
         }
 
+        // RAR 5.0 technote, "RAR 5.0 signature": 52 61 72 21 1A 07 01 00. The RAR 4 signature (52 61 72 21 1A 07 00) is recognised too,
+        // so that the reader can say RAR 4 is not supported yet instead of failing to recognise the file.
+        if (prefix.StartsWith(new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00 }) || prefix.StartsWith(new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00 }))
+        {
+            return ArchiveFormat.Rar;
+        }
+
         // ar(5): "!<arch>\n"; a thin archive ("!<thin>\n") is recognised so that the reader can say it is unsupported.
         if (prefix.StartsWith("!<arch>\n"u8) || prefix.StartsWith("!<thin>\n"u8))
         {
@@ -155,6 +162,11 @@ public static class ArchiveDetector
             return (ArchiveFormat.Cab, ArchiveCompression.None);
         }
 
+        if (name.EndsWith(".rar", StringComparison.Ordinal) || IsRarVolumeName(name))
+        {
+            return (ArchiveFormat.Rar, ArchiveCompression.None);
+        }
+
         if (name.EndsWith(".zip", StringComparison.Ordinal))
         {
             return (ArchiveFormat.Zip, ArchiveCompression.None);
@@ -191,6 +203,10 @@ public static class ArchiveDetector
 
         return (ArchiveFormat.Unknown, ArchiveCompression.None);
     }
+
+    // Old-style volume names: name.r00, name.r01, ... (name.s00 after r99).
+    private static bool IsRarVolumeName(string name) =>
+        name.Length > 4 && name[^4] == '.' && (name[^3] == 'r' || name[^3] == 's') && char.IsAsciiDigit(name[^2]) && char.IsAsciiDigit(name[^1]);
 
     private static readonly (string, ArchiveCompression)[] s_cpioSuffixes =
     [

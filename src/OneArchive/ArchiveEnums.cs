@@ -29,6 +29,9 @@ public enum ArchiveFormat
 
     /// <summary>Microsoft cabinet (see <c>RecursiveAI.OneArchive.Cab</c>): read only; stored, MSZIP and LZX folders.</summary>
     Cab = 7,
+
+    /// <summary>RAR 5 (see <c>RecursiveAI.OneArchive.Rar</c>): read only; lists every entry and extracts stored entries, across volumes.</summary>
+    Rar = 8,
 }
 
 /// <summary>A compression layer wrapped around a whole archive, as in <c>.tar.zst</c>.</summary>
