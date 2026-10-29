@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Fixed
+
+- Zstandard: negative compression levels could write invalid frames on large inputs. A sequence whose state and extra bits filled the encoder's 64-bit bit container exactly was written twice, so the `zstd` tool and this library's decoder rejected the frame or decoded garbage. The same defect could in principle affect any level; it showed first at negative levels on the Silesia corpus. Frames that were valid are unchanged byte for byte.
+
 ## [0.4.0-preview.1] - 2026-10-29
 
 Everything new here is preview and carries `[Experimental]`. The README has the measurements against the reference tools on both machines, misses included.
