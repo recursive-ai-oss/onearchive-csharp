@@ -191,9 +191,9 @@ internal sealed class ZstdDmerCounts
         ZstdTrainingBuffers.Return(_valid);
     }
 
-    /// <summary>The number of hash bits used for a set of this many bytes: at least eight slots per byte, and no more than the option allows.</summary>
+    /// <summary>The number of hash bits used for a set of this many bytes: at least eight slots per byte (never fewer than 2^12 unless the option allows fewer), and no more than the option allows.</summary>
     internal static int HashBitsFor(int length, int maxBits) =>
-        Math.Clamp(BitOperations.Log2((uint)Math.Max(length, 1)) + 3, 12, maxBits);
+        Math.Clamp(BitOperations.Log2((uint)Math.Max(length, 1)) + 3, Math.Min(12, maxBits), maxBits);
 
     /// <summary>
     /// Counts the d-mers of <paramref name="set"/>. Sample i belongs to group (i / blockSize) % groupCount.
