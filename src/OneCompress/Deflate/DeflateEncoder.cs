@@ -81,8 +81,11 @@ public sealed partial class DeflateEncoder
         int dictionaryLength = Math.Min(options.Dictionary.Length, DeflateTables.WindowSize);
         int windowSize = (int)Math.Min(WindowCapacity, Math.Min(Math.Max(sizeHint, 0), WindowCapacity) + dictionaryLength);
         _window = new byte[windowSize + 16];
-        _sequences = new DeflateSequenceBuffer((int)Math.Min(SequenceCapacity, Math.Min(Math.Max(sizeHint, 0), SequenceCapacity) + 1));
         _parameters = LevelParameters.For(options.Level);
+        // The greedy and lazy parsers (and the two strategies that bypass the match finder) store matches only; the optimal parser stores every entry.
+        bool runMode = _parameters.Mode is ParseMode.Greedy or ParseMode.Lazy
+            || options.Strategy is DeflateStrategy.HuffmanOnly or DeflateStrategy.RunLength;
+        _sequences = new DeflateSequenceBuffer((int)Math.Min(SequenceCapacity, Math.Min(Math.Max(sizeHint, 0), SequenceCapacity) + 1), runMode);
         _dictionary = options.Dictionary.Length > DeflateTables.WindowSize
             ? options.Dictionary.Slice(options.Dictionary.Length - DeflateTables.WindowSize)
             : options.Dictionary;
@@ -475,6 +478,7 @@ public sealed partial class DeflateEncoder
         }
         else
         {
+            _sequences.RunBase = _blockStart;
             _writer.WriteBlock(_sequences, _window.AsSpan(_blockStart, _position - _blockStart), haveInput: true, isFinal, kind);
         }
 
