@@ -88,6 +88,12 @@ public static class ArchiveDetector
             return ArchiveFormat.Cab;
         }
 
+        // [MS-CFB] 2.2: the header signature D0 CF 11 E0 A1 B1 1A E1.
+        if (prefix.StartsWith(new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }))
+        {
+            return ArchiveFormat.CompoundFile;
+        }
+
         // RAR 5.0 technote, "RAR 5.0 signature": 52 61 72 21 1A 07 01 00. The RAR 4 signature (52 61 72 21 1A 07 00) is recognised too,
         // so that the reader can say RAR 4 is not supported yet instead of failing to recognise the file.
         if (prefix.StartsWith(new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00 }) || prefix.StartsWith(new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00 }))
@@ -172,6 +178,13 @@ public static class ArchiveDetector
         if (name.EndsWith(".cab", StringComparison.Ordinal))
         {
             return (ArchiveFormat.Cab, ArchiveCompression.None);
+        }
+
+        // Compound files carry many application extensions; the signature decides when there is one, so these only matter for a damaged start.
+        if (name.EndsWith(".doc", StringComparison.Ordinal) || name.EndsWith(".xls", StringComparison.Ordinal) || name.EndsWith(".ppt", StringComparison.Ordinal)
+            || name.EndsWith(".msg", StringComparison.Ordinal) || name.EndsWith(".msi", StringComparison.Ordinal) || name.EndsWith(".cfb", StringComparison.Ordinal))
+        {
+            return (ArchiveFormat.CompoundFile, ArchiveCompression.None);
         }
 
         if (name.EndsWith(".rar", StringComparison.Ordinal) || IsRarVolumeName(name))

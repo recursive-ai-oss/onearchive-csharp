@@ -134,7 +134,7 @@ using var archive = Archive.Open("data.tar");                  // entries, rando
 Read and written: tar (ustar, pax, GNU, sparse files); zip (store, Deflate, Deflate64, bzip2, PPMd and Zstandard; LZMA and xz
 entries read; zip64, data descriptors; WinZip AES, and traditional encryption for reading); 7z (Copy, Deflate,
 Deflate64, BZip2, LZMA, LZMA2, PPMd, Delta, the branch filters, Zstandard; solid folders, encoded headers, AES-256); cpio
-(newc, crc, odc), ar (common, GNU, BSD) and ISO 9660 with Joliet and Rock Ridge. Read only: cab (stored, MSZIP, LZX) and RAR 5 (list and metadata, stored entries, multi-volume sets; compressed entries raise a typed error). Single streams (`.gz`, `.zst`, `.lz4`,
+(newc, crc, odc), ar (common, GNU, BSD) and ISO 9660 with Joliet and Rock Ridge. Read only: Microsoft compound files (.doc, .xls, .ppt, .msg; versions 3 and 4, storages as directories; `docs/cfb.md`), cab (stored, MSZIP, LZX) and RAR 5 (list and metadata, stored entries, multi-volume sets; compressed entries raise a typed error). Single streams (`.gz`, `.zst`, `.lz4`,
 `.bz2`, `.xz`, `.lz`, and `.br`, which is recognised by its name) and tar inside them (`.tar.gz`, `.tar.zst`, ...) are
 one archive. AES needs `System.Security.Cryptography.Aes`, which the browser does not provide. An app that uses few codecs can trim the rest: set the `RecursiveAI.OneArchive.AllCodecs` feature switch to false and register what it needs with `ArchiveCodecs.AddX()` (`docs/archive-codecs.md`). The other containers plug into the same reader and writer interfaces. The model, the safety defaults and limits, and the tar coverage are in `docs/archive.md`.
 

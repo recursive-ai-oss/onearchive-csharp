@@ -15,6 +15,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ### Added
 
+- Microsoft compound file reader (`CompoundFileReader`, `ArchiveFormat.CompoundFile`): .doc, .xls, .ppt and .msg containers, versions 3 and 4, with strict validation and `Archive` support (`docs/cfb.md`).
 - `bench/Managed`: compares each codec with the fastest managed .NET implementations (ZstdSharp, K4os, SharpCompress and others), reporting speed and size per row.
 
 ## [0.5.0-preview.1] - 2026-10-29
