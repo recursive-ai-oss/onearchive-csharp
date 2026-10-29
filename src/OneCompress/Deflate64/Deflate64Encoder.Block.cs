@@ -230,6 +230,7 @@ public sealed partial class Deflate64Encoder
         _blockStart += _blockBytes;
         _blockBytes = 0;
         _tokenCount = 0;
+        ResetSplit();
     }
 
     private void WriteTokens(ReadOnlySpan<byte> literalLengths, ReadOnlySpan<ushort> literalCodes, ReadOnlySpan<byte> distanceLengths, ReadOnlySpan<ushort> distanceCodes)

@@ -5,29 +5,21 @@ namespace RecursiveAI.OneCompress.Deflate64;
 public sealed partial class Deflate64Encoder
 {
     // What one level asks of the parser (docs/deflate64-encoder.md has the table).
-    private readonly record struct LevelParameters(bool Lazy, int Chain, int Nice, int MaxLazy, int Good)
+    private readonly record struct LevelParameters(bool Lazy, int Chain, int Nice, int MaxLazy, int Good, int Passes = 0)
     {
         public static LevelParameters For(int level) => level switch
         {
             0 => default,
-            1 => new(false, 2, 16, 0, 0),
-            2 => new(false, 4, 32, 0, 0),
-            3 => new(false, 16, 64, 0, 0),
-            4 => new(true, 8, 32, 16, 8),
-            5 => new(true, 16, 64, 32, 16),
-            6 => new(true, 32, 128, 64, 32),
-            7 => new(true, 128, 258, 128, 64),
-            8 => new(true, 512, 258, 258, 128),
-            _ => new(true, 2048, 1024, 1024, 256),
+            <= 4 => new(true, 16, 32, 16, 8),
+            <= 6 => new(false, 16, 64, 0, 0, 1),
+            <= 8 => new(false, 32, 128, 0, 0, 1),
+            _ => new(false, 256, 257, 0, 0, 3),
         };
     }
 
-    // A match of three bytes farther back than this costs more bits than three literals, so it is not taken.
-    private const int TooFar = 4096;
-
     // A match longer than this enters only its last this-many positions into the finder: inside a long repeat every position
     // would find the same earlier copy anyway.
-    private const int MaxInsert = 512;
+    private const int MaxInsert = 64;
 
     private int[] _head = [];
     private ushort[] _previous = [];
@@ -36,19 +28,35 @@ public sealed partial class Deflate64Encoder
     private int _tokenCount;
     private int _blockStart;
     private int _blockBytes;
+    private readonly DeflateBlockSplitter _splitter = new(2048, 300);
+    private readonly uint[] _splitFrequencies = new uint[DeflateSequenceBuffer.LiteralLengthSymbolCount];
+    private int _checkAt = CheckInterval;
 
     private void ResetFinder()
     {
+        if (_optimal is not null)
+        {
+            _optimal.Reset();
+        }
+
         _head.AsSpan().Fill(Null);
         _previous.AsSpan().Clear();
         _tokenCount = 0;
         _blockBytes = 0;
         _blockStart = 0;
+        ResetSplit();
     }
 
     // After the caller moved the window's contents down by delta: positions are window indices.
     private void SlideFinder(int delta)
     {
+        if (_optimal is not null)
+        {
+            _optimal.Finder.Slide(delta);
+            _blockStart -= delta;
+            return;
+        }
+
         int[] head = _head;
         for (int i = 0; i < head.Length; i++)
         {
@@ -59,10 +67,11 @@ public sealed partial class Deflate64Encoder
         _blockStart -= delta;
     }
 
+    // The caller guarantees position + 2 is inside the filled window (positions are hashed only below hashEnd).
     private int Hash(int position)
     {
         byte[] w = _window;
-        uint v = (uint)(w[position] | (w[position + 1] << 8) | (w[position + 2] << 16));
+        uint v = (uint)(DeflateEncRaw.Byte(w, position) | (DeflateEncRaw.Byte(w, position + 1) << 8) | (DeflateEncRaw.Byte(w, position + 2) << 16));
         return (int)((v * 2654435761u) >> (32 - HashBits));
     }
 
@@ -70,10 +79,11 @@ public sealed partial class Deflate64Encoder
     private int Insert(int position)
     {
         int hash = Hash(position);
-        int candidate = _head[hash];
-        _head[hash] = position;
+        // hash is shifted down to HashBits, the length of _head; the link index is masked to the window, the length of _previous.
+        int candidate = DeflateEncRaw.Get(_head, hash);
+        DeflateEncRaw.Set(_head, hash, position);
         int delta = position - candidate;
-        _previous[position & (HistorySize - 1)] = candidate >= 0 && delta <= MaxDistance ? (ushort)delta : (ushort)0;
+        DeflateEncRaw.SetLink(_previous, position & (HistorySize - 1), candidate >= 0 && delta <= MaxDistance ? (ushort)delta : (ushort)0);
         return candidate;
     }
 
@@ -86,7 +96,8 @@ public sealed partial class Deflate64Encoder
         int nice = Math.Min(_parameters.Nice, maxLength);
         while (candidate >= limit && candidate >= 0)
         {
-            if (best < maxLength && w[candidate + best] == w[position + best] && w[candidate] == w[position])
+            // best < maxLength <= the bytes left after position, and candidate < position, so every read is inside the filled window.
+            if (best < maxLength && DeflateEncRaw.Byte(w, candidate + best) == DeflateEncRaw.Byte(w, position + best) && DeflateEncRaw.Byte(w, candidate) == DeflateEncRaw.Byte(w, position))
             {
                 int length = DeflateEncRaw.MatchLength(w, candidate, position, maxLength);
                 if (length > best)
@@ -105,7 +116,7 @@ public sealed partial class Deflate64Encoder
                 break;
             }
 
-            int step = _previous[candidate & (HistorySize - 1)];
+            int step = DeflateEncRaw.GetLink(_previous, candidate & (HistorySize - 1));
             if (step == 0)
             {
                 break;
@@ -121,6 +132,7 @@ public sealed partial class Deflate64Encoder
     {
         _tokenLength[_tokenCount] = 0;
         _tokenValue[_tokenCount++] = value;
+        _splitFrequencies[value]++;
         _blockBytes++;
     }
 
@@ -128,14 +140,34 @@ public sealed partial class Deflate64Encoder
     {
         _tokenLength[_tokenCount] = length;
         _tokenValue[_tokenCount++] = distance;
+        _splitFrequencies[257 + LengthSlot(length)]++;
         _blockBytes += length;
     }
 
+    private void ResetSplit()
+    {
+        Array.Clear(_splitFrequencies);
+        _splitter.Reset();
+        _checkAt = CheckInterval;
+    }
+
+    // Ends the block when it is full or when the mix of symbols has drifted far enough that a new Huffman code pays for its header.
     private void CheckBlock()
     {
         if (_tokenCount >= TokenCapacity)
         {
             CloseBlock(final: false);
+        }
+        else if (_tokenCount >= _checkAt)
+        {
+            if (_splitter.Observe(_splitFrequencies))
+            {
+                CloseBlock(final: false);
+            }
+            else
+            {
+                _checkAt = _tokenCount + CheckInterval;
+            }
         }
     }
 
@@ -153,6 +185,12 @@ public sealed partial class Deflate64Encoder
     // Parses window[_position..limit) into tokens, closing a block whenever the token arrays fill.
     private void Parse(int limit)
     {
+        if (_optimal is not null)
+        {
+            ParseOptimal(limit);
+            return;
+        }
+
         int position = _position;
         int hashEnd = limit - 2; // positions below this have three bytes to hash
         LevelParameters p = _parameters;
@@ -167,10 +205,6 @@ public sealed partial class Deflate64Encoder
                 int candidate = Insert(position);
                 hashedTo = position + 1;
                 length = Search(position, candidate, 2, maxLength, p.Chain, out distance);
-                if (length == 3 && distance > TooFar)
-                {
-                    length = 0;
-                }
             }
 
             if (length < Deflate64Tables.MinMatchLength)
@@ -191,7 +225,7 @@ public sealed partial class Deflate64Encoder
                     hashedTo = next + 1;
                     int chain = length >= p.Good ? p.Chain >> 2 : p.Chain;
                     int length2 = Search(next, candidate, length, maxLength, chain, out int distance2);
-                    if (length2 > length && !(length2 == 3 && distance2 > TooFar))
+                    if (length2 > length)
                     {
                         PutLiteral(_window[position]);
                         CheckBlock();

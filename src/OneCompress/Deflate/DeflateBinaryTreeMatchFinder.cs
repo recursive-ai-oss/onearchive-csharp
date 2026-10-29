@@ -19,21 +19,33 @@ public sealed class DeflateBinaryTreeMatchFinder
     public const int MaxMatches = DeflateTables.MaxMatchLength - DeflateTables.MinMatchLength + 1;
 
     private const int Null = DeflateHashChainMatchFinder.Null;
-    private const int WindowMask = DeflateTables.WindowSize - 1;
-    private const int ShortHashBits = 16;
 
     private readonly int[] _head;
-    private readonly int[] _shortHead = new int[1 << ShortHashBits];
-    private readonly int[] _sons = new int[2 * DeflateTables.WindowSize];
+    private readonly int[] _shortHead;
+    private readonly int _shortShift;
+    private readonly int[] _sons;
+    private readonly int _windowSize;
+    private readonly int _windowMask;
     private readonly int _shift;
 
     /// <summary>Creates a finder.</summary>
     /// <param name="hashBits">The size of the table of tree roots as a power of two, 12 to 20. The default is 16.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="hashBits"/> is out of range.</exception>
     public DeflateBinaryTreeMatchFinder(int hashBits = 16)
+        : this(hashBits, DeflateTables.WindowSize, 16)
+    {
+    }
+
+    // The window is a power of two: 32 KiB for Deflate, 64 KiB for Deflate64.
+    internal DeflateBinaryTreeMatchFinder(int hashBits, int windowSize, int shortHashBits)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(hashBits, 12);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(hashBits, 20);
+        _shortHead = new int[1 << shortHashBits];
+        _shortShift = 32 - shortHashBits;
+        _windowSize = windowSize;
+        _windowMask = windowSize - 1;
+        _sons = new int[2 * windowSize];
         _head = new int[1 << hashBits];
         _shift = 32 - hashBits;
         Reset();
@@ -122,7 +134,7 @@ public sealed class DeflateBinaryTreeMatchFinder
     {
         uint value = DeflateEncRaw.Read32(data, position);
         int hash = (int)((value * 2654435761u) >> _shift);
-        int shortHash = (int)(((value & 0xFFFFFF) * 2654435761u) >> (32 - ShortHashBits));
+        int shortHash = (int)(((value & 0xFFFFFF) * 2654435761u) >> _shortShift);
         // A position whose comparisons are cut short by the end of the data (fewer than niceLength bytes remain) is only searched,
         // never inserted. Bytes that agree up to a cut that is not the nice length would be treated as equal for ever, but they
         // may differ once more input arrives (after a flush), and the tree's ordering and the lengths it carries over between
@@ -137,7 +149,7 @@ public sealed class DeflateBinaryTreeMatchFinder
         }
         // The farthest candidate is 32767 back, not 32768: a node exactly one window back shares its tree slot with this position,
         // which is being rewritten as the walk goes.
-        int limit = Math.Max(Math.Max(oldestPosition, 0), position - DeflateTables.WindowSize + 1);
+        int limit = Math.Max(Math.Max(oldestPosition, 0), position - _windowSize + 1);
         int count = 0;
         int best = 2;
         if (lengths is not null && shortCandidate >= limit)
@@ -155,7 +167,7 @@ public sealed class DeflateBinaryTreeMatchFinder
         // Every comparison stops at the nice length, so strings that agree that far count as equal and the tree stays consistently
         // ordered; a caller that wants the full length of a match this long extends it itself.
         int cap = Math.Min(maxLength, niceLength);
-        int leftSlot = 2 * (position & WindowMask);
+        int leftSlot = 2 * (position & _windowMask);
         int rightSlot = leftSlot + 1;
         int leftLength = 0;
         int rightLength = 0;
@@ -174,7 +186,7 @@ public sealed class DeflateBinaryTreeMatchFinder
 
             int length = Math.Min(leftLength, rightLength);
             length += DeflateEncRaw.MatchLength(data, current + length, position + length, cap - length);
-            int node = 2 * (current & WindowMask);
+            int node = 2 * (current & _windowMask);
             if (length > best && lengths is not null)
             {
                 best = length;

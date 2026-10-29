@@ -40,6 +40,28 @@ public class Deflate64EncoderTests
         return list.ToArray();
     }
 
+    /// <summary>Text, random bytes, a run and a structured table in turn, so the symbol mix shifts and blocks split.</summary>
+    internal static byte[] Mixed(int seed)
+    {
+        var rng = new Random(seed);
+        var list = new List<byte>();
+        for (int round = 0; round < 3; round++)
+        {
+            list.AddRange(Text(60000, seed + round));
+            byte[] noise = new byte[40000];
+            rng.NextBytes(noise);
+            list.AddRange(noise);
+            list.AddRange(Enumerable.Repeat((byte)round, 5000));
+            for (int i = 0; i < 20000; i++)
+            {
+                list.Add((byte)(i * 7 % 251));
+                list.Add((byte)(i >> 4));
+            }
+        }
+
+        return list.ToArray();
+    }
+
     public static IEnumerable<object[]> Inputs()
     {
         var rng = new Random(5);
@@ -54,6 +76,7 @@ public class Deflate64EncoderTests
         yield return ["random-100k", random];
         yield return ["zeros-1m", new byte[1 << 20]];
         yield return ["far", FarMatches(3)];
+        yield return ["mixed-600k", Mixed(6)];
         yield return ["text-exact-chunk", Text((1 << 17) + 65536, 4)];
         yield return ["text-chunk-plus-one", Text((1 << 17) + 65536 + 1, 4)];
     }
@@ -164,6 +187,19 @@ public class Deflate64EncoderTests
             Assert.True(size <= previous, $"level {level}: {size} > {previous}");
             previous = size;
         }
+    }
+
+    [Fact]
+    public void LevelsInOneClassGiveIdenticalOutput()
+    {
+        // docs/deflate64-encoder.md: 1 to 4, 5 and 6, and 7 and 8 share their parameters.
+        byte[] input = Mixed(8);
+        byte[] Compress(int level) => Deflate64.Deflate64.Compress(input, new Deflate64Options { Level = level });
+        Assert.Equal(Compress(1), Compress(4));
+        Assert.Equal(Compress(5), Compress(6));
+        Assert.Equal(Compress(7), Compress(8));
+        Assert.NotEqual(Compress(4), Compress(5));
+        Assert.NotEqual(Compress(6), Compress(9));
     }
 
     [Fact]
