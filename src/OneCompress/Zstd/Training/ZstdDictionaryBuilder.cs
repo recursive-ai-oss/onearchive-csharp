@@ -74,6 +74,31 @@ public static class ZstdDictionaryBuilder
         public readonly uint[] MatchLengths = new uint[ZstdFormat.MatchLengthMaxSymbol + 1];
         public readonly uint[] Offsets = new uint[ZstdFormat.OffsetMaxSymbol + 1];
         public long Sequences;
+
+        public void Add(Statistics other)
+        {
+            for (int i = 0; i < Literals.Length; i++)
+            {
+                Literals[i] += other.Literals[i];
+            }
+
+            for (int i = 0; i < LiteralLengths.Length; i++)
+            {
+                LiteralLengths[i] += other.LiteralLengths[i];
+            }
+
+            for (int i = 0; i < MatchLengths.Length; i++)
+            {
+                MatchLengths[i] += other.MatchLengths[i];
+            }
+
+            for (int i = 0; i < Offsets.Length; i++)
+            {
+                Offsets[i] += other.Offsets[i];
+            }
+
+            Sequences += other.Sequences;
+        }
     }
 
     internal static void CollectStatistics(ReadOnlySpan<byte> content, IReadOnlyList<ReadOnlyMemory<byte>> samples, Statistics stats)

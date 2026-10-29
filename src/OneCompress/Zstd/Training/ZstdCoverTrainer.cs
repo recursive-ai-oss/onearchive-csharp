@@ -30,13 +30,22 @@ public static class ZstdCoverTrainer
     // when the content is first chosen, and the real size is used when the content is chosen again.
     private const int HeaderEstimate = 350;
 
-    // The tables of a candidate are measured on at most this many training samples, so that a search costs a few parses, not one per
-    // candidate over all the data.
-    private const int CandidateStatSamples = 2000;
-    private const long CandidateStatBytes = 4L << 20;
+    // The held-out samples a candidate is scored on are thinned to this many bytes, so that a search costs a few parses of a bounded
+    // amount of data, not one per candidate over all of it. The samples the tables are measured on are thinned less.
+    private const long ScoreBytes = 1L << 20;
+    private const int StatSamples = 20000;
+    private const long StatBytes = 8L << 20;
 
-    // Sample sets up to this size are scored on four folds.
-    private const long CrossValidateBytes = 24L << 20;
+    // The samples are cut into this many blocks of neighbours, dealt to the folds in turn. Samples next to each other are often alike
+    // (ticks of one game, pieces of one file), so holding out single samples would let a candidate score well by memorizing the
+    // neighbours of what it is tested on, while one block at the end would test it on data unlike what it trained on.
+    private const int FoldBlocks = 16;
+
+    // Small sample sets are noisy to score and cheap to train, so they use up to four folds (held-out parts, scored in turn and added);
+    // larger ones use fewer, and the largest one.
+    private const long FourFoldBytes = 1L << 20;
+    private const long TwoFoldBytes = 4L << 20;
+    private const long StatFoldBytes = 24L << 20;
 
     /// <summary>
     /// Trains a complete dictionary (content chosen by COVER or FastCover, tables measured on the samples) no larger than
@@ -54,26 +63,82 @@ public static class ZstdCoverTrainer
     {
         options ??= ZstdDictionaryTrainingOptions.Default;
         ZstdTrainingSet set = Prepare(samples, options);
-        ZstdCoverParameters parameters = options.Optimize
-            ? Search(set, options, cancellationToken)
-            : Validate(new ZstdCoverParameters(options.SegmentSize, options.DmerSize, options.Score));
-
-        ZstdDmerIndex index = ZstdDmerIndex.Build(set, parameters.DmerSize, options, cancellationToken);
-        var stats = new ZstdDictionaryBuilder.Statistics();
-
-        // First choice of content with room reserved for the header, to measure the header; then the content that fills the rest.
         int size = options.DictionarySize;
-        byte[] content = SelectFrom(set, index, parameters, Math.Max(size - HeaderEstimate, 16), cancellationToken);
-        ZstdDictionaryBuilder.CollectStatistics(content, set.Slice(0, set.Count, CandidateStatSamples, CandidateStatBytes), stats);
-        int header = ZstdDictionaryBuilder.Assemble(content, stats, 0).Length - content.Length;
-        int budget = Math.Max(size - header, 16);
-        if (budget != content.Length)
+        List<ZstdCoverParameters> candidates = options.Optimize
+            ? Narrow(Candidates(options), options, set)
+            : [Validate(new ZstdCoverParameters(options.SegmentSize, options.DmerSize, options.Score))];
+
+        // Each fold: content chosen from the samples outside it, and the tables measured by parsing the samples inside it. A frame
+        // compressed with the finished dictionary is new data to it, and the tables should describe that, not frames the content
+        // was cut from (which parse as one long match each).
+        using var run = new Run(set, options, cancellationToken);
+        run.Count(candidates);
+        Fold[] folds = run.MakeFolds();
+        run.AttachIndexes(folds, candidates);
+        int budget = Math.Max(size - HeaderEstimate, 16);
+        Evaluation best = options.Optimize && candidates.Count > 1
+            ? RunSearch(run, folds, candidates, budget)
+            : EvaluateCells(run, folds, candidates, [0], budget, false)[0];
+        ZstdCoverParameters parameters = candidates[best.Candidate];
+
+        // The tables are measured on more folds than the search scored, when the samples are few enough for that to be cheap. Each
+        // fold chooses its content from the samples outside it (the folds the search scored already have it) and parses the samples
+        // inside it; the histograms are added up in fold order.
+        int statFolds = Math.Max(run.StatFoldCount, folds.Length);
+        var statContents = new byte[statFolds][];
+        var partial = new ZstdDictionaryBuilder.Statistics[statFolds];
+        var statParallel = new ParallelOptions { MaxDegreeOfParallelism = run.Threads, CancellationToken = cancellationToken };
+        Parallel.For(0, statFolds, statParallel, run.Rent, (f, _, scratch) =>
         {
-            content = SelectFrom(set, index, parameters, budget, cancellationToken);
+            byte[] content;
+            IReadOnlyList<ReadOnlyMemory<byte>> held;
+            if (f < folds.Length)
+            {
+                content = best.Contents[f];
+                held = folds[f].StatSamples;
+            }
+            else
+            {
+                Fold fold = run.MakeFold(f);
+                ZstdDmerIndex foldIndex = run.IndexOf(fold, parameters);
+                content = ZstdSegmentSelector.Select(foldIndex, parameters.Score, parameters.SegmentSize, budget, scratch, cancellationToken);
+                foldIndex.Release();
+                held = fold.StatSamples;
+            }
+
+            statContents[f] = content;
+            partial[f] = new ZstdDictionaryBuilder.Statistics();
+            ZstdDictionaryBuilder.CollectStatistics(content, held, partial[f]);
+            return scratch;
+        }, run.Return);
+        foreach (Fold fold in folds)
+        {
+            fold.Release();
         }
 
-        stats = new ZstdDictionaryBuilder.Statistics();
-        CollectTableStatistics(set, parameters, content, stats, options, cancellationToken);
+        var stats = new ZstdDictionaryBuilder.Statistics();
+        foreach (ZstdDictionaryBuilder.Statistics p in partial)
+        {
+            stats.Add(p);
+        }
+
+        // The header is as large as the tables just measured need; the content fills the rest.
+        byte[] first = statContents[0];
+        int header = ZstdDictionaryBuilder.Assemble(first, stats, 0).Length - first.Length;
+        budget = Math.Max(size - header, 16);
+        byte[] content;
+        if (folds[0].Group < 0 && budget == first.Length)
+        {
+            content = first;
+        }
+        else
+        {
+            ZstdDmerIndex index = run.IndexOf(run.WholeFold(), parameters);
+            ZstdTrainingScratch scratch = run.Rent();
+            content = ZstdSegmentSelector.Select(index, parameters.Score, parameters.SegmentSize, budget, scratch, cancellationToken);
+            run.Return(scratch);
+            index.Release();
+        }
         byte[] dictionary = ZstdDictionaryBuilder.Assemble(content, stats, options.DictionaryId);
         if (dictionary.Length > size)
         {
@@ -107,8 +172,14 @@ public static class ZstdCoverTrainer
         options ??= ZstdDictionaryTrainingOptions.Default;
         ZstdTrainingSet set = Prepare(samples, options);
         ZstdCoverParameters parameters = Validate(new ZstdCoverParameters(options.SegmentSize, options.DmerSize, options.Score));
-        ZstdDmerIndex index = ZstdDmerIndex.Build(set, parameters.DmerSize, options, cancellationToken);
-        return SelectFrom(set, index, parameters, options.DictionarySize, cancellationToken);
+        var scratch = new ZstdTrainingScratch();
+        using var run = new Run(set, options, cancellationToken, noFolds: true);
+        run.Count([parameters]);
+        ZstdDmerIndex index = run.IndexOf(run.WholeFold(), parameters);
+        byte[] content = ZstdSegmentSelector.Select(index, parameters.Score, parameters.SegmentSize, options.DictionarySize, scratch, cancellationToken);
+        index.Release();
+        scratch.Release();
+        return content;
     }
 
     /// <summary>
@@ -116,7 +187,8 @@ public static class ZstdCoverTrainer
     /// of the samples and scored by the total size of the evenly spread others compressed with it.
     /// </summary>
     /// <param name="samples">The training samples.</param>
-    /// <param name="options">The options; null means the defaults. <see cref="ZstdDictionaryTrainingOptions.Optimize"/> is not consulted.</param>
+    /// <param name="options">The options; null means the defaults. <see cref="ZstdDictionaryTrainingOptions.Optimize"/> is not consulted;
+    /// <see cref="ZstdDictionaryTrainingOptions.SearchMode"/> chooses how many of the pairs are tried.</param>
     /// <param name="cancellationToken">Cancels the search.</param>
     /// <returns>The pair with the smallest total; ties go to the smaller d, then the lower score value, then the smaller k.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="samples"/> is null or holds a null.</exception>
@@ -125,7 +197,24 @@ public static class ZstdCoverTrainer
     public static ZstdCoverParameters Optimize(IReadOnlyList<ReadOnlyMemory<byte>> samples, ZstdDictionaryTrainingOptions? options = null, CancellationToken cancellationToken = default)
     {
         options ??= ZstdDictionaryTrainingOptions.Default;
-        return Search(Prepare(samples, options), options, cancellationToken);
+        ZstdTrainingSet set = Prepare(samples, options);
+        List<ZstdCoverParameters> candidates = Narrow(Candidates(options), options, set);
+        if (candidates.Count == 1)
+        {
+            return candidates[0];
+        }
+
+        using var run = new Run(set, options, cancellationToken);
+        run.Count(candidates);
+        Fold[] folds = run.MakeFolds();
+        run.AttachIndexes(folds, candidates);
+        int best = RunSearch(run, folds, candidates, Math.Max(options.DictionarySize - HeaderEstimate, 16)).Candidate;
+        foreach (Fold fold in folds)
+        {
+            fold.Release();
+        }
+
+        return candidates[best];
     }
 
     private static ZstdTrainingSet Prepare(IReadOnlyList<ReadOnlyMemory<byte>> samples, ZstdDictionaryTrainingOptions options)
@@ -186,9 +275,9 @@ public static class ZstdCoverTrainer
         return p;
     }
 
-    private static ZstdCoverParameters Search(ZstdTrainingSet set, ZstdDictionaryTrainingOptions options, CancellationToken cancellationToken)
+    // The candidates in a fixed order: d ascending, then score, then k ascending; the first of equal totals wins.
+    private static List<ZstdCoverParameters> Candidates(ZstdDictionaryTrainingOptions options)
     {
-        // Distinct candidates in a fixed order: d ascending, then score, then k ascending; the first of equal totals wins.
         int[] ds = options.DmerSizeCandidates.Distinct().OrderBy(x => x).ToArray();
         int[] ks = options.SegmentSizeCandidates.Distinct().OrderBy(x => x).ToArray();
         foreach (int d in ds)
@@ -220,145 +309,433 @@ public static class ZstdCoverTrainer
             throw new ArgumentException("No candidate has a segment size at least as large as its d-mer size.", nameof(options));
         }
 
-        if (candidates.Count == 1)
+        return candidates;
+    }
+
+    /// <summary>One held-out part of the samples: the rest to train on, and what to score and measure tables on.</summary>
+    private sealed class Fold
+    {
+        private readonly Dictionary<int, ZstdDmerIndex> _indexes = [];
+
+        public Fold(int[] runs, int trainLength, int trainCount, int group, IReadOnlyList<ReadOnlyMemory<byte>> scoreSamples, IReadOnlyList<ReadOnlyMemory<byte>> statSamples)
         {
-            return candidates[0];
+            Runs = runs;
+            TrainLength = trainLength;
+            TrainCount = trainCount;
+            Group = group;
+            ScoreSamples = scoreSamples;
+            StatSamples = statSamples;
         }
 
-        // Hold out evenly spread blocks of samples: the samples are cut into 64 blocks, and with 75 percent every fourth block (block
-        // number modulo 4) forms a fold that candidates are scored on after training on the rest. Samples next to each other are often
-        // alike (ticks of one game, pieces of one file), so holding out single samples would let a candidate score well by memorizing
-        // the neighbours of what it is tested on, while one block at the end would test it on data unlike what it trained on. Small
-        // sample sets are noisy to score, so up to four folds are used and their totals added; large ones use the first fold only.
-        int foldCount = options.TrainingPercent == 100 || set.Count < 2 ? 1 : (200 - options.TrainingPercent - 1) / (100 - options.TrainingPercent);
-        int evaluated = foldCount == 1 ? 1 : set.Length <= CrossValidateBytes ? Math.Min(foldCount, 4) : 1;
-        var folds = new Fold[evaluated];
-        for (int f = 0; f < evaluated; f++)
+        /// <summary>Gets the stretches of the samples content is chosen from (see <see cref="ZstdDmerIndex.Runs"/>).</summary>
+        public int[] Runs { get; }
+
+        public int TrainLength { get; }
+
+        public int TrainCount { get; }
+
+        /// <summary>Gets the group of samples held out (-1 when none is).</summary>
+        public int Group { get; }
+
+        public IReadOnlyList<ReadOnlyMemory<byte>> ScoreSamples { get; }
+
+        public IReadOnlyList<ReadOnlyMemory<byte>> StatSamples { get; }
+
+        public ZstdDmerIndex Index(int d) => _indexes[d];
+
+        public void Set(int d, ZstdDmerIndex index) => _indexes[d] = index;
+
+        public void Release()
         {
-            folds[f] = MakeFold(set, foldCount, f, options);
+            foreach (ZstdDmerIndex index in _indexes.Values)
+            {
+                index.Release();
+            }
+
+            _indexes.Clear();
+        }
+    }
+
+    /// <summary>The state of one training: the samples, how they are cut into folds, and the d-mer counts.</summary>
+    private sealed class Run : IDisposable
+    {
+        private readonly ZstdTrainingSet _set;
+        private readonly ZstdDictionaryTrainingOptions _options;
+        private readonly Dictionary<int, ZstdDmerCounts> _counts = [];
+        private readonly int _blockSize;
+        private readonly System.Collections.Concurrent.ConcurrentBag<ZstdTrainingScratch> _pool = [];
+        private ZstdSegmentScore[] _scores = [];
+
+        public Run(ZstdTrainingSet set, ZstdDictionaryTrainingOptions options, CancellationToken cancellationToken, bool noFolds = false)
+        {
+            _set = set;
+            _options = options;
+            CancellationToken = cancellationToken;
+            Threads = options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Math.Min(Environment.ProcessorCount, 8);
+            FoldCount = noFolds ? 1 : CutIntoFolds(set, options, out _blockSize);
+            if (FoldCount == 1)
+            {
+                _blockSize = 1;
+            }
         }
 
-        int threads = options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Math.Min(Environment.ProcessorCount, 8);
-        var parallel = new ParallelOptions { MaxDegreeOfParallelism = threads, CancellationToken = cancellationToken };
-        int budget = Math.Max(options.DictionarySize - HeaderEstimate, 16);
+        public CancellationToken CancellationToken { get; }
 
-        // One d-mer index per fold and d, shared by every k and score (and read-only, so candidates can run side by side).
-        var indexes = new ZstdDmerIndex[evaluated * ds.Length];
-        Parallel.For(0, indexes.Length, new ParallelOptions { MaxDegreeOfParallelism = Math.Min(threads, 4), CancellationToken = cancellationToken }, i =>
+        /// <summary>Takes a scratch set from the pool (or makes one); the arrays in it are reused by the next candidate, not reallocated.</summary>
+        public ZstdTrainingScratch Rent() => _pool.TryTake(out ZstdTrainingScratch? scratch) ? scratch : new ZstdTrainingScratch();
+
+        public void Return(ZstdTrainingScratch scratch) => _pool.Add(scratch);
+
+        public void Dispose()
         {
-            indexes[i] = ZstdDmerIndex.Build(folds[i / ds.Length].Train, ds[i % ds.Length], options, cancellationToken);
-        });
+            foreach (ZstdDmerCounts counts in _counts.Values)
+            {
+                counts.Release();
+            }
 
-        long[] foldTotals = new long[evaluated * candidates.Count];
-        Parallel.For(0, foldTotals.Length, parallel, i =>
+            _counts.Clear();
+            while (_pool.TryTake(out ZstdTrainingScratch? scratch))
+            {
+                scratch.Release();
+            }
+        }
+
+        public int Threads { get; }
+
+        public ZstdDictionaryTrainingOptions Options => _options;
+
+        /// <summary>Gets how many parts the samples are cut into; a part is held out in turn. 1 means no part is held out.</summary>
+        public int FoldCount { get; }
+
+        /// <summary>Gets how many folds the search scores on: all of them for small sample sets, fewer as the set grows.</summary>
+        public int EvaluatedFolds => FoldCount == 1 ? 1 : Math.Min(FoldCount, _set.Length <= FourFoldBytes ? 4 : _set.Length <= TwoFoldBytes ? 2 : 1);
+
+        /// <summary>Gets how many folds the tables are measured on: all of them for sample sets up to 24 MiB, one above that (where the
+        /// dictionary is a small part of the data and one fold has plenty of samples).</summary>
+        public int StatFoldCount => FoldCount == 1 ? 1 : _set.Length <= StatFoldBytes ? FoldCount : 1;
+
+        // Samples next to each other are often alike (ticks of one game, pieces of one file), so holding out single samples would let a
+        // candidate score well by memorizing the neighbours of what it is tested on, while one block at the end would test it on data
+        // unlike what it trained on: the samples are cut into blocks of neighbours that are dealt to the folds in turn.
+        private static int CutIntoFolds(ZstdTrainingSet set, ZstdDictionaryTrainingOptions options, out int blockSize)
         {
-            int f = i / candidates.Count;
-            ZstdCoverParameters cp = candidates[i % candidates.Count];
-            ZstdDmerIndex index = indexes[(f * ds.Length) + Array.IndexOf(ds, cp.DmerSize)];
-            byte[] content = SelectFrom(folds[f].Train, index, cp, budget, cancellationToken);
-            var stats = new ZstdDictionaryBuilder.Statistics();
-            ZstdDictionaryBuilder.CollectStatistics(content, folds[f].StatSamples, stats);
-            byte[] dictionary = ZstdDictionaryBuilder.Assemble(content, stats, 0);
-            foldTotals[i] = TotalCompressedSize(dictionary, folds[f].Test, options.ScoringLevel, cancellationToken);
-        });
+            blockSize = Math.Max(1, set.Count / FoldBlocks);
+            int folds = options.TrainingPercent == 100 || set.Count < 2 ? 1 : (200 - options.TrainingPercent - 1) / (100 - options.TrainingPercent);
+            if (folds > 1)
+            {
+                // A fold needs samples to hold out and at least a few bytes to train on.
+                var groupBytes = new long[folds];
+                var groupSamples = new int[folds];
+                for (int i = 0; i < set.Count; i++)
+                {
+                    int g = (i / blockSize) % folds;
+                    groupBytes[g] += set.Starts[i + 1] - set.Starts[i];
+                    groupSamples[g]++;
+                }
 
-        int best = 0;
-        long bestTotal = long.MaxValue;
+                for (int g = 0; g < folds; g++)
+                {
+                    if (groupSamples[g] == 0 || set.Length - groupBytes[g] < 8)
+                    {
+                        return 1;
+                    }
+                }
+            }
+
+            return folds;
+        }
+
+        /// <summary>Counts the d-mers for every d-mer size the candidates use.</summary>
+        public void Count(List<ZstdCoverParameters> candidates)
+        {
+            int[] ds = candidates.Select(c => c.DmerSize).Distinct().OrderBy(x => x).ToArray();
+            _scores = candidates.Select(c => c.Score).Distinct().ToArray();
+            var counts = new ZstdDmerCounts[ds.Length];
+            var parallel = new ParallelOptions { MaxDegreeOfParallelism = Math.Min(Threads, 2), CancellationToken = CancellationToken };
+            Parallel.For(0, ds.Length, parallel, Rent, (i, _, scratch) =>
+            {
+                counts[i] = ZstdDmerCounts.Build(_set, ds[i], FoldCount, _blockSize, _options, scratch, CancellationToken);
+                return scratch;
+            }, Return);
+            for (int i = 0; i < ds.Length; i++)
+            {
+                _counts[ds[i]] = counts[i];
+            }
+        }
+
+        /// <summary>The folds the search scores on.</summary>
+        public Fold[] MakeFolds()
+        {
+            var folds = new Fold[EvaluatedFolds];
+            for (int f = 0; f < folds.Length; f++)
+            {
+                folds[f] = MakeFold(f);
+            }
+
+            return folds;
+        }
+
+        /// <summary>The fold that holds out nothing: content is chosen from all the samples.</summary>
+        public Fold WholeFold() => new([0, 0, _set.Length], _set.Length, _set.Count, -1, [], []);
+
+        public Fold MakeFold(int fold)
+        {
+            if (FoldCount == 1)
+            {
+                return new Fold([0, 0, _set.Length], _set.Length, _set.Count, -1, _set.Slice(0, _set.Count, _options.MaxScoringSamples, ScoreBytes), _set.Slice(0, _set.Count, StatSamples, StatBytes));
+            }
+
+            // The samples outside the fold are a few stretches of the original data: each is a (compact start, start, length) triple.
+            var runs = new List<int>();
+            var testList = new List<ReadOnlyMemory<byte>>();
+            int compact = 0;
+            int trainCount = 0;
+            for (int i = 0; i < _set.Count; i++)
+            {
+                int length = _set.Starts[i + 1] - _set.Starts[i];
+                if ((i / _blockSize) % FoldCount == fold)
+                {
+                    testList.Add(_set.Sample(i));
+                    continue;
+                }
+
+                int count = runs.Count;
+                if (count > 0 && runs[count - 2] + runs[count - 1] == _set.Starts[i])
+                {
+                    runs[count - 1] += length;
+                }
+                else
+                {
+                    runs.Add(compact);
+                    runs.Add(_set.Starts[i]);
+                    runs.Add(length);
+                }
+
+                compact += length;
+                trainCount++;
+            }
+
+            return new Fold([.. runs], compact, trainCount, fold, Thin(testList, _options.MaxScoringSamples, ScoreBytes), Thin(testList, StatSamples, StatBytes));
+        }
+
+        /// <summary>The index of the samples a fold trains on, for the candidate's d-mer size and score.</summary>
+        public ZstdDmerIndex IndexOf(Fold fold, ZstdCoverParameters candidate) =>
+            _counts[candidate.DmerSize].IndexFor(fold.Runs, fold.TrainLength, fold.TrainCount, fold.Group, [candidate.Score]);
+
+        public void AttachIndexes(Fold[] folds, List<ZstdCoverParameters> candidates)
+        {
+            int[] ds = candidates.Select(c => c.DmerSize).Distinct().OrderBy(x => x).ToArray();
+            var built = new ZstdDmerIndex[folds.Length * ds.Length];
+            var parallel = new ParallelOptions { MaxDegreeOfParallelism = Threads, CancellationToken = CancellationToken };
+            Parallel.For(0, built.Length, parallel, i =>
+            {
+                Fold fold = folds[i / ds.Length];
+                built[i] = _counts[ds[i % ds.Length]].IndexFor(fold.Runs, fold.TrainLength, fold.TrainCount, fold.Group, _scores);
+            });
+            for (int i = 0; i < built.Length; i++)
+            {
+                folds[i / ds.Length].Set(ds[i % ds.Length], built[i]);
+            }
+        }
+    }
+
+    // Every n-th sample, n from the counts and sizes alone.
+    private static List<ReadOnlyMemory<byte>> Thin(List<ReadOnlyMemory<byte>> list, int maxSamples, long maxBytes)
+    {
+        long bytes = 0;
+        foreach (ReadOnlyMemory<byte> s in list)
+        {
+            bytes += s.Length;
+        }
+
+        long stride = Math.Max(Math.Max(1, (list.Count + maxSamples - 1) / maxSamples), (bytes + maxBytes - 1) / maxBytes);
+        if (stride <= 1)
+        {
+            return list;
+        }
+
+        var thinned = new List<ReadOnlyMemory<byte>>();
+        for (int i = 0; i < list.Count; i += (int)stride)
+        {
+            thinned.Add(list[i]);
+        }
+
+        return thinned;
+    }
+
+    /// <summary>What one candidate came to on every fold: the content each fold chose, and the total size of the held-out samples.</summary>
+    private sealed class Evaluation
+    {
+        public int Candidate;
+        public long Total;
+        public byte[][] Contents = [];
+    }
+
+    private static Evaluation[] EvaluateCells(Run run, Fold[] folds, List<ZstdCoverParameters> candidates, int[] cells, int budget, bool score)
+    {
+        var results = new Evaluation[cells.Length];
+        for (int i = 0; i < cells.Length; i++)
+        {
+            results[i] = new Evaluation { Candidate = cells[i], Contents = new byte[folds.Length][] };
+        }
+
+        long[] totals = new long[cells.Length * folds.Length];
+        CancellationToken cancellationToken = run.CancellationToken;
+        var parallel = new ParallelOptions { MaxDegreeOfParallelism = run.Threads, CancellationToken = cancellationToken };
+        Parallel.For(0, totals.Length, parallel, run.Rent, (i, _, scratch) =>
+        {
+            int cell = i / folds.Length;
+            int f = i % folds.Length;
+            ZstdCoverParameters cp = candidates[cells[cell]];
+            ZstdDmerIndex index = folds[f].Index(cp.DmerSize);
+            byte[] content = ZstdSegmentSelector.Select(index, cp.Score, cp.SegmentSize, budget, scratch, cancellationToken);
+            results[cell].Contents[f] = content;
+            totals[i] = score ? TotalCompressedSize(content, folds[f].ScoreSamples, run.Options.ScoringLevel, scratch, cancellationToken) : 0;
+            return scratch;
+        }, run.Return);
+        for (int cell = 0; cell < cells.Length; cell++)
+        {
+            for (int f = 0; f < folds.Length; f++)
+            {
+                results[cell].Total += totals[(cell * folds.Length) + f];
+            }
+        }
+
+        return results;
+    }
+
+    // Finds the candidate with the smallest total. Candidates are laid out as variants (d, score) by segment size, k ascending. The
+    // guided search walks one variant's segment sizes on a coarse grid, then climbs from the best one to its neighbours until neither
+    // is better, and finally tries the other variants at the best segment size; the exhaustive search tries them all. The cost of a
+    // dictionary against segment size is smooth (it falls, flattens, and rises again), so the climb ends next to the best.
+    // The variant searched first: the largest d up to 8, which is the d-mer size the zstd tool starts with.
+    private static int PrimaryVariant(List<ZstdCoverParameters> candidates, List<int> starts)
+    {
+        int primary = 0;
+        for (int v = 0; v < starts.Count - 1; v++)
+        {
+            if (candidates[starts[v]].DmerSize <= 8)
+            {
+                primary = v;
+            }
+        }
+
+        return primary;
+    }
+
+    private static List<int> VariantStarts(List<ZstdCoverParameters> candidates)
+    {
+        var starts = new List<int>();
         for (int c = 0; c < candidates.Count; c++)
         {
-            long total = 0;
-            for (int f = 0; f < evaluated; f++)
+            if (c == 0 || candidates[c].DmerSize != candidates[c - 1].DmerSize || candidates[c].Score != candidates[c - 1].Score)
             {
-                total += foldTotals[(f * candidates.Count) + c];
-            }
-
-            if (total < bestTotal)
-            {
-                bestTotal = total;
-                best = c;
+                starts.Add(c);
             }
         }
 
-        return candidates[best];
+        starts.Add(candidates.Count);
+        return starts;
     }
 
-    // The tables are measured on frames the content has not been chosen from. A dictionary chosen from the samples contains them, so
-    // parsing them against it finds one long match each and the tables would describe frames that are nothing like new data (the
-    // smaller the samples are against the dictionary, the worse). Instead the samples are cut into four folds; for each, content of the
-    // same size is chosen from the other three and the fold is parsed against that. Large sample sets are far bigger than the
-    // dictionary, where the effect is small, and are measured against the final content directly.
-    private const int StatisticsFolds = 4;
-
-    // The samples are cut into this many blocks of neighbours, dealt to the folds in turn.
-    private const int FoldBlocks = 16;
-
-    private static void CollectTableStatistics(ZstdTrainingSet set, ZstdCoverParameters parameters, byte[] content, ZstdDictionaryBuilder.Statistics stats, ZstdDictionaryTrainingOptions options, CancellationToken cancellationToken)
+    // On a large sample set another d-mer size gains little (a few tenths of a percent) and costs a counting pass, a selection and a
+    // scoring, so the guided search keeps only the first variant there; small sets are cheap enough to try the others.
+    private static List<ZstdCoverParameters> Narrow(List<ZstdCoverParameters> candidates, ZstdDictionaryTrainingOptions options, ZstdTrainingSet set)
     {
-        if (set.Length > CrossValidateBytes || set.Count < StatisticsFolds * 2)
+        if (options.SearchMode == ZstdTrainingSearch.Exhaustive || candidates.Count <= 6 || set.Length <= TwoFoldBytes)
         {
-            ZstdDictionaryBuilder.CollectStatistics(content, set.Slice(0, set.Count, int.MaxValue, long.MaxValue), stats);
-            return;
+            return candidates;
         }
 
-        int blockSize = Math.Max(1, set.Count / FoldBlocks);
-        for (int f = 0; f < StatisticsFolds; f++)
-        {
-            var trainList = new List<ReadOnlyMemory<byte>>();
-            var testList = new List<ReadOnlyMemory<byte>>();
-            for (int i = 0; i < set.Count; i++)
-            {
-                ((i / blockSize) % StatisticsFolds == f ? testList : trainList).Add(set.Sample(i));
-            }
-
-            ZstdTrainingSet train = trainList.Count == 0 || testList.Count == 0 ? set : ZstdTrainingSet.Create(trainList, long.MaxValue >> 2);
-            if (train.Length < 8)
-            {
-                train = set;
-            }
-
-            ZstdDmerIndex index = ZstdDmerIndex.Build(train, parameters.DmerSize, options, cancellationToken);
-            byte[] foldContent = SelectFrom(train, index, parameters, content.Length, cancellationToken);
-            ZstdDictionaryBuilder.CollectStatistics(foldContent, testList.Count == 0 ? set.Slice(0, set.Count, int.MaxValue, long.MaxValue) : testList, stats);
-        }
+        List<int> starts = VariantStarts(candidates);
+        int primary = PrimaryVariant(candidates, starts);
+        return candidates.GetRange(starts[primary], starts[primary + 1] - starts[primary]);
     }
 
-    private sealed record Fold(ZstdTrainingSet Train, IReadOnlyList<ReadOnlyMemory<byte>> Test, IReadOnlyList<ReadOnlyMemory<byte>> StatSamples);
-
-    private static Fold MakeFold(ZstdTrainingSet set, int foldCount, int fold, ZstdDictionaryTrainingOptions options)
+    private static Evaluation RunSearch(Run run, Fold[] folds, List<ZstdCoverParameters> candidates, int budget)
     {
-        IReadOnlyList<ReadOnlyMemory<byte>> all = set.Slice(0, set.Count, options.MaxScoringSamples, long.MaxValue);
-        if (foldCount == 1)
+        ZstdDictionaryTrainingOptions options = run.Options;
+        int count = candidates.Count;
+        var done = new Evaluation?[count];
+        void Run(IEnumerable<int> wanted)
         {
-            return new Fold(set, all, set.Slice(0, set.Count, CandidateStatSamples, CandidateStatBytes));
+            int[] cells = wanted.Where(c => c >= 0 && c < count && done[c] is null).Distinct().OrderBy(c => c).ToArray();
+            if (cells.Length == 0)
+            {
+                return;
+            }
+
+            Evaluation[] results = EvaluateCells(run, folds, candidates, cells, budget, true);
+            foreach (Evaluation r in results)
+            {
+                done[r.Candidate] = r;
+            }
         }
 
-        var trainList = new List<ReadOnlyMemory<byte>>();
-        var testList = new List<ReadOnlyMemory<byte>>();
-        int blockSize = Math.Max(1, set.Count / FoldBlocks);
-        for (int i = 0; i < set.Count; i++)
+        Evaluation Best() => done.Where(e => e is not null).OrderBy(e => e!.Total).ThenBy(e => e!.Candidate).First()!;
+
+        List<int> starts = VariantStarts(candidates);
+        int variants = starts.Count - 1;
+        if (options.SearchMode == ZstdTrainingSearch.Exhaustive || count <= 6)
         {
-            ((i / blockSize) % foldCount == fold ? testList : trainList).Add(set.Sample(i));
+            Run(Enumerable.Range(0, count));
+            return Best();
         }
 
-        if (trainList.Count == 0 || testList.Count == 0)
+        int primary = PrimaryVariant(candidates, starts);
+        int from = starts[primary];
+        int length = starts[primary + 1] - from;
+        var grid = new SortedSet<int>();
+        foreach (int third in new[] { 1, 3, 5 })
         {
-            return new Fold(set, all, set.Slice(0, set.Count, CandidateStatSamples, CandidateStatBytes));
+            grid.Add(from + ((length - 1) * third / 6));
         }
 
-        ZstdTrainingSet train = ZstdTrainingSet.Create(trainList, long.MaxValue >> 2);
-        if (train.Length < 8)
+        Run(grid);
+
+        // Climb from the best of the grid while a neighbour is better by more than a quarter of a percent: the cost is flat near its
+        // minimum, and a step that gains less is not worth another round of selecting and scoring.
+        while (true)
         {
-            return new Fold(set, all, set.Slice(0, set.Count, CandidateStatSamples, CandidateStatBytes));
+            Evaluation current = Best();
+            Run(new[] { current.Candidate - 1, current.Candidate + 1 }.Where(c => c >= from && c < from + length));
+            Evaluation next = Best();
+            if (next.Candidate == current.Candidate || (current.Total - next.Total) * 400 < current.Total)
+            {
+                break;
+            }
         }
 
-        return new Fold(train, Thin(testList, options.MaxScoringSamples), Thin(testList, CandidateStatSamples));
+        // The other variants, at the best segment size (or the nearest one they have).
+        int bestSize = candidates[Best().Candidate].SegmentSize;
+        var others = new List<int>();
+        for (int v = 0; v < variants; v++)
+        {
+            if (v == primary)
+            {
+                continue;
+            }
+
+            int pick = starts[v];
+            for (int c = starts[v]; c < starts[v + 1]; c++)
+            {
+                if (Math.Abs(candidates[c].SegmentSize - bestSize) < Math.Abs(candidates[pick].SegmentSize - bestSize))
+                {
+                    pick = c;
+                }
+            }
+
+            others.Add(pick);
+        }
+
+        Run(others);
+        return Best();
     }
 
-    private static long TotalCompressedSize(byte[] dictionaryBytes, IReadOnlyList<ReadOnlyMemory<byte>> test, int level, CancellationToken cancellationToken)
+    private static long TotalCompressedSize(byte[] content, IReadOnlyList<ReadOnlyMemory<byte>> test, int level, ZstdTrainingScratch scratch, CancellationToken cancellationToken)
     {
-        var dictionary = ZstdCompressionDictionary.Parse(dictionaryBytes);
-        var encoder = new ZstdEncoder(new ZstdCompressionOptions { Level = Math.Min(level, ZstdCompressionParameters.MaxLevel), Dictionary = dictionary, WriteContentSize = true });
-        byte[] buffer = new byte[1024];
+        ZstdCompressionDictionary dict = ZstdCompressionDictionary.FromContent(content);
+        var encoder = new ZstdEncoder(new ZstdCompressionOptions { Level = Math.Min(level, ZstdCompressionParameters.MaxLevel), Dictionary = dict, WriteContentSize = true });
         long total = 0;
         for (int i = 0; i < test.Count; i++)
         {
@@ -368,153 +745,10 @@ public static class ZstdCoverTrainer
             }
 
             ReadOnlySpan<byte> sample = test[i].Span;
-            int max = ZstdEncoder.GetMaxCompressedLength(sample.Length);
-            if (buffer.Length < max)
-            {
-                buffer = new byte[max];
-            }
-
-            total += encoder.CompressFrame(sample, buffer);
+            ZstdTrainingScratch.Fit(ref scratch.Output, ZstdEncoder.GetMaxCompressedLength(sample.Length));
+            total += encoder.CompressFrame(sample, scratch.Output);
         }
 
         return total;
-    }
-
-    private static List<ReadOnlyMemory<byte>> Thin(List<ReadOnlyMemory<byte>> list, int max)
-    {
-        if (list.Count <= max)
-        {
-            return list;
-        }
-
-        // Every n-th, n from the counts alone.
-        int stride = (list.Count + max - 1) / max;
-        var thinned = new List<ReadOnlyMemory<byte>>();
-        for (int i = 0; i < list.Count; i += stride)
-        {
-            thinned.Add(list[i]);
-        }
-
-        return thinned;
-    }
-
-    private readonly record struct Segment(int Start, int Length, long Score, int Epoch);
-
-    private static byte[] SelectFrom(ZstdTrainingSet set, ZstdDmerIndex index, ZstdCoverParameters parameters, int dictionarySize, CancellationToken cancellationToken)
-    {
-        int k = parameters.SegmentSize;
-        int d = index.DmerSize;
-        int n = set.Length;
-        int[] ids = index.Ids;
-        uint[] weights = new uint[index.Frequencies.Length];
-        for (int i = 0; i < weights.Length; i++)
-        {
-            weights[i] = ZstdDmerIndex.Weight(index.Frequencies[i], parameters.Score);
-        }
-
-        int[] counts = new int[weights.Length];
-
-        // RFC-independent but fixed: as many epochs as there is room for segments, but never an epoch shorter than a segment.
-        int epochs = Math.Clamp((dictionarySize + k - 1) / k, 1, Math.Max(1, n / k));
-        int epochLength = n / epochs;
-        int remaining = dictionarySize;
-        var chosen = new List<Segment>();
-        for (int e = 0; e < epochs && remaining >= d; e++)
-        {
-            if ((e & 255) == 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
-            int e0 = e * epochLength;
-            int e1 = e == epochs - 1 ? n : e0 + epochLength;
-            int window = Math.Min(Math.Min(k, remaining), e1 - e0);
-            if (window < d)
-            {
-                continue;
-            }
-
-            int span = window - d;
-            long score = 0;
-            long best = 0;
-            int bestStart = -1;
-            for (int hi = e0; hi + d <= e1; hi++)
-            {
-                int id = ids[hi];
-                if (id >= 0 && counts[id]++ == 0)
-                {
-                    score += weights[id];
-                }
-
-                int lo = hi - span - 1;
-                if (lo >= e0)
-                {
-                    int old = ids[lo];
-                    if (old >= 0 && --counts[old] == 0)
-                    {
-                        score -= weights[old];
-                    }
-                }
-
-                // A window is evaluated once it holds its full width; the first best (earliest) wins ties.
-                if (hi - e0 >= span && score > best)
-                {
-                    best = score;
-                    bestStart = hi - span;
-                }
-            }
-
-            for (int p = e0; p + d <= e1; p++)
-            {
-                int id = ids[p];
-                if (id >= 0)
-                {
-                    counts[id] = 0;
-                }
-            }
-
-            if (bestStart < 0)
-            {
-                continue;
-            }
-
-            // The d-mers of the chosen segment are covered now: they stop counting for every later epoch.
-            for (int p = bestStart; p + d <= bestStart + window; p++)
-            {
-                int id = ids[p];
-                if (id >= 0)
-                {
-                    weights[id] = 0;
-                }
-            }
-
-            chosen.Add(new Segment(bestStart, window, best, e));
-            remaining -= window;
-        }
-
-        if (chosen.Count == 0)
-        {
-            // Nothing scored (for instance, no d-mer occurs in two samples under a zero weight): take the start of the samples.
-            int length = Math.Min(dictionarySize, n);
-            return set.Data.AsSpan(0, Math.Max(length, 0)).ToArray();
-        }
-
-        // Least valuable first, so the most valuable content ends up closest to the data it serves.
-        chosen.Sort(static (a, b) => a.Score != b.Score ? a.Score.CompareTo(b.Score) : a.Epoch.CompareTo(b.Epoch));
-        int total = 0;
-        foreach (Segment s in chosen)
-        {
-            total += s.Length;
-        }
-
-        byte[] content = new byte[total];
-        int w = 0;
-        foreach (Segment s in chosen)
-        {
-            set.Data.AsSpan(s.Start, s.Length).CopyTo(content.AsSpan(w));
-            w += s.Length;
-        }
-
-        return content.Length >= 8 ? content : set.Data.AsSpan(0, Math.Min(Math.Max(dictionarySize, 8), n)).ToArray();
     }
 }

@@ -5,7 +5,7 @@ using RecursiveAI.OneCompress.Zstd;
 // Trains a Zstandard dictionary with this library and prints how long it took.
 //
 //   ZstdTrainBench <out.dict> --size N (--dir DIR [--files N] | --chunks BYTES FILE...) [--algo fast|cover] [--k N --d N]
-//                  [--split PERCENT] [--threads N] [--level N] [--accel N] [--f BITS] [--score freq|sqrt] [--max-bytes N] [--rebuild TOOL.dict]
+//                  [--split PERCENT] [--threads N] [--level N] [--accel N] [--f BITS] [--score freq|sqrt] [--max-bytes N] [--rebuild TOOL.dict] [--exhaustive] [--report] [--select-only N]
 //
 // With --dir the samples are the files of the directory in name order (the first N). With --chunks every FILE is cut into pieces of
 // that many bytes. Without --k and --d the parameters are searched. Prints one line of key=value pairs.
@@ -29,6 +29,8 @@ internal static class Program
         int k = 0, d = 0, split = 75, threads = 0, level = 3, accel = 1, hashBits = 20;
         var score = ZstdSegmentScore.SquareRoot;
         string? rebuild = null;
+        int selectRepeat = 0;
+        bool report = false, exhaustive = false;
         long maxBytes = 64L << 20;
         for (int i = 1; i < args.Length; i++)
         {
@@ -55,6 +57,9 @@ internal static class Program
                 case "--f": hashBits = Int(args[++i]); break;
                 case "--max-bytes": maxBytes = long.Parse(args[++i], CultureInfo.InvariantCulture); break;
                 case "--rebuild": rebuild = args[++i]; break;
+                case "--report": report = true; break;
+                case "--exhaustive": exhaustive = true; break;
+                case "--select-only": selectRepeat = Int(args[++i]); break;
                 case "--score": score = args[++i] == "freq" ? ZstdSegmentScore.Frequency : ZstdSegmentScore.SquareRoot; break;
                 default: Console.Error.WriteLine("unknown option " + args[i]); return 2;
             }
@@ -90,6 +95,20 @@ internal static class Program
             return 0;
         }
 
+        if (selectRepeat > 0)
+        {
+            // Content selection alone with fixed k and d, repeated: the steady-state cost once the code is compiled.
+            var selectOptions = new ZstdDictionaryTrainingOptions { DictionarySize = size, Algorithm = algorithm, Optimize = false, SegmentSize = k == 0 ? 256 : k, DmerSize = d == 0 ? 8 : d, Acceleration = accel, HashBits = hashBits, MaxTrainingBytes = maxBytes, Score = score, MaxDegreeOfParallelism = threads };
+            for (int r = 0; r < selectRepeat; r++)
+            {
+                var timer = Stopwatch.StartNew();
+                byte[] content = ZstdCoverTrainer.SelectContent(samples, selectOptions);
+                Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"select run={r} ms={timer.Elapsed.TotalMilliseconds:F1} content_bytes={content.Length}"));
+            }
+
+            return 0;
+        }
+
         bool search = k == 0 && d == 0;
         var options = new ZstdDictionaryTrainingOptions
         {
@@ -106,26 +125,19 @@ internal static class Program
             MaxTrainingBytes = maxBytes,
             Score = score,
             ScoreCandidates = [score],
+            SearchMode = exhaustive ? ZstdTrainingSearch.Exhaustive : ZstdTrainingSearch.Guided,
         };
         var watch = Stopwatch.StartNew();
-        ZstdCoverParameters chosen = search ? ZstdCoverTrainer.Optimize(samples, options) : new ZstdCoverParameters(options.SegmentSize, options.DmerSize, score);
-        byte[] dictionary = ZstdDictionary.Train(samples, new ZstdDictionaryTrainingOptions
-        {
-            DictionarySize = size,
-            Algorithm = algorithm,
-            Optimize = false,
-            SegmentSize = chosen.SegmentSize,
-            DmerSize = chosen.DmerSize,
-            Acceleration = accel,
-            HashBits = hashBits,
-            MaxTrainingBytes = maxBytes,
-            Score = chosen.Score,
-        });
+        byte[] dictionary = ZstdDictionary.Train(samples, options);
         watch.Stop();
         File.WriteAllBytes(output, dictionary);
         using Process self = Process.GetCurrentProcess();
+        long peak = self.PeakWorkingSet64 / (1024 * 1024);
+
+        // The chosen parameters are looked up afterwards (a second search) only when asked for: quality.sh needs them, timing runs do not.
+        ZstdCoverParameters chosen = report && search ? ZstdCoverTrainer.Optimize(samples, options) : new ZstdCoverParameters(options.SegmentSize, options.DmerSize, score);
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"samples={samples.Count} dict_bytes={dictionary.Length} k={chosen.SegmentSize} d={chosen.DmerSize} score={chosen.Score} seconds={watch.Elapsed.TotalSeconds:F2} peak_mb={self.PeakWorkingSet64 / (1024 * 1024)}"));
+            $"samples={samples.Count} dict_bytes={dictionary.Length} k={chosen.SegmentSize} d={chosen.DmerSize} score={chosen.Score} seconds={watch.Elapsed.TotalSeconds:F2} peak_mb={peak}"));
         return 0;
     }
 

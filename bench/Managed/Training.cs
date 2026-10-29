@@ -32,6 +32,9 @@ internal static class Training
         };
         sw.Stop();
 
+        // The peak is read here: the quality check below compresses with fresh encoders and would add its own garbage to it.
+        long peak = Hwm();
+
         // Quality: total size of the samples compressed at level 3 with the dictionary (ours encoder for both).
         long total = 0;
         var cd = ZstdCompressionDictionary.Parse(dict);
@@ -40,7 +43,7 @@ internal static class Training
             total += Zstd.Compress(s, new ZstdCompressionOptions { Level = 3, Dictionary = cd }).Length;
         }
 
-        Console.WriteLine($"train\t{impl}\tseconds={sw.Elapsed.TotalSeconds:F2}\tpeak_rss_mib={Hwm() >> 20}\trss_before_mib={before >> 20}\tdict_bytes={dict.Length}\tsamples_total_bytes_with_dict={total}\tload={File.ReadAllText("/proc/loadavg").Split(' ')[0]}");
+        Console.WriteLine($"train\t{impl}\tseconds={sw.Elapsed.TotalSeconds:F2}\tpeak_rss_mib={peak >> 20}\trss_before_mib={before >> 20}\tdict_bytes={dict.Length}\tsamples_total_bytes_with_dict={total}\tload={File.ReadAllText("/proc/loadavg").Split(' ')[0]}");
         return 0;
     }
 
