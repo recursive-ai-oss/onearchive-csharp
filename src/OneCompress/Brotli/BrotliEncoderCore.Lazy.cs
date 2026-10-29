@@ -100,7 +100,14 @@ internal sealed partial class BrotliEncoderCore
             Match m = FindBucketed(pos, end, ring, false);
             if (m.Score <= 0)
             {
-                pos += 1 + ((pos - insertStart) >> _plan.SkipShift);
+                int step = 1 + ((pos - insertStart) >> _plan.SkipShift);
+                pos += step;
+                if (_plan.SparseInsert > 0 && step > 1)
+                {
+                    // Positions stepped over are not entered; the one before the next probe is.
+                    _hashedUpTo = Math.Max(_hashedUpTo, pos - 1);
+                }
+
                 continue;
             }
 
@@ -140,6 +147,12 @@ internal sealed partial class BrotliEncoderCore
 
             pos += m.Covered;
             insertStart = pos;
+            if (_plan.SparseInsert > 0 && m.Covered >= _plan.SparseInsert)
+            {
+                // Inside a long copy only the last two positions are entered, so that the text after it can find the copy's tail.
+                _hashedUpTo = Math.Max(_hashedUpTo, pos - 2);
+            }
+
             BucketUpTo(pos);
         }
 

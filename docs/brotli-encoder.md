@@ -69,7 +69,7 @@ Large-window brotli (window above 24) is not part of RFC 7932 and is not produce
 "Table" is the number of hash values times the slots each owns ("x 16"); "Depth" is the number of entries of a bucket (or tree nodes at q10
 and q11) visited per position. Qualities 0 to 5 skip ahead on incompressible data: after a miss the position advances by
 `1 + (bytes since the last copy >> S)`, with S = 6 at qualities 0 and 1 and 5 at qualities 2 to 5 (the positions skipped over are still
-entered in the table at qualities 2 to 5). Qualities 6 to 11 do not skip. The nice length (a match this long ends the search) is 64, and 128 at qualities 10 and 11. The
+entered in the table at q4 and q5; at q2 and q3 see "Sparse entry" below). Qualities 6 to 11 do not skip. The nice length (a match this long ends the search) is 64, and 128 at qualities 10 and 11. The
 table is the single source; `BrotliQualityPlan.For` must match it.
 
 ## Match finding
@@ -116,11 +116,15 @@ for the later positions uses half the depth (and half the long table's depth).
 
 **q0 and q1** use one loop. At each position with four bytes inside the block it reads the table slot, replaces it with the position,
 and scores the four last distances (taking the first that agrees on four bytes) and the table's candidate; the better score wins.
-After a copy, every position inside it is entered if the copy is shorter than 16 bytes, otherwise only its second byte and its last two.
+After a copy, every position inside it is entered if the copy is shorter than 16 bytes (4 at q0), otherwise only its second byte and its last two.
 The four-byte test means the last-distance copies of q0 and q1 are at least four bytes long.
 
 **q2 to q9** try the four last distances first (any length from 3), then the bucket candidates, then the dictionary. After a copy
-every position it covers is entered.
+every position it covers is entered, except at q2 and q3 (below).
+
+**Sparse entry (q2 and q3).** After a copy of 32 bytes or more only its last two positions are entered, and positions stepped over by
+the skip-ahead are not entered; the position just before the next probe is. The positions are a small share of what a later search
+finds, and entering them costs a hash and two stores each. The measured price is under 0.2% of size on text.
 
 ## Shortest-path parse (q10, q11)
 
@@ -148,7 +152,9 @@ Done by the meta-block writer, in this order (each choice by estimated size, int
 1. **Distance parameters.** q6 and up try `(NPOSTFIX, NDIRECT)` = (0,0), (0,8), (1,0), (1,8), (2,0), (2,12) and keep the one with
    the smallest distance entropy; below q6 it is (0,0). Distances are mapped onto the short codes (RFC 7932 section 4) first.
 2. **Block splitting** (q4 and up) separately for literals, commands and distances (section 6). The sequence is cut into equal
-   segments: for commands and distances at least 256 symbols and at most 128 segments; for literals at least 1024 symbols and at most
+   segments: for commands and distances at least 256 symbols and at most 128 segments (at q4: 32, merged pair by pair up to 16 of them;
+   the pairwise merging of long histograms is the largest cost of the splitter, and the estimated gain of the extra segments is
+   small); for literals at least 1024 symbols and at most
    128 segments at q4 to q6, at least 512 and at most 256 at q7 to q9, at least 256 and at most 2048 at q10 and q11.
    Segment histograms are clustered into at most 256 block types, then refined up to four times (stopping early when nothing
    moves) by a Viterbi search over the segments where a type change costs 14 bits. The split is kept only if its estimated cost, headers and switches included,

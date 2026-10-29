@@ -61,6 +61,12 @@ internal sealed class BrotliQualityPlan
     /// <summary>The most segments that are merged pair by pair when block types are clustered; more are clustered sequentially.</summary>
     internal int SplitPairwiseLimit = BrotliClusterer.PairwiseLimit;
 
+    /// <summary>The most segments of a block that splitting compares for commands and for distances; 0 keeps one block type for both.</summary>
+    internal int CommandSegmentMax = 128;
+
+    /// <summary>The most segments of commands or distances that are merged pair by pair when block types are clustered.</summary>
+    internal int CommandPairwiseLimit = BrotliClusterer.PairwiseLimit;
+
     /// <summary>True to model literals with their two preceding bytes.</summary>
     internal bool LiteralContexts;
 
@@ -85,6 +91,18 @@ internal sealed class BrotliQualityPlan
     /// </summary>
     internal int SkipShift = 31;
 
+    /// <summary>
+    /// 0 to enter every position in the bucketed table. Otherwise the positions stepped over after a miss are not entered, and neither are
+    /// those inside a copy of at least this many bytes except its last two.
+    /// </summary>
+    internal int SparseInsert;
+
+    /// <summary>
+    /// For the one-slot parse of qualities 0 and 1: a copy shorter than this enters every position it covers in the table; a longer one
+    /// only its second byte and its last two.
+    /// </summary>
+    internal int FullInsertLength = 16;
+
 
     internal static BrotliQualityPlan For(int quality)
     {
@@ -96,6 +114,7 @@ internal sealed class BrotliQualityPlan
                 p.HashBits = 15;
                 p.ChainDepth = 1;
                 p.SkipShift = 6;
+                p.FullInsertLength = 4;
                 break;
             case 1:
                 p.BlockSize = 1 << 17;
@@ -109,6 +128,7 @@ internal sealed class BrotliQualityPlan
                 p.BucketBits = 2;
                 p.ChainDepth = 2;
                 p.SkipShift = 5;
+                p.SparseInsert = 32;
                 break;
             case 3:
                 p.BlockSize = 1 << 18;
@@ -119,6 +139,7 @@ internal sealed class BrotliQualityPlan
                 p.SkipShift = 5;
                 p.Lazy = 1;
                 p.LiteralContexts = true;
+                p.SparseInsert = 32;
                 break;
             case 4:
                 p.BlockSize = 1 << 20;
@@ -133,6 +154,8 @@ internal sealed class BrotliQualityPlan
                 p.LiteralSegmentMin = 1024;
                 p.LiteralSegmentMax = 128;
                 p.SplitPairwiseLimit = 64;
+                p.CommandSegmentMax = 32;
+                p.CommandPairwiseLimit = 16;
                 break;
             case 5:
                 p.HashBits = 16;

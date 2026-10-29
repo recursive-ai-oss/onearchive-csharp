@@ -255,8 +255,8 @@ internal sealed partial class BrotliMetaBlockWriter
         }
         // ---- Block splits. ----
         BrotliBlockSplit litSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(ToSymbols(lit), 256, _plan.LiteralSegmentMin, _plan.LiteralSegmentMax, _plan.SplitPairwiseLimit) : BrotliBlockSplit.Single(literalCount);
-        BrotliBlockSplit cmdSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(cmdSymbols, 704, 256, 128, BrotliClusterer.PairwiseLimit) : BrotliBlockSplit.Single(nCmd);
-        BrotliBlockSplit distSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(distSymbols, distanceAlphabet, 256, 128, BrotliClusterer.PairwiseLimit) : BrotliBlockSplit.Single(explicitCount);
+        BrotliBlockSplit cmdSplit = _plan.SplitBlocks && _plan.CommandSegmentMax > 0 ? BrotliBlockSplitter.Split(cmdSymbols, 704, 256, _plan.CommandSegmentMax, _plan.CommandPairwiseLimit) : BrotliBlockSplit.Single(nCmd);
+        BrotliBlockSplit distSplit = _plan.SplitBlocks && _plan.CommandSegmentMax > 0 ? BrotliBlockSplitter.Split(distSymbols, distanceAlphabet, 256, _plan.CommandSegmentMax, _plan.CommandPairwiseLimit) : BrotliBlockSplit.Single(explicitCount);
         // ---- Literal contexts: a mode per block type, histograms per (type, context), clustered onto trees. ----
         int contextsPerType = _plan.LiteralContexts ? 64 : 1;
         var modes = ChooseContextModes(litSplit, lit, lp1, lp2);
@@ -454,30 +454,51 @@ internal sealed partial class BrotliMetaBlockWriter
             acc += split.Lengths[b];
         }
 
-        var scratch = new int[64 * 256];
+        // One pass over the literals of a type fills the histograms of all four modes (RFC 7932 section 7.1) at once.
+        var scratch = new int[4][];
+        for (int m = 0; m < 4; m++)
+        {
+            scratch[m] = new int[64 * 256];
+        }
+
+        ReadOnlySpan<byte> lut0 = s_lut0;
+        ReadOnlySpan<byte> lut1 = s_lut1;
+        ReadOnlySpan<byte> lut2 = s_lut2;
         for (int t = 0; t < split.TypeCount; t++)
         {
+            int[] c0 = scratch[0], c1 = scratch[1], c2 = scratch[2], c3 = scratch[3];
+            for (int m = 0; m < 4; m++)
+            {
+                Array.Clear(scratch[m]);
+            }
+
+            for (int b = 0; b < split.BlockCount; b++)
+            {
+                if (split.Types[b] != t)
+                {
+                    continue;
+                }
+
+                int end = starts[b] + split.Lengths[b];
+                for (int i = starts[b]; i < end; i++)
+                {
+                    int a = p1[i];
+                    int c = p2[i];
+                    int l = lit[i];
+                    c0[((a & 63) << 8) + l]++;
+                    c1[((a >> 2) << 8) + l]++;
+                    c2[((lut0[a] | lut1[c]) << 8) + l]++;
+                    c3[((((lut2[a] << 3) | lut2[c])) << 8) + l]++;
+                }
+            }
+
             long best = long.MaxValue;
             for (int mode = 0; mode < 4; mode++)
             {
-                Array.Clear(scratch);
-                for (int b = 0; b < split.BlockCount; b++)
-                {
-                    if (split.Types[b] != t)
-                    {
-                        continue;
-                    }
-
-                    for (int i = starts[b]; i < starts[b] + split.Lengths[b]; i++)
-                    {
-                        scratch[(LiteralContext(mode, p1[i], p2[i]) << 8) + lit[i]]++;
-                    }
-                }
-
                 long cost = 0;
                 for (int c = 0; c < 64; c++)
                 {
-                    ReadOnlySpan<int> h = scratch.AsSpan(c << 8, 256);
+                    ReadOnlySpan<int> h = scratch[mode].AsSpan(c << 8, 256);
                     int nonZero = 0;
                     foreach (int v in h)
                     {

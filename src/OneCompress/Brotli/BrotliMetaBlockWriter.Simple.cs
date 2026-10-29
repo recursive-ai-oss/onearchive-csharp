@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Brotli;
@@ -10,7 +9,7 @@ namespace RecursiveAI.OneCompress.Brotli;
 internal sealed partial class BrotliMetaBlockWriter
 {
     private const int SimpleDistanceAlphabet = 64; // 16 + 48: NPOSTFIX 0, NDIRECT 0
-    private const ushort NoDistance = 0xFFFF;
+    private const ushort NoDistance = 0x3FF; // the table slot of symbol 255 of context 3: no such symbol, so no code and no length
 
     private ushort[] _simpleSymbol = [];
     private ulong[] _simpleExtra = [];
@@ -81,6 +80,7 @@ internal sealed partial class BrotliMetaBlockWriter
                 // The last command of a block that ends in literals: no copy and no distance.
                 symbol = BrotliEncodeTables.CommandSymbol(ic, 0, BrotliEncodeTables.CanBeImplicit(ic, 0));
                 distances[j] = NoDistance;
+                distanceExtras[j] = 0;
             }
             else
             {
@@ -108,7 +108,7 @@ internal sealed partial class BrotliMetaBlockWriter
                 else
                 {
                     // RFC 7932 section 4: the short codes name the four last distances and the nearest neighbours of the last two.
-                    code = d == r0 ? 0 : d == r1 ? 1 : d == r2 ? 2 : d == r3 ? 3 : BrotliDistanceCoding.ShortCode(d, [r0, r1, r2, r3]);
+                    code = d == r0 ? 0 : d == r1 ? 1 : d == r2 ? 2 : d == r3 ? 3 : BrotliDistanceCoding.NearCode(d, r0, r1);
                     if (d != r0)
                     {
                         r3 = r2;
@@ -123,6 +123,7 @@ internal sealed partial class BrotliMetaBlockWriter
                 if (implicitDistance)
                 {
                     distances[j] = NoDistance;
+                    distanceExtras[j] = 0;
                 }
                 else
                 {
@@ -163,26 +164,19 @@ internal sealed partial class BrotliMetaBlockWriter
         if (literalCount > 0)
         {
             litHistogram = new int[256];
-            Span<int> h0 = stackalloc int[256];
-            Span<int> h1 = stackalloc int[256];
-            h0.Clear();
-            h1.Clear();
+            int[] h0 = new int[256];
+            int[] h1 = new int[256];
             int pos = start;
             for (int j = 0; j < nCmd; j++)
             {
                 int insert = insertArray[j];
                 int end = pos + insert;
-                ReadOnlySpan<byte> run = data.AsSpan(pos, insert);
-                int i = 0;
-                for (; i + 1 < run.Length; i += 2)
+                // The literals of one command are in data[pos..end), inside the block; consecutive commands count into different tables so
+                // that a repeated byte does not wait on the previous increment.
+                int[] h = (j & 1) == 0 ? h0 : h1;
+                for (int i = pos; i < end; i++)
                 {
-                    h0[run[i]]++;
-                    h1[run[i + 1]]++;
-                }
-
-                if (i < run.Length)
-                {
-                    h0[run[i]]++;
+                    BrotliEncRaw.Count(h, BrotliEncRaw.At(data, i))++;
                 }
 
                 pos = end + coveredArray[j];
@@ -291,52 +285,55 @@ internal sealed partial class BrotliMetaBlockWriter
         for (int j = 0; j < nCmd; j++)
         {
             uint entry = cmdTable[symbols[j]];
-            bits.Put(entry & 0xFFFF, (int)(entry >> 16));
             int eb = extraBits[j];
-            if (eb > 0)
+            ulong extra = extras[j];
+            if (eb <= 32)
             {
-                ulong extra = extras[j];
-                if (eb <= 32)
-                {
-                    bits.Put((uint)extra, eb);
-                }
-                else
-                {
-                    bits.Put((uint)extra, 32);
-                    bits.Put((uint)(extra >> 32), eb - 32);
-                }
+                bits.PutCodeAndExtra(entry, (uint)extra, eb);
+            }
+            else
+            {
+                bits.PutCodeAndExtra(entry, (uint)extra, 32);
+                bits.Put((uint)(extra >> 32), eb - 32);
             }
 
             int litEnd = litPos + insertArray[j];
-            ReadOnlySpan<byte> run = data.AsSpan(litPos, litEnd - litPos);
-            int i = 0;
-            for (; i + 1 < run.Length; i += 2)
+            int count = litEnd - litPos;
+            if (count <= 4)
             {
-                // Two codes of at most 15 bits fit beside the fewer than 32 bits already held.
-                uint a = litTable[run[i]];
-                uint b = litTable[run[i + 1]];
-                bits.PutPair(a, b);
+                // The usual short run: four lookups whether or not the run is that long, the ones past its end with a length of 0.
+                // The code table has 256 entries and the input is read only inside the run; bytes past it are read from the next
+                // bytes of the block or, at the very end, from the margin of the buffer.
+                uint a0 = count > 0 ? BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos)) : 0;
+                uint a1 = count > 1 ? BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 1)) : 0;
+                uint a2 = count > 2 ? BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 2)) : 0;
+                uint a3 = count > 3 ? BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 3)) : 0;
+                if (count > 0)
+                {
+                    bits.PutPair(a0, a1);
+                    bits.PutPair(a2, a3);
+                }
             }
-
-            if (i < run.Length)
+            else
             {
-                uint a = litTable[run[i]];
-                bits.Put(a & 0xFFFF, (int)(a >> 16));
+                int i = litPos;
+                for (; i + 1 < litEnd; i += 2)
+                {
+                    // Two codes of at most 15 bits fit beside the fewer than 8 bits already held.
+                    bits.PutPair(BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, i)), BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, i + 1)));
+                }
+
+                if (i < litEnd)
+                {
+                    uint a = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, i));
+                    bits.Put(a & 0xFFFF, (int)(a >> 16));
+                }
             }
 
             litPos = litEnd + coveredArray[j];
-            ushort dd = distances[j];
-            if (dd != NoDistance)
-            {
-                uint d = distTable[dd];
-                bits.Put(d & 0xFFFF, (int)(d >> 16));
-                uint dx = distanceExtras[j];
-                int dBits = (int)(dx >> 26);
-                if (dBits > 0)
-                {
-                    bits.Put(dx & 0x3FFFFFF, dBits);
-                }
-            }
+            uint d = distTable[distances[j]];
+            uint dx = distanceExtras[j];
+            bits.PutCodeAndExtra(d, dx & 0x3FFFFFF, (int)(dx >> 26));
         }
 
         w.EndRaw(bits.Position, bits.Accumulator, bits.AccumulatorBits, bodyBits);
@@ -346,8 +343,10 @@ internal sealed partial class BrotliMetaBlockWriter
         }
     }
 
-    // A bit accumulator over a span, kept in a struct so that the writing loop holds it in registers. It has the same layout as
-    // BrotliBitWriter.Write: fewer than 32 bits wait in the accumulator between calls and 32 at a time are stored little endian.
+    // A bit accumulator over a span, kept in a struct so that the writing loop holds it in registers. Every call ends by storing the
+    // accumulator as one little-endian 64-bit word at the current byte and moving on by the whole bytes it filled, so there is no branch on
+    // whether a store is due; fewer than 8 bits wait in the accumulator between calls. The bit stream is the one BrotliBitWriter.Write
+    // produces. The span must have 8 bytes beyond the last byte the stream ends in, which BeginRaw provides.
     private ref struct RawBits
     {
         private readonly Span<byte> _output;
@@ -370,20 +369,36 @@ internal sealed partial class BrotliMetaBlockWriter
         internal readonly int AccumulatorBits => _bits;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void Store()
+        {
+            BrotliEncRaw.Store64(_output, _position, _accumulator);
+            int whole = _bits >> 3;
+            _position += whole;
+            _accumulator >>= whole << 3;
+            _bits &= 7;
+        }
+
+        /// <summary>Appends the low <paramref name="count"/> bits of <paramref name="value"/>; the count is at most 32.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Put(uint value, int count)
         {
             _accumulator |= (ulong)value << _bits;
             _bits += count;
-            if (_bits >= 32)
-            {
-                BinaryPrimitives.WriteUInt32LittleEndian(_output.Slice(_position), (uint)_accumulator);
-                _position += 4;
-                _accumulator >>= 32;
-                _bits -= 32;
-            }
+            Store();
         }
 
-        // Two table entries, each a code in the low 16 bits and its length above them.
+        // A prefix code (low 16 bits of the entry, its length above them) followed by up to 32 extra bits: 7 + 15 + 32 bits fit the word.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void PutCodeAndExtra(uint entry, uint extra, int extraCount)
+        {
+            _accumulator |= (ulong)(entry & 0xFFFF) << _bits;
+            _bits += (int)(entry >> 16);
+            _accumulator |= (ulong)extra << _bits;
+            _bits += extraCount;
+            Store();
+        }
+
+        // Two table entries, each a code in the low 16 bits and its length above them: 7 + 15 + 15 bits.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void PutPair(uint first, uint second)
         {
@@ -391,13 +406,7 @@ internal sealed partial class BrotliMetaBlockWriter
             _bits += (int)(first >> 16);
             _accumulator |= (ulong)(second & 0xFFFF) << _bits;
             _bits += (int)(second >> 16);
-            if (_bits >= 32)
-            {
-                BinaryPrimitives.WriteUInt32LittleEndian(_output.Slice(_position), (uint)_accumulator);
-                _position += 4;
-                _accumulator >>= 32;
-                _bits -= 32;
-            }
+            Store();
         }
     }
 }

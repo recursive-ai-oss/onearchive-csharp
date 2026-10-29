@@ -121,4 +121,46 @@ internal static class BrotliEncRaw
         }
 #endif
     }
+
+    /// <summary>
+    /// Stores <paramref name="value"/> little endian at <c>dest[index..index + 8]</c>. The caller guarantees <c>index + 8 &lt;= dest.Length</c>:
+    /// the bit writer's span is sized for the stream plus 8 bytes, and <c>index</c> never passes the last byte of the stream.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Store64(Span<byte> dest, int index, ulong value)
+    {
+#if CHECKED
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(dest.Slice(index), value);
+#else
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(dest), (nint)(uint)index), value);
+#endif
+    }
+
+    /// <summary>
+    /// <c>t[index]</c> of a small array. The caller guarantees <c>0 &lt;= index &lt; t.Length</c>: a histogram indexed by a byte, or a code
+    /// table indexed by a symbol of its alphabet.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref uint Entry(uint[] t, int index)
+    {
+#if CHECKED
+        return ref t[index];
+#else
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(t), (nint)(uint)index);
+#endif
+    }
+
+    /// <summary>
+    /// <c>t[index]</c> of a histogram of ints. The caller guarantees <c>0 &lt;= index &lt; t.Length</c>: the index is a byte and the
+    /// histogram has 256 entries.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref int Count(int[] t, int index)
+    {
+#if CHECKED
+        return ref t[index];
+#else
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(t), (nint)(uint)index);
+#endif
+    }
 }
