@@ -153,6 +153,21 @@ and in how far the parse looks ahead.
   best length differ from the same bytes at the current position (a longer match must agree on them); otherwise the match length
   is measured and the candidate becomes the best if its gain is higher. With the current best shorter than `minMatch - 1` the
   skip test looks at the single byte at index `minMatch - 1` instead (`minMatch` 3 only).
+- **Insert stride** (rows with `rowLog` 4, no dictionary, `minMatch` at least 4, `hashLog` at least 19): positions skipped over by a match are
+  entered into their rows lazily by the next search (see Index). When more than 16 positions lie between the last one entered and the position
+  being searched, they are entered every 4th position (the first of them, then every fourth), and the last 16 are all entered. A long match
+  usually repeats text whose positions are already in the table, and each entered position is a write to a row far from the cache. Entering
+  every fourth loses almost no match, because the parse extends a match backwards over equal bytes. This is a rule of the output bytes: it
+  applies at levels 5 to 9 for sources over 256 KiB (`hashLog` 19 to 21) and at levels 6 to 8 for sources of 128 KiB to 256 KiB when their
+  `hashLog` reaches 19. On silesia.tar it costs 0.04% to 0.17% in size.
+- **Packed rows** (an internal option, off by default; same conditions as the stride and a window of at most 4 MiB): a row of 16 entries is
+  64 bytes of tags, positions and head in three tables, so entering and searching a position touch three cache lines. The packed layout keeps a
+  row in one 64-byte line, aligned: byte 0 is the head (the slot of the newest entry, 0 to 14), bytes 1 to 15 the tags of fifteen slots, bytes
+  16 to 60 fifteen 24-bit positions. A new entry goes to the slot below the head (slot 14 below slot 0) and so replaces the oldest. A
+  position is stored as `(windowStartPosition + index) mod 2^24` and a candidate's distance is `(current - stored) mod 2^24`; 0 is empty, so
+  a position whose stored value is 0 is not entered. Everything else (candidate order, the skip test, gains, attempts) is as for the three
+  tables, with a ring of 15 instead of 16, so its sequences differ slightly. Its tables take `64 * 2^(hashLog - 4)` bytes: 2, 4 and 8 MiB
+  at hash logs 19, 20 and 21, where the three tables take 2.53, 5.06 and 10.1 MiB.
 - **Binary tree** (btlazy2): `2^(chainLog-1)` nodes, two links each (smaller and larger), one tree per hash value rooted at
   `head[hash]`. Entering a position compares it against nodes from the root down, splitting them into those below and those above
   it (the standard suffix-tree-like insertion of binary-tree match finders); the comparisons give every match met, in increasing

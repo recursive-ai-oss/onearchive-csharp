@@ -11,6 +11,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="OneCompress.Tests" />
     <InternalsVisibleTo Include="OneArchive.Fuzz" />
+    <InternalsVisibleTo Include="ZstdEncodeBench" />
   </ItemGroup>
 
 </Project>

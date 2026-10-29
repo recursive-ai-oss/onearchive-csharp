@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Changed
+
+- Zstandard: levels 5-9 (and 6-8 for sources of 128-256 KiB) enter only every fourth position that a long match skips over into the match table, which saves writes to a table far larger than the cache. Compressed bytes change, within 0.2% in size, and stay identical on every platform.
+
 ## [0.5.0-preview.1] - 2026-10-29
 
 Everything is still preview and carries `[Experimental]`. The README has the new measurements from both machines.
