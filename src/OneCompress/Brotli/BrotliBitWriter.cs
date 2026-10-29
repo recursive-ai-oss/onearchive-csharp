@@ -64,6 +64,7 @@ public sealed class BrotliBitWriter
     /// <summary>Writes the low <paramref name="bitCount"/> bits of <paramref name="value"/>, least significant bit first.</summary>
     /// <param name="value">The value; bits above <paramref name="bitCount"/> must be zero.</param>
     /// <param name="bitCount">The number of bits, 0 to 32.</param>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void Write(uint value, int bitCount)
     {
         _accumulator |= (ulong)value << _accumulatorBits;
@@ -77,6 +78,37 @@ public sealed class BrotliBitWriter
             _accumulator >>= 32;
             _accumulatorBits -= 32;
         }
+    }
+
+    /// <summary>Writes the prefix code of each of <paramref name="symbols"/>; every code must be at most 15 bits long.</summary>
+    internal void WriteSymbols(ReadOnlySpan<byte> symbols, ushort[] codes, byte[] lengths)
+    {
+        // Every code is at most 15 bits, so two bytes per symbol plus the accumulator's spill are enough room.
+        EnsureRoom((2 * symbols.Length) + 8);
+        ulong accumulator = _accumulator;
+        int bits = _accumulatorBits;
+        int length = _length;
+        long total = 0;
+        byte[] buffer = _buffer;
+        foreach (byte symbol in symbols)
+        {
+            int n = lengths[symbol];
+            accumulator |= (ulong)codes[symbol] << bits;
+            bits += n;
+            total += n;
+            if (bits >= 32)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(length), (uint)accumulator);
+                length += 4;
+                accumulator >>= 32;
+                bits -= 32;
+            }
+        }
+
+        _accumulator = accumulator;
+        _accumulatorBits = bits;
+        _length = length;
+        BitsWritten += total;
     }
 
     /// <summary>Pads with zero bits up to the next byte boundary.</summary>

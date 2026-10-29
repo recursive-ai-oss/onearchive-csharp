@@ -51,33 +51,43 @@ Large-window brotli (window above 24) is not part of RFC 7932 and is not produce
 
 ## Levels
 
-| Q | Block | Hash bits | Parse | Depth | Lazy | Contexts, splitting | Dictionary |
-|---|---|---|---|---|---|---|---|
-| 0 | 128 KiB | 15 | greedy, hash head only | 1 | 0 | none | no |
-| 1 | 128 KiB | 16 | greedy, hash head only | 1 | 0 | none | no |
-| 2 | 128 KiB | 16 | greedy, hash chain | 4 | 0 | none | no |
-| 3 | 256 KiB | 17 | lazy, hash chain | 8 | 1 | literal contexts | no |
-| 4 | 1 MiB | 17 | lazy, hash chain | 16 | 1 | + block splitting | no |
-| 5 | 4 MiB | 18 | lazy, binary tree | 12 | 1 | + context mode search | identity |
-| 6 | 4 MiB | 18 | lazy, binary tree | 16 | 1 | + distance parameter search | identity |
-| 7 | 4 MiB | 19 | lazy, binary tree | 20 | 2 | same | identity |
-| 8 | 4 MiB | 19 | lazy, binary tree | 32 | 2 | same | all transforms |
-| 9 | 4 MiB | 20 | lazy, binary tree | 48 | 2 | same | all transforms |
-| 10 | 1 MiB | 20 | shortest path, 2 passes | 64 | | same | all transforms |
-| 11 | 1 MiB | 20 | shortest path, 3 passes | 128 | | same | all transforms |
+| Q | Block | Table | Hash bytes | Depth | Long table | Parse | Contexts, splitting | Dictionary |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 128 KiB | 2^15 heads | 4 | 1 | | greedy, one probe | none | no |
+| 1 | 128 KiB | 2^17 heads | 4 | 1 | | greedy, one probe | none | no |
+| 2 | 128 KiB | 2^16 x 4 | 4 | 4 | | greedy | none | no |
+| 3 | 256 KiB | 2^17 x 8 | 4 | 8 | | lazy 1 | literal contexts | no |
+| 4 | 1 MiB | 2^17 x 8 | 6 | 8 | | lazy 1 | + block splitting | no |
+| 5 | 4 MiB | 2^18 x 16 | 6 | 12 | 2^16 x 4, 4 deep | lazy 1 | + context mode search | identity |
+| 6 | 4 MiB | 2^18 x 16 | 6 | 16 | 2^16 x 8, 8 deep | lazy 1 | + distance parameter search | identity |
+| 7 | 4 MiB | 2^18 x 32 | 6 | 24 | 2^16 x 16, 16 deep | lazy 2 | same, finer literal splitting | identity |
+| 8 | 4 MiB | 2^18 x 32 | 6 | 32 | 2^17 x 16, 16 deep | lazy 2 | same | identity |
+| 9 | 4 MiB | 2^17 x 64 | 6 | 48 | 2^17 x 32, 32 deep | lazy 2 | same | identity |
+| 10 | 1 MiB | 2^20 binary tree | 4 | 64 | | shortest path, 2 passes | same, finest literal splitting | all transforms |
+| 11 | 1 MiB | 2^20 binary tree | 4 | 128 | | shortest path, 3 passes | same | all transforms |
 
-"Depth" is the number of chain links or tree nodes visited per position. Qualities 0 and 1 skip ahead on incompressible data: after
-a miss the position advances by `1 + (bytes since the last copy >> 6)`. The nice length (a match this long ends the search) is 64,
-and 128 at qualities 10 and 11. The table is the single source; `BrotliQualityPlan.For` must match it.
+"Table" is the number of hash values times the slots each owns ("x 16"); "Depth" is the number of entries of a bucket (or tree nodes at q10
+and q11) visited per position. Qualities 0 and 1 skip ahead on incompressible data: after a miss the position advances by
+`1 + (bytes since the last copy >> 6)`. The nice length (a match this long ends the search) is 64, and 128 at qualities 10 and 11. The
+table is the single source; `BrotliQualityPlan.For` must match it.
 
 ## Match finding
 
-- Hash of a position: `(little-endian 4 bytes * 0x1E35A7BD mod 2^32) >> (32 - HashBits)`. Only positions with four bytes inside
-  the block are entered.
+- **Hash of a position**: for 4 bytes, `(little-endian 4 bytes * 0x1E35A7BD mod 2^32) >> (32 - HashBits)`; for 5 to 8 bytes, the little-endian
+  64-bit word with all but its first `n` bytes cleared (shifted up so the kept bytes are the high ones), times `0x9E3779B185EBCA87 mod 2^64`,
+  shifted down to `HashBits`. A position is entered only if every byte its hash reads is inside the block; the others are entered with
+  the next block, because bytes past the end of the block are not input yet.
 - **Hash head** (q0, q1): one candidate per bucket, the latest position.
-- **Hash chain** (q2 to q4): `head[hash]` and `chain[position]`; candidates newest first, at most Depth; a candidate must beat the
-  best length so far; ends at the nice length.
-- **Binary tree** (q5 and up): each bucket is the root of a tree of positions keyed by the string starting there, re-rooted at
+- **Bucketed table** (q2 to q9): each hash value owns `2^BucketBits` slots holding the latest positions with that hash, the oldest slot
+  overwritten first (a count of entries made per bucket says where the next goes). Candidates are visited newest first, at most Depth
+  of them; a candidate must agree with the position on the hashed bytes and on the byte just past the best length so far; the search ends
+  at the nice length. Every position that is not skipped is entered before the next one is searched, so a lazy probe sees the
+  positions the main probe entered.
+- **Long table** (q5 to q9): a second bucketed table keyed by a hash of the first twelve bytes
+  (`(word0 * 0x9E3779B185EBCA87) xor (word1 * 0xC2B2AE3D27D4EB4F) >> (64 - bits)`, where word0 is the first eight bytes and word1 the next four).
+  It is searched first, newest first and at most its own depth, so that long matches in repetitive input are found even when many newer
+  positions share the shorter hash. Positions enter it together with the main table, only when twelve bytes are inside the block.
+- **Binary tree** (q10, q11): each bucket is the root of a tree of positions keyed by the string starting there, re-rooted at
   each new position (each position stores a smaller and a larger link). The nodes met on the way down are the candidates, with
   ever longer common prefixes. Comparisons stop at the nice length, and a node that agrees that far is replaced by the new
   position, which inherits its subtrees. A position is entered only if `position + niceLength` is inside the block; positions
@@ -87,9 +97,12 @@ and 128 at qualities 10 and 11. The table is the single source; `BrotliQualityPl
   parse), then the finder's candidates. Distances beyond the window or the data so far are never used.
 - **Static dictionary** (q5 and up, only when the best match found is shorter than 12): words are indexed by a hash (18 bits) of
   their first four bytes, the lowest word ids first. A hit is accepted only after the whole transformed word has been compared
-  with the input. q5 to q7 try the identity transform, q8 and up all 121. A dictionary copy uses the distance
+  with the input. q5 to q9 try the identity transform, q10 and q11 all 121. A dictionary copy uses the distance
   `maxDistance + 1 + word id` where `maxDistance = min(window, bytes so far)` (RFC 7932 section 8) and does not enter the
-  last-distance ring.
+  last-distance ring. A word is looked for only if it could beat the match already found: its copy costs at least
+  `224 + 16 * (extra bits of maxDistance + 1)` in the score below, so words covering fewer bytes than `(best score + that cost) / 90`
+  (rounded up) are skipped; this changes no choice, it only saves work. The all-transforms search of q8 and q9 in earlier
+  versions gained under 0.3% in size on text and XML at 6 to 10 times the time, so those qualities use the identity transform only.
 
 ## Greedy and lazy parse (q0 to q9)
 
@@ -97,7 +110,15 @@ Costs are in 1/16 bit. A match's score is `covered * 90 - cost`, where cost is 1
 the other three recent distances, and `224 + 16 * (extra bits of the distance)` for a new distance or a dictionary word. A match
 is taken only if its score is positive; ties go to the one covering more bytes. With Lazy of 1 or 2, a match is postponed while
 a match one (or two) positions later scores more by over 90 (180) than this one, for matches covering under 64 bytes; the probe
-for the later positions uses half the depth (a quarter for hash chains).
+for the later positions uses half the depth (and half the long table's depth).
+
+**q0 and q1** use one loop. At each position with four bytes inside the block it reads the table slot, replaces it with the position,
+and scores the four last distances (taking the first that agrees on four bytes) and the table's candidate; the better score wins.
+After a copy, every position inside it is entered if the copy is shorter than 16 bytes, otherwise only its second byte and its last two.
+The four-byte test means the last-distance copies of q0 and q1 are at least four bytes long.
+
+**q2 to q9** try the four last distances first (any length from 3), then the bucket candidates, then the dictionary. After a copy
+every position it covers is entered.
 
 ## Shortest-path parse (q10, q11)
 
@@ -125,14 +146,15 @@ Done by the meta-block writer, in this order (each choice by estimated size, int
 1. **Distance parameters.** q6 and up try `(NPOSTFIX, NDIRECT)` = (0,0), (0,8), (1,0), (1,8), (2,0), (2,12) and keep the one with
    the smallest distance entropy; below q6 it is (0,0). Distances are mapped onto the short codes (RFC 7932 section 4) first.
 2. **Block splitting** (q4 and up) separately for literals, commands and distances (section 6). The sequence is cut into equal
-   segments of at least 256 symbols; at most 2048 segments for literals and 128 for commands and for distances.
+   segments: for commands and distances at least 256 symbols and at most 128 segments; for literals at least 1024 symbols and at most
+   128 segments at q4 to q6, at least 512 and at most 256 at q7 to q9, at least 256 and at most 2048 at q10 and q11.
    Segment histograms are clustered into at most 256 block types, then refined up to four times (stopping early when nothing
    moves) by a Viterbi search over the segments where a type change costs 14 bits. The split is kept only if its estimated cost, headers and switches included,
    beats a single type.
 3. **Clustering** (`BrotliClusterer`): the cost of a histogram is its entropy; merging two costs the entropy of the sum minus the
    parts'. A merge is taken when the increase is less than the estimated cost of one more prefix code (4 bits per used symbol
-   plus 20). Up to 160 histograms the cheapest pair is merged repeatedly; beyond that histograms are taken largest first, each
-   joining the nearest group or opening one, then two rounds move each histogram to the group that codes it best. Entropy is
+   plus 20). Up to 160 histograms (64 for the literal block types at q4 to q6, 96 at q7 to q9) the cheapest pair is merged repeatedly;
+   beyond that histograms are taken largest first, each joining the nearest group or opening one, then two rounds move each histogram to the group that codes it best. Entropy is
    computed with an integer table of `x log2 x` in 1/65536 bit.
 4. **Literal contexts** (q3 and up): each literal block type gets a context mode (RFC 7932 section 7.1): LSB6, MSB6, UTF8 or
    Signed. q5 and up try all four per type, by entropy plus an estimate of the header; below that UTF8 is used. The 64 contexts of

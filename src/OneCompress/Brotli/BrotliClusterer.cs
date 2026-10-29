@@ -38,8 +38,9 @@ internal static class BrotliClusterer
     /// <param name="mergeBonus">Extra cost in 1/65536-bit units a merge may add and still be taken, on top of the header estimate.</param>
     /// <param name="assignment">Receives, for each histogram, its group, numbered in order of first use.</param>
     /// <param name="groupHistograms">Receives the sum of the histograms of each group.</param>
+    /// <param name="pairwiseLimit">The most histograms clustered by repeated pair merging; more are clustered sequentially.</param>
     /// <returns>The number of groups (at least 1).</returns>
-    internal static int Cluster(int[]?[] histograms, int alphabetSize, int maxGroups, long mergeBonus, int[] assignment, out int[][] groupHistograms)
+    internal static int Cluster(int[]?[] histograms, int alphabetSize, int maxGroups, long mergeBonus, int[] assignment, out int[][] groupHistograms, int pairwiseLimit = PairwiseLimit)
     {
         var groups = new List<Group>();
         var owner = new int[histograms.Length];
@@ -67,7 +68,7 @@ internal static class BrotliClusterer
             return 1;
         }
 
-        if (groups.Count <= PairwiseLimit)
+        if (groups.Count <= pairwiseLimit)
         {
             Pairwise(groups, owner, maxGroups, mergeBonus, alphabetSize);
         }

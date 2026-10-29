@@ -32,18 +32,32 @@ internal static class BrotliDistanceCoding
             return 3;
         }
 
-        for (int k = 0; k < 12; k++)
+        // Only a distance within 3 of the last or the second to last can have one of the codes 4 to 15, so most distances end here.
+        int near = Near(distance - ring[0]);
+        if (near >= 0)
         {
-            int baseDistance = k < 6 ? ring[0] : ring[1];
-            int step = ((k % 6) >> 1) + 1;
-            int candidate = (k & 1) == 0 ? baseDistance - step : baseDistance + step;
-            if (candidate == distance && candidate > 0)
-            {
-                return 4 + k;
-            }
+            return 4 + near;
+        }
+
+        near = Near(distance - ring[1]);
+        if (near >= 0)
+        {
+            return 10 + near;
         }
 
         return -1;
+    }
+
+    // The position of a difference from the base distance in the order -1, +1, -2, +2, -3, +3, or -1 if it is none of them.
+    private static int Near(int difference)
+    {
+        uint magnitude = (uint)(difference < 0 ? -difference : difference);
+        if (magnitude - 1 > 2)
+        {
+            return -1;
+        }
+
+        return (int)((magnitude - 1) * 2) + (difference > 0 ? 1 : 0);
     }
 
     /// <summary>

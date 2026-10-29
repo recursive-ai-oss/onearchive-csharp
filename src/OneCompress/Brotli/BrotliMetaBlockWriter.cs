@@ -98,10 +98,10 @@ internal sealed class BrotliMetaBlockWriter
         return true;
     }
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     private void WriteCompressed(BrotliBitWriter w, byte[] data, int start, int length, BrotliCommandList cmds, int[] ring, bool isLast)
     {
         int nCmd = cmds.Count;
-
         // ---- Distance codes. The short codes depend only on the ring of last distances. ----
         var shortCode = new sbyte[nCmd];
         int explicitCount = 0;
@@ -185,7 +185,6 @@ internal sealed class BrotliMetaBlockWriter
         }
 
         int distanceAlphabet = BrotliDistanceCoding.AlphabetSize(postfix, direct);
-
         // ---- The symbol streams. ----
         var cmdSymbols = new ushort[nCmd];
         var distSymbols = new ushort[explicitCount];
@@ -224,12 +223,16 @@ internal sealed class BrotliMetaBlockWriter
                 e++;
             }
         }
-
         // ---- The literals with the two bytes before each. ----
-        var lit = new byte[literalCount];
-        var lp1 = new byte[literalCount];
-        var lp2 = new byte[literalCount];
+        // The block splitter and the search for a context mode want the literals as sequences; the other qualities read the input directly.
+        byte[] lit = [];
+        byte[] lp1 = [];
+        byte[] lp2 = [];
+        if (_plan.SplitBlocks)
         {
+            lit = new byte[literalCount];
+            lp1 = new byte[literalCount];
+            lp2 = new byte[literalCount];
             int pos = start;
             int k = 0;
             for (int j = 0; j < nCmd; j++)
@@ -244,22 +247,15 @@ internal sealed class BrotliMetaBlockWriter
                 pos += cmds.Covered[j];
             }
         }
-
         // ---- Block splits. ----
-        var litSymbols = new ushort[literalCount];
-        for (int k = 0; k < literalCount; k++)
-        {
-            litSymbols[k] = lit[k];
-        }
-
-        BrotliBlockSplit litSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(litSymbols, 256, 256, 2048) : BrotliBlockSplit.Single(literalCount);
-        BrotliBlockSplit cmdSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(cmdSymbols, 704, 256, 128) : BrotliBlockSplit.Single(nCmd);
-        BrotliBlockSplit distSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(distSymbols, distanceAlphabet, 256, 128) : BrotliBlockSplit.Single(explicitCount);
-
+        BrotliBlockSplit litSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(ToSymbols(lit), 256, _plan.LiteralSegmentMin, _plan.LiteralSegmentMax, _plan.SplitPairwiseLimit) : BrotliBlockSplit.Single(literalCount);
+        BrotliBlockSplit cmdSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(cmdSymbols, 704, 256, 128, BrotliClusterer.PairwiseLimit) : BrotliBlockSplit.Single(nCmd);
+        BrotliBlockSplit distSplit = _plan.SplitBlocks ? BrotliBlockSplitter.Split(distSymbols, distanceAlphabet, 256, 128, BrotliClusterer.PairwiseLimit) : BrotliBlockSplit.Single(explicitCount);
         // ---- Literal contexts: a mode per block type, histograms per (type, context), clustered onto trees. ----
         int contextsPerType = _plan.LiteralContexts ? 64 : 1;
         var modes = ChooseContextModes(litSplit, lit, lp1, lp2);
         var litHist = new int[]?[litSplit.TypeCount * 64];
+        if (_plan.SplitBlocks)
         {
             int k = 0;
             for (int b = 0; b < litSplit.BlockCount; b++)
@@ -274,6 +270,23 @@ internal sealed class BrotliMetaBlockWriter
                 }
             }
         }
+        else
+        {
+            // One block type: the literals are the input between the copies.
+            int pos = start;
+            int mode = modes[0];
+            for (int j = 0; j < nCmd; j++)
+            {
+                for (int i = 0; i < cmds.Insert[j]; i++, pos++)
+                {
+                    int ctx = contextsPerType == 1 ? 0 : LiteralContext(mode, pos > 0 ? data[pos - 1] : 0, pos > 1 ? data[pos - 2] : 0);
+                    int[] h = litHist[ctx] ??= new int[256];
+                    h[data[pos]]++;
+                }
+
+                pos += cmds.Covered[j];
+            }
+        }
 
         int[] litAssign = new int[litHist.Length];
         int litTrees = BrotliClusterer.Cluster(litHist, 256, 256, 8L << 16, litAssign, out int[][] litTreeHist);
@@ -286,7 +299,6 @@ internal sealed class BrotliMetaBlockWriter
                 litMap[(t << 6) + c] = (byte)litAssign[(t << 6) + (contextsPerType == 1 ? 0 : c)];
             }
         }
-
         // ---- Distance contexts. ----
         var distHist = new int[]?[distSplit.TypeCount * 4];
         {
@@ -308,7 +320,6 @@ internal sealed class BrotliMetaBlockWriter
         {
             distMap[i] = (byte)distAssign[i];
         }
-
         // ---- Command trees: one per block type. ----
         var cmdHist = new int[cmdSplit.TypeCount][];
         for (int t = 0; t < cmdSplit.TypeCount; t++)
@@ -326,7 +337,6 @@ internal sealed class BrotliMetaBlockWriter
                 }
             }
         }
-
         // ---- Prefix codes. ----
         var litLengths = BuildLengthsFor(litTreeHist, 256);
         var cmdLengths = BuildLengthsFor(cmdHist, 704);
@@ -338,7 +348,6 @@ internal sealed class BrotliMetaBlockWriter
         var litBlocks = new BlockCoding(litSplit);
         var cmdBlocks = new BlockCoding(cmdSplit);
         var distBlocks = new BlockCoding(distSplit);
-
         // ---- Write the header. ----
         WriteLengthHeader(w, length, isLast);
         if (!isLast)
@@ -382,12 +391,12 @@ internal sealed class BrotliMetaBlockWriter
         {
             BrotliPrefixCodeWriter.Write(w, distLengths[i], OnlySymbol(distTreeHist[i]));
         }
-
         // ---- The commands. ----
         var wi = new BlockWalker(cmdBlocks);
         var wl = new BlockWalker(litBlocks);
         var wd = new BlockWalker(distBlocks);
-        int litIndex = 0;
+        int litPos = start;
+        bool singleLiteralTree = litTrees == 1 && litSplit.BlockCount == 1;
         for (int j = 0; j < nCmd; j++)
         {
             wi.Next(w);
@@ -406,15 +415,25 @@ internal sealed class BrotliMetaBlockWriter
                 w.Write((uint)(cmds.Copy[j] - BrotliCodes.CopyBase[cc]), BrotliCodes.CopyExtra[cc]);
             }
 
-            for (int i = 0; i < cmds.Insert[j]; i++, litIndex++)
+            int insert = cmds.Insert[j];
+            if (singleLiteralTree)
             {
-                wl.Next(w);
-                int t = wl.Type;
-                int ctx = contextsPerType == 1 ? 0 : LiteralContext(modes[t], lp1[litIndex], lp2[litIndex]);
-                int tree = litMap[(t << 6) + (contextsPerType == 1 ? 0 : ctx)];
-                int s = lit[litIndex];
-                w.Write(litCodes[tree][s], litLengths[tree][s]);
+                w.WriteSymbols(data.AsSpan(litPos, insert), litCodes[0], litLengths[0]);
             }
+            else
+            {
+                for (int i = 0; i < insert; i++)
+                {
+                    int p = litPos + i;
+                    wl.Next(w);
+                    int t = wl.Type;
+                    int tree = contextsPerType == 1 ? litMap[t << 6] : litMap[(t << 6) + LiteralContext(modes[t], p > 0 ? data[p - 1] : 0, p > 1 ? data[p - 2] : 0)];
+                    int s = data[p];
+                    w.Write(litCodes[tree][s], litLengths[tree][s]);
+                }
+            }
+
+            litPos += insert + cmds.Covered[j];
 
             int e = distOfCommand[j];
             if (e >= 0)
@@ -429,11 +448,21 @@ internal sealed class BrotliMetaBlockWriter
                 }
             }
         }
-
         if (isLast)
         {
             w.AlignToByte();
         }
+    }
+
+    private static ushort[] ToSymbols(byte[] bytes)
+    {
+        var symbols = new ushort[bytes.Length];
+        for (int k = 0; k < symbols.Length; k++)
+        {
+            symbols[k] = bytes[k];
+        }
+
+        return symbols;
     }
 
     private static bool IsExplicit(BrotliCommandList cmds, sbyte[] shortCode, int j)
