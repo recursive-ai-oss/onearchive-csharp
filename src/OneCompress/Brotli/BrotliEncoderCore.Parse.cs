@@ -28,6 +28,10 @@ internal sealed partial class BrotliEncoderCore
         {
             ParseOptimal(start, end);
         }
+        else if (_plan.Quality == 2)
+        {
+            ParseTwoWay(start, end);
+        }
         else if (_plan.ChainDepth <= 1)
         {
             ParseFast(start, end);
@@ -41,7 +45,13 @@ internal sealed partial class BrotliEncoderCore
     private void InitMatchFinder()
     {
         _hashShift = 32 - _plan.HashBits;
-        if (_plan.BinaryTree)
+        if (_plan.UsesFastBlock)
+        {
+            // Position and the four bytes there, per slot, one slot per bucket (qualities 0 and 1) or two (quality 2).
+            _head = new int[(_plan.Quality == 2 ? 4 : 2) << _plan.HashBits];
+            Array.Fill(_head, -1);
+        }
+        else if (_plan.BinaryTree)
         {
             _head = new int[1 << _plan.HashBits];
             Array.Fill(_head, -1);
@@ -57,12 +67,6 @@ internal sealed partial class BrotliEncoderCore
                 _longCounts = new int[1 << _plan.LongHashBits];
                 Array.Fill(_longPositions, -1);
             }
-        }
-        else
-        {
-            // Position and the four bytes there, per slot (see ParseFast).
-            _head = new int[2 << _plan.HashBits];
-            Array.Fill(_head, -1);
         }
 
         _chain = [];
@@ -99,7 +103,7 @@ internal sealed partial class BrotliEncoderCore
     private void Rebase(int shift)
     {
         // The table of qualities 0 and 1 holds a position and four bytes per slot; only the positions move.
-        int step = !_plan.BinaryTree && _plan.ChainDepth <= 1 ? 2 : 1;
+        int step = _plan.UsesFastBlock ? 2 : 1;
         foreach (int[] table in new[] { _head, _bucketPositions, _longPositions })
         {
             for (int i = 0; i < table.Length; i += step)

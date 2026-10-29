@@ -101,12 +101,6 @@ internal sealed partial class BrotliMetaBlockWriter
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     private void WriteCompressed(BrotliBitWriter w, byte[] data, int start, int length, BrotliCommandList cmds, int[] ring, bool isLast)
     {
-        if (UsesSimplePath)
-        {
-            WriteSimple(w, data, start, length, cmds, ring, isLast);
-            return;
-        }
-
         int nCmd = cmds.Count;
         // ---- Distance codes. The short codes depend only on the ring of last distances. ----
         var shortCode = new sbyte[nCmd];

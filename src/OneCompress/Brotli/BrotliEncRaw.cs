@@ -163,4 +163,18 @@ internal static class BrotliEncRaw
         return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(t), (nint)(uint)index);
 #endif
     }
+
+    /// <summary>
+    /// <c>a[index]</c> of the fast parse's command array. The caller guarantees <c>0 &lt;= index &lt; a.Length</c>: the index is the command
+    /// count, and the array is grown whenever the count reaches its length.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref BrotliFastCommand Command(BrotliFastCommand[] a, int index)
+    {
+#if CHECKED
+        return ref a[index];
+#else
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(a), (nint)(uint)index);
+#endif
+    }
 }
