@@ -123,11 +123,10 @@ applies.
 |  | 22 | 14 | 15 | 15 | 10 | 3 | 999 | btultra2 |
 
 **Levels 10 to 12 above 256 KiB search one step less deep than the tool.** The search log is 4, 5 and 5 where the tool's is 5, 6 and 6
-(every other value is the tool's). The row search spends most of its time on candidates that fail the longer-match check, and its time is
-almost proportional to the candidates visited, so the tool's depth costs about 1.4 times the tool's own time for under 1% of size here.
-With the shallower search the sizes on silesia.tar and enwik8 stay within 0.6% of the tool's, and level 10 also has 16-entry rows, which
-take the insert stride (see Match finders). The ladder stays monotone in size and in time (levels 10, 11, 12 are 11.66, 11.58 and
-11.57 MB on the first 32 MiB of silesia.tar).
+(every other value is the tool's). The row search spends most of its time on candidates that fail the longer-match check, so its time
+is close to proportional to the candidates visited. On silesia.tar the sizes are +0.55%, +0.32% and +0.32% against the tool at levels
+10, 11 and 12, and on enwik8 -0.2% to +0.2%. Level 10 now has 16-entry rows, which take the insert stride (see Match finders). Sizes
+fall and times rise from level 10 to 12 (11.66, 11.58 and 11.57 MB on the first 32 MiB of silesia.tar).
 
 The strategies above btlazy2 (btopt, btultra, btultra2) take levels 13 to 15 of the 256 KiB and 128 KiB classes, 11 to 15 of the 16 KiB class
 and levels 16 to 22 of every class; they are the optimal parsers described below.
