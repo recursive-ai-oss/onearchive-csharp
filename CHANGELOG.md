@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+Everything is still preview and carries `[Experimental]`. The README has the new measurements from both machines.
+
+### Changed
+
+- Deflate64: a fast decode loop; decompression now runs at 2.0-2.6 times the speed of 7-Zip's on both machines.
+- PPMd: encoding and decoding are 1.3-1.4 times faster (0.75-0.88 of 7-Zip's speed, depending on machine and order), with identical output.
+- LZMA, LZMA2, xz and lzip: faster decoding (fewer unpredictable branches per symbol), with identical output.
+- Brotli: faster encoding at qualities 0-5. Qualities 0-2 now find matches and emit symbols in one pass, so their compressed bytes differ from 0.4 while staying within 1% of the `brotli` tool's size; qualities 3-11 are unchanged.
+- Zstandard: levels 1-4 compress 2-10% faster, with identical output.
+
 ### Fixed
 
 - Zstandard: negative compression levels could write invalid frames on large inputs. A sequence whose state and extra bits filled the encoder's 64-bit bit container exactly was written twice, so the `zstd` tool and this library's decoder rejected the frame or decoded garbage. The same defect could in principle affect any level; it showed first at negative levels on the Silesia corpus. Frames that were valid are unchanged byte for byte.
