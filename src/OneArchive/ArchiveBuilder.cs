@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cpio;
+using RecursiveAI.OneArchive.Iso;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Zip;
@@ -69,7 +70,7 @@ public sealed class ArchiveBuilder
             }
             else if (path is not null)
             {
-                throw new ArgumentException($"The extension of '{Path.GetFileName(path)}' names no archive format that can be written; use .tar, .tar.zst, .tar.lz4, .zip, .7z, .cpio, .a, .zst or .lz4, or set ArchiveCreateOptions.Format.", nameof(path));
+                throw new ArgumentException($"The extension of '{Path.GetFileName(path)}' names no archive format that can be written; use .tar, .tar.zst, .tar.lz4, .zip, .7z, .cpio, .a, .iso, .zst or .lz4, or set ArchiveCreateOptions.Format.", nameof(path));
             }
             else
             {
@@ -77,7 +78,7 @@ public sealed class ArchiveBuilder
             }
         }
 
-        if (format is not (ArchiveFormat.Tar or ArchiveFormat.Zip or ArchiveFormat.SevenZip or ArchiveFormat.SingleStream or ArchiveFormat.Cpio or ArchiveFormat.Ar))
+        if (format is not (ArchiveFormat.Tar or ArchiveFormat.Zip or ArchiveFormat.SevenZip or ArchiveFormat.SingleStream or ArchiveFormat.Cpio or ArchiveFormat.Ar or ArchiveFormat.Iso))
         {
             throw new ArchiveUnsupportedException("archive", $"writing the {format} format");
         }
@@ -337,6 +338,7 @@ public sealed class ArchiveBuilder
                 ArchiveFormat.SingleStream when lazyGzip => new SingleStreamWriter(e => OpenGzip(sink, e, leaveSink)),
                 ArchiveFormat.SingleStream => new SingleStreamWriter(top),
                 ArchiveFormat.Cpio => new CpioWriter(top, _options.Cpio, leaveOpen: top == sink && leaveSink),
+                ArchiveFormat.Iso => new IsoWriter(top, _options.Iso, leaveOpen: top == sink && leaveSink),
                 ArchiveFormat.Ar => new ArWriter(top, _options.Ar, leaveOpen: top == sink && leaveSink),
                 _ => new TarWriter(top, _options.Tar, leaveOpen: top == sink && leaveSink),
             };

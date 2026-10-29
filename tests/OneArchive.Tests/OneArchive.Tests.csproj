@@ -17,6 +17,9 @@
     <Content Include="../../testdata/cpio/*.cpio"
              Link="testdata/cpio/%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../testdata/iso/vectors/*.iso"
+             Link="testdata/iso/%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../testdata/ar/*.a;../../testdata/ar/*.deb"
              Link="testdata/ar/%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />

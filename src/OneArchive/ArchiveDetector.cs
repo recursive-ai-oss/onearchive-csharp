@@ -17,6 +17,12 @@ public static class ArchiveDetector
     /// <summary>The number of bytes needed to recognise every container (a tar header is one 512-byte block).</summary>
     public const int PrefixLength = 512;
 
+    /// <summary>
+    /// The number of bytes needed to recognise an ISO 9660 image as well: its first volume descriptor starts at byte 32768 (ECMA-119 clause 6.2.1).
+    /// <see cref="DetectFormat"/> recognises an image only when it is given this many bytes.
+    /// </summary>
+    public const int ExtendedPrefixLength = 32768 + 6;
+
     /// <summary>Recognises a compression layer from its magic bytes.</summary>
     /// <param name="prefix">The first bytes of the data.</param>
     /// <returns>
@@ -106,6 +112,12 @@ public static class ArchiveDetector
             return ArchiveFormat.Tar;
         }
 
+        // ECMA-119 clause 8.4: the first volume descriptor is at sector 16 and carries the standard identifier "CD001" in bytes 1 to 5.
+        if (prefix.Length >= ExtendedPrefixLength && prefix.Slice(32769, 5).SequenceEqual("CD001"u8))
+        {
+            return ArchiveFormat.Iso;
+        }
+
         return ArchiveFormat.Unknown;
     }
 
@@ -165,6 +177,11 @@ public static class ArchiveDetector
         if (name.EndsWith(".rar", StringComparison.Ordinal) || IsRarVolumeName(name))
         {
             return (ArchiveFormat.Rar, ArchiveCompression.None);
+        }
+
+        if (name.EndsWith(".iso", StringComparison.Ordinal))
+        {
+            return (ArchiveFormat.Iso, ArchiveCompression.None);
         }
 
         if (name.EndsWith(".zip", StringComparison.Ordinal))

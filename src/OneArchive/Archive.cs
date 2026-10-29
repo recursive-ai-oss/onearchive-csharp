@@ -3,6 +3,7 @@ using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cpio;
 using RecursiveAI.OneArchive.Cab;
+using RecursiveAI.OneArchive.Iso;
 using RecursiveAI.OneArchive.Rar;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Tar;
@@ -167,7 +168,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
     private static async ValueTask<Archive> DetectAndOpenAsync(Stream source, bool leaveOpen, string? name, ArchiveOpenOptions options, bool async, CancellationToken ct)
     {
         long origin = source.CanSeek ? source.Position : 0;
-        byte[] prefix = new byte[ArchiveDetector.PrefixLength];
+        byte[] prefix = new byte[ArchiveDetector.ExtendedPrefixLength];
         int got = await ReadUpToAsync(source, prefix, async, ct).ConfigureAwait(false);
         Stream raw;
         if (source.CanSeek)
@@ -356,6 +357,24 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                 }
 
                 return new RarReader(stream, rar, leaveOpen: !ownsTop);
+
+            case ArchiveFormat.Iso:
+                IsoReaderOptions iso = options.Iso is { } io
+                    ? new IsoReaderOptions { Limits = options.Limits, Tree = io.Tree, UseRockRidge = io.UseRockRidge, MaxDirectorySize = io.MaxDirectorySize, MaxSystemUseSize = io.MaxSystemUseSize, MaxContinuationBytes = io.MaxContinuationBytes }
+                    : new IsoReaderOptions { Limits = options.Limits };
+                if (!stream.CanSeek)
+                {
+                    // Directories and files are found by block number: a source that cannot seek is copied into memory first.
+                    Stream spooled = SpoolToMemory(stream, options.Limits, IsoReader.Name);
+                    if (ownsTop)
+                    {
+                        stream.Dispose();
+                    }
+
+                    return new IsoReader(spooled, iso, leaveOpen: false);
+                }
+
+                return new IsoReader(stream, iso, leaveOpen: !ownsTop);
             case ArchiveFormat.SingleStream:
                 return new SingleStreamReader(stream, singleName ?? "data", singleTime, options.Limits, leaveOpen: !ownsTop);
             case ArchiveFormat.Tar:
