@@ -105,6 +105,31 @@ internal static class BrotliEncRaw
     }
 
     /// <summary>
+    /// <see cref="CommonLength"/> from the start (offset 0) with the first sixteen bytes compared at once: most matches end inside them, so
+    /// the length comes from one comparison and no loop. The caller guarantees <c>a &lt; c</c>, <c>c + 16 &lt;= b.Length</c> and
+    /// <c>c + max &lt;= b.Length</c>; bytes past <paramref name="max"/> are read but never counted.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int CommonLengthWide(byte[] b, int a, int c, int max)
+    {
+#if CHECKED
+        var x = System.Runtime.Intrinsics.Vector128.Create(b.AsSpan(a, 16));
+        var y = System.Runtime.Intrinsics.Vector128.Create(b.AsSpan(c, 16));
+#else
+        ref byte origin = ref MemoryMarshal.GetArrayDataReference(b);
+        var x = System.Runtime.Intrinsics.Vector128.LoadUnsafe(ref origin, (nuint)(uint)a);
+        var y = System.Runtime.Intrinsics.Vector128.LoadUnsafe(ref origin, (nuint)(uint)c);
+#endif
+        uint differ = ~System.Runtime.Intrinsics.Vector128.ExtractMostSignificantBits(System.Runtime.Intrinsics.Vector128.Equals(x, y)) & 0xFFFF;
+        if (differ != 0)
+        {
+            return Math.Min(System.Numerics.BitOperations.TrailingZeroCount(differ), max);
+        }
+
+        return max <= 16 ? max : CommonLength(b, a, c, 16, max);
+    }
+
+    /// <summary>
     /// Asks the CPU to load the cache line of <c>t[index]</c> ahead of use. A hint only: it never faults, changes no result, and does
     /// nothing where there is no such instruction. The caller passes an index inside the table.
     /// </summary>

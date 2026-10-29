@@ -122,18 +122,20 @@ a match one (or two) positions later scores more by over 90 (180) than this one,
 for the later positions uses half the depth (and half the long table's depth).
 
 **q0 and q1** use one loop. At each position with eight bytes inside the block it reads the table slot and replaces it with the
-position. If the slot's four bytes agree with the position's and the distance is within the window and the data so far, the table
-has a candidate. Only then is the last distance tried (a copy of four bytes or more at the last distance, nothing else of the
-ring), and the better score wins; ties go to the last distance. A position with no table candidate is a miss, whether or not the last
-distance would have matched: this is a deliberate loss of about one percent of size for a tenth of the parse time. The copy's length
-is measured from byte four on, and a candidate from the table is taken only if its length is at least `FastHashLength`.
-After a copy, every position inside it is entered if the copy is shorter than 4 bytes, otherwise only its second byte and its last two.
-The command's distance code is the first of the four last distances that equals the distance, otherwise the nearest-neighbour short code
-(RFC 7932 section 4), otherwise none.
+position. If the slot's four bytes agree with the position's and the distance is within the window, the table has a candidate. Only
+then is anything else done, and the candidate is the only copy considered: a position with no table candidate is a miss, whether or
+not some other distance would have matched. The copy's length is the number of equal bytes from the position and the candidate,
+limited by the end of the block; it is taken only if it is at least `FastHashLength` and its score is positive. A copy at the last
+distance used (a distance changes only through a copy with an explicit distance) is coded with short code 0 and scores with a cost of
+144; any other distance is coded in full (RFC 7932 section 4, distance code 16 and up) and scores with `224 + 16 * (extra bits)`. The
+other short codes (the three older recent distances and the nearest-neighbour codes) are not used. They save little on these inputs
+and testing for them costs more than the bits they save. After a copy, its second byte and its last two enter the table (only when the
+copy ends at least eight bytes inside the block). After a miss the position advances by `1 + (bytes since the last copy >> 6)`.
 
-**q2** scores up to six candidates at a position with eight bytes inside the block: the four last distances (any copy of four bytes or
-more that agrees on the word) and the two table slots (copies of at least `FastHashLength`); the best score wins, ties go to the longer
-copy, then to the earlier candidate in that order. A position with none of the six agreeing is a miss. Entry follows "Sparse entry".
+**q2** looks at the two table slots at a position with eight bytes inside the block. A slot is a candidate when it agrees on the
+first four bytes and lies within the window. Each candidate's copy is measured as at q0 and scored with the q0 costs; copies shorter
+than `FastHashLength` are not candidates. The better score wins; on equal scores the newer slot wins. Only the last distance has a short
+code, as at q0. A position with no candidate whose score is positive is a miss. Entry follows "Sparse entry".
 
 **q3 to q9** try the four last distances first (any length from 3), then the bucket candidates, then the dictionary. After a copy
 every position it covers is entered, except at q3 (below).
