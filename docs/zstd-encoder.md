@@ -39,9 +39,9 @@ applies.
 |  | 7 | 21 | 19 | 20 | 4 | 5 | 8 | lazy |
 |  | 8 | 21 | 19 | 20 | 4 | 5 | 16 | lazy2 |
 |  | 9 | 22 | 20 | 21 | 4 | 5 | 16 | lazy2 |
-|  | 10 | 22 | 21 | 22 | 5 | 5 | 16 | lazy2 |
-|  | 11 | 22 | 21 | 22 | 6 | 5 | 16 | lazy2 |
-|  | 12 | 22 | 22 | 23 | 6 | 5 | 32 | lazy2 |
+|  | 10 | 22 | 21 | 22 | 4 | 5 | 16 | lazy2 |
+|  | 11 | 22 | 21 | 22 | 5 | 5 | 16 | lazy2 |
+|  | 12 | 22 | 22 | 23 | 5 | 5 | 32 | lazy2 |
 |  | 13 | 22 | 22 | 22 | 4 | 5 | 32 | btlazy2 |
 |  | 14 | 22 | 22 | 23 | 5 | 5 | 32 | btlazy2 |
 |  | 15 | 22 | 23 | 23 | 6 | 5 | 32 | btlazy2 |
@@ -121,6 +121,12 @@ applies.
 |  | 20 | 14 | 15 | 15 | 8 | 3 | 512 | btultra2 |
 |  | 21 | 14 | 15 | 15 | 9 | 3 | 512 | btultra2 |
 |  | 22 | 14 | 15 | 15 | 10 | 3 | 999 | btultra2 |
+
+**Levels 10 to 12 above 256 KiB search one step less deep than the tool.** The search log is 4, 5 and 5 where the tool's is 5, 6 and 6
+(every other value is the tool's). The row search spends most of its time on candidates that fail the longer-match check, so its time
+is close to proportional to the candidates visited. On silesia.tar the sizes are +0.55%, +0.32% and +0.32% against the tool at levels
+10, 11 and 12, and on enwik8 -0.2% to +0.2%. Level 10 now has 16-entry rows, which take the insert stride (see Match finders). Sizes
+fall and times rise from level 10 to 12 (11.66, 11.58 and 11.57 MB on the first 32 MiB of silesia.tar).
 
 The strategies above btlazy2 (btopt, btultra, btultra2) take levels 13 to 15 of the 256 KiB and 128 KiB classes, 11 to 15 of the 16 KiB class
 and levels 16 to 22 of every class; they are the optimal parsers described below.
@@ -355,7 +361,7 @@ What an encoder holds depends on the parameters and on whether it is told the si
   level 22 used to build 256 MiB of index for a large source and now builds under 1 MiB.
 - Sliding the tree-link table is done in place (reverse the two parts, then the whole) rather than through a copy of the table.
 
-Peak memory, one process per row, managed bytes allocated and peak working set in MiB, before and after, for generated text
+Peak memory (measured when these allocation changes were made), one process per row, managed bytes allocated and peak working set in MiB, before and after, for generated text
 (`GC.GetTotalAllocatedBytes` and `Process.PeakWorkingSet64`; levels 1 and 3 did not change). Each cell is the no-dictionary row / the
 row with a 4 KiB dictionary.
 
@@ -435,6 +441,8 @@ in which jobs finish; a browser runs the jobs one after another. With `JobSize` 
 
 ## Results (zstd 1.5.7, one thread, memory to memory)
 
+The tables in this section and the next are dated measurements; each says which build or levels it covers. They are not kept current level by level. The size bar (+1%) is met except where a table says otherwise; the known misses are enwik8 level 22 (+1.16%) and the long-distance and dictionary rows noted below.
+
 Method as above (`tools/zstd-encode-bench/run.sh`, `game.sh --timing`); `time ratio` is our time divided by the tool's, so the bar is 1.15.
 Sizes are identical on both machines (the output does not depend on the processor). x64: Ryzen 9 7950X3D, 32 cores, .NET 10.0.402, load 10 to 12
 from other work on the machine; arm64: Apple M2, 8 cores, load 2 to 4.
@@ -454,7 +462,7 @@ from other work on the machine; arm64: Apple M2, 8 cores, load 2 to 4.
 | enwik8 3 | +0.67% | 1.34 | 1.28 |
 | enwik8 4 | +0.69% | 1.37 | 1.33 |
 
-Sizes meet the bar at every level; compression speed does not yet (1.26 to 1.74 times the tool's time). Where the time goes at level 1 on
+These are the first full measurement of levels -5 to 4. Sizes were within the 1% bar at those levels; compression speed was not (1.26 to 1.74 times the tool's time). Levels 1 to 9 have since been retuned (faster search loops, a sparser insert at levels 5 to 9), so the time ratios and the split below are superseded; the current rows are in the README, and sizes are unchanged at levels -5 to 4. Where the time went at level 1 on
 silesia.tar (per 212 MB pass, x64): match finding about 290 ms, literals about 90 ms, sequence coding about 115 ms; the sequence
 coding took twice that before its loop was split out and its state kept in registers. Dynamic profile guidance in
 the JIT matters: without it the search loop is 30% slower.
@@ -467,7 +475,7 @@ sizes 0.2 to 1.1% smaller; snapshots and saves (hundreds of bytes to 6 KB) run a
 The unchecked accessors (`Raw`) are worth 5 to 7% of the encoder's speed: the same code built in the `Checked` configuration (every accessor
 bounds-checked) runs at 564/598 (level -5), 400/430 (level 1) and 259/273 MB/s (level 3), match finding 10% slower and block writing level.
 
-### Block writer speed work (arm64, zstd 1.5.7)
+### Block writer speed work (arm64, zstd 1.5.7; measured before the levels 1 to 9 retuning)
 
 The block writer prices the three sequence tables side by side (their state machines are independent, so the walks overlap), keeps
 the table it priced instead of building it again, and keeps the Huffman bit container in registers; the fast and double-fast
@@ -494,7 +502,7 @@ two dictionary sizes; above 1 is faster than the tool; bar 0.87):
 At a few hundred bytes to a few kilobytes a block costs about a hundred matches and three table decisions, and the time is spread
 over the match loop (about 45 ns a match), the literal section and the sequence section; no single step is more than a third.
 
-## Results: long-distance matching and jobs (zstd 1.5.7)
+## Results: long-distance matching and jobs (zstd 1.5.7; measured before the levels 1 to 4 retuning)
 
 Method as above, `run.sh --ref-opts ... --ours-opts ...` (`zstd -b<L> -e<L> -T<n> [--long=27]` against `ZstdEncodeBench big ... --workers n --job auto [--long 27]`, best of 3 s).
 `time ratio` is our time over the tool's. x64: Ryzen 9 7950X3D, 32 cores, load 2 to 7 from other work; arm64: Apple M2, 8 cores, load 3 to 6.

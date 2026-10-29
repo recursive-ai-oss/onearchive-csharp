@@ -79,6 +79,17 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
 
     // Tables of 2^20 entries (4 MiB of positions) and up are too big for the cache, and loading rows ahead pays; below that it costs more than it saves.
     private const int WarmMinHashLog = 20;
+
+    // The tree is walked by following links from node to node, each at an unrelated place in tables and a window far larger than
+    // the cache, so a walk waits for one memory round trip per node. Three hints start those loads early (they change no value):
+    // the head slot of a position HeadWarmDistance ahead (its hash needs only the window), the first node and its link pair of a
+    // position RootWarmDistance ahead (their address is in the head slot warmed earlier), and each node's link pair before the
+    // window bytes compared with it are loaded, so the two misses overlap. Tables under 2^18 entries (1 MiB) stay in the cache
+    // and are left alone.
+    private const int HeadWarmDistance = 16;
+    private const int RootWarmDistance = 8;
+    private const int TreeWarmMinHashLog = 18;
+    private bool _warmTree;
     private int _rowShift;
     private int _tagShift;
     private ZstdCompressionDictionary? _dictionary;
@@ -135,6 +146,7 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         _flat = !_tree && dictionary is null && _minMatch >= 4;
         _warmed = 0;
         _stride = !_tree && dictionary is null && _minMatch >= 4 && _rowLog == 4 && _hashLog >= StrideMinHashLog ? Math.Max(InsertStride, 1) : 1;
+        _warmTree = Raw.CanWarm && _tree && _hashLog >= TreeWarmMinHashLog;
         _warmRows = Raw.CanWarm && !_tree && _hashLog >= WarmMinHashLog;
         if (dictionary is not null && dictionary.Content.Length >= 8)
         {
@@ -857,6 +869,25 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         int mask = (1 << _linkLog) - 1;
         int h = Hash(window, p);
         int maxLength = Math.Min(end - p, _nice);
+        if (_warmTree)
+        {
+            // Bounds: the hash reads eight bytes, so q + 8 <= end; a stored position is inside the window and below p.
+            if (p + HeadWarmDistance <= end - 8)
+            {
+                Raw.Warm(head, Hash(window, p + HeadWarmDistance));
+            }
+
+            if (p + RootWarmDistance <= end - 8)
+            {
+                int root = (int)(Raw.Get(head, Hash(window, p + RootWarmDistance)) & PositionMask);
+                if (root != 0)
+                {
+                    Raw.Warm(tree, (root & mask) * 2);
+                    Raw.WarmAt(window, root);
+                }
+            }
+        }
+
         uint candidate = Raw.Get(head, h);
         Raw.Set(head, h, maxLength < _nice ? (uint)p | TaintBit : (uint)p);
         int smallSlot = (p & mask) * 2;
@@ -875,6 +906,11 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
             }
 
             budget--;
+            if (_warmTree)
+            {
+                Raw.Warm(tree, (c & mask) * 2);
+            }
+
             bool tainted = (candidate & TaintBit) != 0;
             int length = tainted ? 0 : Math.Min(smallLength, largeLength);
             length += ZstdFastMatchFinder.Count(window, c + length, p + length, p + maxLength);
