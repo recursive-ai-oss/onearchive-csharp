@@ -97,12 +97,6 @@ internal sealed class BrotliQualityPlan
     /// </summary>
     internal int SparseInsert;
 
-    /// <summary>
-    /// For the one-slot parse of qualities 0 and 1: a copy shorter than this enters every position it covers in the table; a longer one
-    /// only its second byte and its last two.
-    /// </summary>
-    internal int FullInsertLength = 16;
-
     /// <summary>For the one-slot parse: how many bytes of a position its hash reads (4 to 8), and so the shortest copy found through the table.</summary>
     internal int FastHashLength = 4;
 
@@ -120,7 +114,6 @@ internal sealed class BrotliQualityPlan
                 p.HashBits = 15;
                 p.ChainDepth = 1;
                 p.SkipShift = 6;
-                p.FullInsertLength = 4;
                 p.FastHashLength = 5;
                 break;
             case 1:
@@ -128,7 +121,6 @@ internal sealed class BrotliQualityPlan
                 p.HashBits = 17;
                 p.ChainDepth = 1;
                 p.SkipShift = 6;
-                p.FullInsertLength = 4;
                 p.FastHashLength = 6;
                 break;
             case 2:
