@@ -45,18 +45,6 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     private const uint TaintBit = 0x80000000u;
     private const uint PositionMask = 0x7FFFFFFFu;
 
-    // A packed row is one 64-byte cache line: byte 0 the head (the slot of the newest entry), bytes 1 to 15 the tags of the fifteen
-    // slots, then from byte 16 the fifteen 24-bit positions, three bytes each. The last three bytes are unused.
-    private const int PackedRow = 64;
-    private const int PackedSlots = 15;
-    private const int PackedPositions = 16;
-    private const uint Mask24 = 0xFFFFFFu;
-    private const int MaxPackedWindowLog = 22;
-
-    private byte[] _lines = [];
-    private int _lineBase;
-    private bool _packed;
-    private long _absBase;
     private byte[] _tags = [];
     private uint[] _slots = [];
     private byte[] _heads = [];
@@ -137,24 +125,16 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
             _tagShift = 56 - _rowBits;
             _attempts = Math.Min(_attempts, 1 << _rowLog);
             int rows = 1 << _rowBits;
-            _packed = PackedRows && dictionary is null && _minMatch >= 4 && _rowLog == 4 && _windowSize <= (1L << MaxPackedWindowLog);
-            if (_packed)
-            {
-                PrepareLines(rows);
-            }
-            else
-            {
-                Prepare(ref _tags, rows << _rowLog);
-                Prepare(ref _slots, rows << _rowLog);
-                Prepare(ref _heads, rows);
-            }
+            Prepare(ref _tags, rows << _rowLog);
+            Prepare(ref _slots, rows << _rowLog);
+            Prepare(ref _heads, rows);
         }
 
-        _stride = !_tree && dictionary is null && _minMatch >= 4 && _rowLog == 4 && _hashLog >= StrideMinHashLog ? Math.Max(InsertStride, 1) : 1;
         _dictionary = dictionary;
         _dictionaryIndex = null;
         _flat = !_tree && dictionary is null && _minMatch >= 4;
         _warmed = 0;
+        _stride = !_tree && dictionary is null && _minMatch >= 4 && _rowLog == 4 && _hashLog >= StrideMinHashLog ? Math.Max(InsertStride, 1) : 1;
         _warmRows = Raw.CanWarm && !_tree && _hashLog >= WarmMinHashLog;
         if (dictionary is not null && dictionary.Content.Length >= 8)
         {
@@ -167,35 +147,13 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     }
 
     /// <summary>
-    /// Whether the rows of sixteen entries of the greedy, lazy and lazy2 searches (no dictionary, windows up to 2^22, <c>SearchLog</c> up to 4)
-    /// are kept as one 64-byte cache line each, holding fifteen entries, instead of in separate tag, position and head tables holding
-    /// sixteen (see <c>docs/zstd-encoder.md</c>). Off by default; the two layouts give slightly different sequences. Set before
-    /// <see cref="BeginFrame"/>.
-    /// </summary>
-    internal bool PackedRows { get; set; }
-
-    /// <summary>
-    /// How many positions apart the positions skipped over by a match are entered, once the match is longer than 16 bytes; the last 16 before
-    /// the next search are always all entered. A long match is usually a repeat of text that is already in the table, and every position
-    /// entered costs a write to a row far from the cache, so entering one in four loses almost no match and saves most of that work.
-    /// 1 enters every position. Applies to the strategies' flat search (no dictionary); set before <see cref="BeginFrame"/>.
+    /// How many positions apart the positions skipped over by a match are entered, once more than 16 lie between the last one entered and
+    /// the next search; the last 16 are always all entered. A long match is usually a repeat of text that is already in the table, and every
+    /// position entered costs a write to a row far from the cache, so entering one in four loses almost no match and saves most of that
+    /// work. 1 enters every position. Applies to row strategies with 16-entry rows, no dictionary and a table of 2^19 entries or more;
+    /// set before <see cref="BeginFrame"/>.
     /// </summary>
     internal int InsertStride { get; set; } = 4;
-
-    // Pinned so that the alignment found once stays right.
-    private void PrepareLines(int rows)
-    {
-        int size = rows * PackedRow;
-        if (_lines.Length < size + PackedRow)
-        {
-            _lines = GC.AllocateArray<byte>(size + PackedRow, pinned: true);
-            _lineBase = Raw.CacheLineOffset(_lines);
-        }
-        else
-        {
-            Array.Clear(_lines, _lineBase, size);
-        }
-    }
 
     private static void Prepare(ref byte[] table, int size)
     {
@@ -238,12 +196,6 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         uint d = (uint)delta;
         _next = Math.Max(1, _next - delta);
         _warmed = Math.Max(0, _warmed - delta);
-        if (_packed)
-        {
-            // Packed rows store frame positions modulo 2^24, which a slide does not change.
-            return;
-        }
-
         if (!_tree)
         {
             // Rows are rings of positions; only the positions change.
@@ -307,18 +259,13 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         }
 
         ZstdRepeatOffsets reps = repeatOffsets;
-        _absBase = windowStartPosition;
         int limit = blockEnd - 8;
         int ip = Math.Max(blockStart, 1);
         int anchor = blockStart;
         while (ip <= limit)
         {
-            uint offset;
-            int gain;
-            int length = _packed
-                ? SearchPacked(window, ip, blockEnd, anchor, reps, out offset, out gain)
-                : _flat
-                ? SearchFlat(window, ip, blockEnd, anchor, reps, out offset, out gain)
+            int length = _flat
+                ? SearchFlat(window, ip, blockEnd, anchor, reps, out uint offset, out int gain)
                 : Search(window, ip, blockEnd, windowStartPosition, anchor, reps, out offset, out gain);
             int start = ip;
             if (_depth == 0 && ip < limit)
@@ -352,12 +299,8 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
                     break;
                 }
 
-                uint offset1;
-                int gain1;
-                int length1 = _packed
-                    ? SearchPacked(window, p1, blockEnd, anchor, reps, out offset1, out gain1)
-                    : _flat
-                    ? SearchFlat(window, p1, blockEnd, anchor, reps, out offset1, out gain1)
+                int length1 = _flat
+                    ? SearchFlat(window, p1, blockEnd, anchor, reps, out uint offset1, out int gain1)
                     : Search(window, p1, blockEnd, windowStartPosition, anchor, reps, out offset1, out gain1);
                 if (length1 > 0 && gain1 > gain + StepMargin)
                 {
@@ -376,12 +319,8 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
                         break;
                     }
 
-                    uint offset2;
-                    int gain2;
-                    int length2 = _packed
-                        ? SearchPacked(window, p2, blockEnd, anchor, reps, out offset2, out gain2)
-                        : _flat
-                        ? SearchFlat(window, p2, blockEnd, anchor, reps, out offset2, out gain2)
+                    int length2 = _flat
+                        ? SearchFlat(window, p2, blockEnd, anchor, reps, out uint offset2, out int gain2)
                         : Search(window, p2, blockEnd, windowStartPosition, anchor, reps, out offset2, out gain2);
                     if (length2 > 0 && gain2 > gain + StepMargin2)
                     {
@@ -540,185 +479,6 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         offset = bestOffset;
         gain = bestGain;
         return bestLength;
-    }
-
-    // SearchFlat over packed rows (see PackedRows): the same repeat offsets and gains, and the candidates in the same order, but from
-    // a ring of fifteen entries, not sixteen. A row is one cache line, so entering a position and searching its row touch one line of
-    // the table instead of three. Positions are stored as the low 24 bits of the position counted from the frame's first byte
-    // (windowStartPosition + index), which a slide of the window does not change; the distance to a candidate is the difference modulo
-    // 2^24. For an entry less than 2^24 behind that is its true distance, and an older entry than the window (at most 2^22) ends the
-    // search like any stale entry. One so old that its distance wraps round into the window is only a candidate that fails its check
-    // against the bytes, since every distance used is between 1 and p - 1. A stored 0 is an empty entry, so the one position in 2^24
-    // whose stored value would be 0 is not entered.
-    // Bounds: p + 8 <= end <= window.Length; every candidate lies at distance 1 .. p - 1; rows are inside _lines by construction.
-    private int SearchPacked(ReadOnlySpan<byte> window, int p, int end, int anchor, in ZstdRepeatOffsets reps, out uint offset, out int gain)
-    {
-        ulong word = Raw.ReadUInt64(window, p);
-        uint first = (uint)word;
-        long windowSize = _windowSize;
-        uint repeatLimit = (uint)Math.Min(windowSize, p);
-
-        uint rep0, rep1, rep2;
-        if (p > anchor)
-        {
-            rep0 = reps.Offset1;
-            rep1 = reps.Offset2;
-            rep2 = reps.Offset3;
-        }
-        else
-        {
-            rep0 = reps.Offset2;
-            rep1 = reps.Offset3;
-            rep2 = reps.Offset1 - 1;
-        }
-
-        int bestLength = RepeatLengthFlat(window, p, first, rep0, repeatLimit, end);
-        uint bestOffset = bestLength > 0 ? rep0 : 0;
-        int bestGain = bestLength > 0 ? (4 * bestLength) - RepeatCost : int.MinValue;
-        int length = RepeatLengthFlat(window, p, first, rep1, repeatLimit, end);
-        if (length > 0 && (4 * length) - RepeatCost > bestGain)
-        {
-            bestGain = (4 * length) - RepeatCost;
-            bestLength = length;
-            bestOffset = rep1;
-        }
-
-        length = RepeatLengthFlat(window, p, first, rep2, repeatLimit, end);
-        if (length > 0 && (4 * length) - RepeatCost > bestGain)
-        {
-            bestGain = (4 * length) - RepeatCost;
-            bestLength = length;
-            bestOffset = rep2;
-        }
-
-        long position = _absBase + p;
-        if (_warmRows)
-        {
-            WarmLinesAhead(window, p, end);
-        }
-
-        CatchUpPacked(window, p);
-        ulong hash = (word << _shift) * 0x9E3779B185EBCA87UL;
-        int rowStart = _lineBase + ((int)(hash >> _rowShift) * PackedRow);
-        byte tag = (byte)(hash >> _tagShift);
-        byte[] lines = _lines;
-        int head = Raw.Get(lines, rowStart);
-
-        // Tags sit in bytes 1 to 15; rotate so that bit 0 is the head, the newest entry.
-        uint equal = Raw.EqualMask16(lines, rowStart, tag) >> 1;
-        uint mask = ((equal >> head) | (equal << (PackedSlots - head))) & ((1u << PackedSlots) - 1);
-        int searched = Math.Max(bestLength, _minMatch - 1);
-        if (mask != 0 && p + searched < end)
-        {
-            // Newest first; the first entry that is empty or farther back than the window (or the start of the data) ends the search.
-            uint current = (uint)position & Mask24;
-            uint reach = (uint)Math.Min(windowSize, p - 1);
-            int remaining = _attempts;
-            uint want = Raw.ReadUInt32(window, p + searched - 3);
-            do
-            {
-                int k = BitOperations.TrailingZeroCount(mask);
-                mask &= mask - 1;
-                int slot = head + k;
-                slot -= PackedSlots & ((PackedSlots - 1 - slot) >> 31);
-                uint stored = PackedEntry(lines, rowStart, slot);
-                uint distance = (current - stored) & Mask24;
-                if (stored == 0 || distance - 1 >= reach)
-                {
-                    break;
-                }
-
-                int c = p - (int)distance;
-                if (Raw.ReadUInt32(window, c + searched - 3) == want)
-                {
-                    length = ZstdFastMatchFinder.Count(window, c, p, end);
-                    if (length > searched)
-                    {
-                        int g = (4 * length) - BitOperations.Log2(distance);
-                        if (g > bestGain)
-                        {
-                            bestGain = g;
-                            bestLength = length;
-                            bestOffset = distance;
-                            searched = length;
-                            if (p + searched >= end)
-                            {
-                                break;
-                            }
-
-                            want = Raw.ReadUInt32(window, p + searched - 3);
-                        }
-                    }
-                }
-            }
-            while (mask != 0 && --remaining > 0);
-        }
-
-        InsertPacked(lines, rowStart, tag, (uint)position & Mask24);
-        _next = p + 1;
-        offset = bestOffset;
-        gain = bestGain;
-        return bestLength;
-    }
-
-    // Enters a position as the newest entry of its row: the head moves down one slot (the ring has 15), and the slot it lands on takes
-    // the tag and the 24-bit position, so the oldest entry is the one replaced.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void InsertPacked(byte[] lines, int row, byte tag, uint stored)
-    {
-        if (stored == 0)
-        {
-            return;
-        }
-
-        int slot = Raw.Get(lines, row) - 1;
-        slot += PackedSlots & (slot >> 31);
-
-        Raw.Set(lines, row, (byte)slot);
-        Raw.Set(lines, row + 1 + slot, tag);
-        int at = row + PackedPositions + (3 * slot);
-        Raw.WriteUInt16(lines, at, (ushort)stored);
-        Raw.Set(lines, at + 2, (byte)(stored >> 16));
-    }
-
-    // The stored position in a slot of the row at row.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint PackedEntry(byte[] lines, int row, int slot) => Raw.ReadUInt32(lines, row + PackedPositions + (3 * slot)) & Mask24;
-
-    private void CatchUpPacked(ReadOnlySpan<byte> window, int p)
-    {
-        int q = _next;
-        if (q >= p)
-        {
-            return;
-        }
-
-        byte[] lines = _lines;
-        int stride = _stride;
-        int shift = _shift;
-        int rowShift = _rowShift;
-        int tagShift = _tagShift;
-        int lineBase = _lineBase;
-        long absBase = _absBase;
-        do
-        {
-            ulong hash = (Raw.ReadUInt64(window, q) << shift) * 0x9E3779B185EBCA87UL;
-            InsertPacked(lines, lineBase + ((int)(hash >> rowShift) * PackedRow), (byte)(hash >> tagShift), (uint)(absBase + q) & Mask24);
-        }
-        while ((q += p - q > DenseTail ? stride : 1) < p);
-    }
-
-    private void WarmLinesAhead(ReadOnlySpan<byte> window, int p, int end)
-    {
-        int to = Math.Min(p + WarmDistance, end - 8);
-        int q = Math.Max(_warmed, Math.Max(_next, p - 32));
-        for (; q <= to; q++)
-        {
-            int row = (int)(((Raw.ReadUInt64(window, q) << _shift) * 0x9E3779B185EBCA87UL) >> _rowShift);
-            Raw.Warm(_lines, _lineBase + (row * PackedRow));
-        }
-
-        _warmed = q;
     }
 
     // The length of the repeat-offset match at p for offset rep, or 0: the offset must be between 1 and the limit (the smaller of the

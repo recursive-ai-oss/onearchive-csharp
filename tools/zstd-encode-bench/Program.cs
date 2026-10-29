@@ -91,25 +91,24 @@ double BestOf(Action run, out double median, out double worst)
 
 if (args[0] == "lazyab")
 {
-    // lazyab <file> <level> <reps> <packed:stride>...: match finding plus block writing for the greedy/lazy/lazy2 strategies, one frame in 128 KiB
-    // blocks, each variant in turn within every repetition so that machine load hits all of them alike. A variant is packed (1 = one cache
-    // line per row, 0 = separate tag, position and head tables) and the insert stride for positions skipped by long matches (1 = every
-    // position). Prints the compressed size and the best speed of each, with the ratio to the first variant.
+    // lazyab <file> <level> <reps> <stride>...: match finding plus block writing for the greedy/lazy/lazy2 strategies, one frame in 128 KiB
+    // blocks, each variant in turn within every repetition so that machine load hits all of them alike. A variant is the insert stride for
+    // positions skipped by long matches (1 = every position). Prints the compressed size and the best speed of each, with the ratio to the first.
     byte[] source = File.ReadAllBytes(args[1]);
     int abLevel = int.Parse(args[2], CultureInfo.InvariantCulture);
     int abReps = int.Parse(args[3], CultureInfo.InvariantCulture);
-    int[][] variants = args.Skip(4).Select(a => a.Split(':').Select(x => int.Parse(x, CultureInfo.InvariantCulture)).ToArray()).ToArray();
+    int[] strides = args.Skip(4).Select(x => int.Parse(x, CultureInfo.InvariantCulture)).ToArray();
     var abParameters = ZstdCompressionParameters.Resolve(abLevel, source.Length, 0);
-    var abFinders = variants.Select(v => new ZstdLazyMatchFinder { PackedRows = v[0] == 1, InsertStride = v[1] }).ToArray();
+    var abFinders = strides.Select(v => new ZstdLazyMatchFinder { InsertStride = v }).ToArray();
     var abWriter = new ZstdBlockWriter();
     var abStore = new ZstdSequenceStore();
     byte[] abTarget = new byte[(1 << 17) + 4096];
-    double[] abBest = new double[variants.Length];
+    double[] abBest = new double[strides.Length];
     Array.Fill(abBest, double.MaxValue);
-    long[] abSize = new long[variants.Length];
+    long[] abSize = new long[strides.Length];
     for (int r = 0; r < abReps; r++)
     {
-        for (int v = 0; v < variants.Length; v++)
+        for (int v = 0; v < strides.Length; v++)
         {
             long total = 0;
             abFinders[v].BeginFrame(abParameters, null);
@@ -129,10 +128,10 @@ if (args[0] == "lazyab")
     }
 
     Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{Path.GetFileName(args[1])} level {abLevel}"));
-    for (int v = 0; v < variants.Length; v++)
+    for (int v = 0; v < strides.Length; v++)
     {
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"  packed={variants[v][0]} stride={variants[v][1]}  size={abSize[v]} ({(double)abSize[v] / abSize[0] - 1:P2})  {source.Length / abBest[v] / 1e6:F1} MB/s  x{abBest[0] / abBest[v]:F3}"));
+            $"  stride={strides[v]}  size={abSize[v]} ({(double)abSize[v] / abSize[0] - 1:P2})  {source.Length / abBest[v] / 1e6:F1} MB/s  x{abBest[0] / abBest[v]:F3}"));
     }
 
     return 0;

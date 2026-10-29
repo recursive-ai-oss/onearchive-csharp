@@ -331,15 +331,4 @@ internal static class Raw
         return 0;
 #endif
     }
-
-    /// <summary>
-    /// The number of bytes to skip at the start of a pinned array so that the next byte is on a 64-byte boundary, which
-    /// lets a table row of 64 bytes occupy exactly one cache line. The array must come from the pinned object heap, so its address
-    /// never changes; the caller guarantees <c>array.Length</c> leaves 63 spare bytes. Alignment only affects speed.
-    /// </summary>
-    public static unsafe int CacheLineOffset(byte[] array)
-    {
-        nuint address = (nuint)Unsafe.AsPointer(ref System.Runtime.InteropServices.MemoryMarshal.GetArrayDataReference(array));
-        return (int)((64 - (address & 63)) & 63);
-    }
 }
