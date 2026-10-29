@@ -64,6 +64,15 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     private bool _tree;
     private long _windowSize;
     private int _next;
+    private bool _flat;
+    private bool _warmRows;
+    private int _warmed;
+    private const int WarmDistance = 8;
+
+    // Tables of 2^20 entries (4 MiB of positions) and up are too big for the cache, and loading rows ahead pays; below that it costs more than it saves.
+    private const int WarmMinHashLog = 20;
+    private int _rowShift;
+    private int _tagShift;
     private ZstdCompressionDictionary? _dictionary;
     private ZstdChainDictionaryIndex? _dictionaryIndex;
     private int _dictionaryHashShift;
@@ -104,6 +113,8 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
             _rowLog = Math.Clamp(parameters.SearchLog, 4, 6);
             _rowMask = (1 << _rowLog) - 1;
             _rowBits = Math.Max(_hashLog - _rowLog, 1);
+            _rowShift = 64 - _rowBits;
+            _tagShift = 56 - _rowBits;
             _attempts = Math.Min(_attempts, 1 << _rowLog);
             int rows = 1 << _rowBits;
             Prepare(ref _tags, rows << _rowLog);
@@ -113,6 +124,9 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
 
         _dictionary = dictionary;
         _dictionaryIndex = null;
+        _flat = !_tree && dictionary is null && _minMatch >= 4;
+        _warmed = 0;
+        _warmRows = Raw.CanWarm && !_tree && _hashLog >= WarmMinHashLog;
         if (dictionary is not null && dictionary.Content.Length >= 8)
         {
             _dictionaryHashLog = parameters.DictionaryHashLog != 0 ? Math.Clamp(parameters.DictionaryHashLog, 6, 26) : _hashLog;
@@ -163,6 +177,7 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     {
         uint d = (uint)delta;
         _next = Math.Max(1, _next - delta);
+        _warmed = Math.Max(0, _warmed - delta);
         if (!_tree)
         {
             // Rows are rings of positions; only the positions change.
@@ -231,7 +246,9 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         int anchor = blockStart;
         while (ip <= limit)
         {
-            int length = Search(window, ip, blockEnd, windowStartPosition, anchor, reps, out uint offset, out int gain);
+            int length = _flat
+                ? SearchFlat(window, ip, blockEnd, anchor, reps, out uint offset, out int gain)
+                : Search(window, ip, blockEnd, windowStartPosition, anchor, reps, out offset, out gain);
             int start = ip;
             if (_depth == 0 && ip < limit)
             {
@@ -264,7 +281,9 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
                     break;
                 }
 
-                int length1 = Search(window, p1, blockEnd, windowStartPosition, anchor, reps, out uint offset1, out int gain1);
+                int length1 = _flat
+                    ? SearchFlat(window, p1, blockEnd, anchor, reps, out uint offset1, out int gain1)
+                    : Search(window, p1, blockEnd, windowStartPosition, anchor, reps, out offset1, out gain1);
                 if (length1 > 0 && gain1 > gain + StepMargin)
                 {
                     start = p1;
@@ -282,7 +301,9 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
                         break;
                     }
 
-                    int length2 = Search(window, p2, blockEnd, windowStartPosition, anchor, reps, out uint offset2, out int gain2);
+                    int length2 = _flat
+                        ? SearchFlat(window, p2, blockEnd, anchor, reps, out uint offset2, out int gain2)
+                        : Search(window, p2, blockEnd, windowStartPosition, anchor, reps, out offset2, out gain2);
                     if (length2 > 0 && gain2 > gain + StepMargin2)
                     {
                         start = p2;
@@ -319,6 +340,147 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int Hash(ReadOnlySpan<byte> window, int index) =>
         (int)(((Raw.ReadUInt64(window, index) << _shift) * 0x9E3779B185EBCA87UL) >> (64 - _hashLog));
+
+    // Search for the common case of the row strategies without a dictionary. It finds exactly what Search finds, with less work per
+    // position: the best match lives in locals rather than in variables passed by reference, the eight bytes at p are read once for
+    // the hash and the repeat-offset checks, the table shifts are precomputed, and there are no dictionary or tree branches. Rows far
+    // larger than the cache are loaded a few positions ahead (see WarmRowsAhead).
+    // Bounds: p + 8 <= end <= window.Length, so eight-byte reads at p are inside the window; every candidate position is below p.
+    private int SearchFlat(ReadOnlySpan<byte> window, int p, int end, int anchor, in ZstdRepeatOffsets reps, out uint offset, out int gain)
+    {
+        ulong word = Raw.ReadUInt64(window, p);
+        uint first = (uint)word;
+        long windowSize = _windowSize;
+        uint repeatLimit = (uint)Math.Min(windowSize, p);
+
+        // Repeat offsets in the order Search tries them (RFC 8878 section 3.1.1.5 for what the codes mean when no literals precede p).
+        uint rep0, rep1, rep2;
+        if (p > anchor)
+        {
+            rep0 = reps.Offset1;
+            rep1 = reps.Offset2;
+            rep2 = reps.Offset3;
+        }
+        else
+        {
+            rep0 = reps.Offset2;
+            rep1 = reps.Offset3;
+            rep2 = reps.Offset1 - 1;
+        }
+
+        int bestLength = RepeatLengthFlat(window, p, first, rep0, repeatLimit, end);
+        uint bestOffset = bestLength > 0 ? rep0 : 0;
+        int bestGain = bestLength > 0 ? (4 * bestLength) - RepeatCost : int.MinValue;
+        int length = RepeatLengthFlat(window, p, first, rep1, repeatLimit, end);
+        if (length > 0 && (4 * length) - RepeatCost > bestGain)
+        {
+            bestGain = (4 * length) - RepeatCost;
+            bestLength = length;
+            bestOffset = rep1;
+        }
+
+        length = RepeatLengthFlat(window, p, first, rep2, repeatLimit, end);
+        if (length > 0 && (4 * length) - RepeatCost > bestGain)
+        {
+            bestGain = (4 * length) - RepeatCost;
+            bestLength = length;
+            bestOffset = rep2;
+        }
+
+        if (_warmRows)
+        {
+            WarmRowsAhead(window, p, end);
+        }
+
+        CatchUpRows(window, p);
+        ulong hash = (word << _shift) * 0x9E3779B185EBCA87UL;
+        int row = (int)(hash >> _rowShift);
+        byte tag = (byte)(hash >> _tagShift);
+        int rowBase = row << _rowLog;
+        int head = Raw.Get(_heads, row);
+        int size = _rowMask + 1;
+        ulong equal = 0;
+        for (int i = 0; i < size; i += 16)
+        {
+            equal |= (ulong)Raw.EqualMask16(_tags, rowBase + i, tag) << i;
+        }
+
+        // Bit 0 of the rotated mask is the head, the newest entry.
+        ulong all = size == 64 ? ulong.MaxValue : (1UL << size) - 1;
+        ulong mask = ((equal >> head) | (equal << ((size - head) & 63))) & all;
+        int searched = Math.Max(bestLength, _minMatch - 1);
+        if (mask != 0 && p + searched < end)
+        {
+            // Entries run from the newest to the oldest, so the first one that is empty (0) or beyond the window ends the search.
+            uint oldest = (uint)Math.Max(p - windowSize, 1);
+            uint[] slots = _slots;
+            int rowMask = _rowMask;
+            int remaining = _attempts;
+            uint want = Raw.ReadUInt32(window, p + searched - 3);
+            do
+            {
+                int k = BitOperations.TrailingZeroCount(mask);
+                mask &= mask - 1;
+                uint candidate = Raw.Get(slots, rowBase + ((head + k) & rowMask));
+                if (candidate < oldest)
+                {
+                    break;
+                }
+
+                int c = (int)candidate;
+
+                // A match longer than `searched` agrees with p on the four bytes that end at index `searched`; most candidates fail this.
+                if (Raw.ReadUInt32(window, c + searched - 3) == want)
+                {
+                    length = ZstdFastMatchFinder.Count(window, c, p, end);
+                    if (length > searched)
+                    {
+                        uint distance = (uint)(p - c);
+                        int g = (4 * length) - BitOperations.Log2(distance);
+                        if (g > bestGain)
+                        {
+                            bestGain = g;
+                            bestLength = length;
+                            bestOffset = distance;
+                            searched = length;
+                            if (p + searched >= end)
+                            {
+                                break;
+                            }
+
+                            want = Raw.ReadUInt32(window, p + searched - 3);
+                        }
+                    }
+                }
+            }
+            while (mask != 0 && --remaining > 0);
+        }
+
+        InsertRow(hash, p);
+        _next = p + 1;
+        offset = bestOffset;
+        gain = bestGain;
+        return bestLength;
+    }
+
+    // The length of the repeat-offset match at p for offset rep, or 0: the offset must be between 1 and the limit (the smaller of the
+    // window and p; with no dictionary a repeat cannot reach before the first byte) and the bytes must agree on the first four.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int RepeatLengthFlat(ReadOnlySpan<byte> window, int p, uint first, uint rep, uint limit, int end)
+    {
+        if (rep - 1 >= limit)
+        {
+            return 0;
+        }
+
+        int c = p - (int)rep;
+        if (Raw.ReadUInt32(window, c) != first)
+        {
+            return 0;
+        }
+
+        return 4 + ZstdFastMatchFinder.Count(window, c + 4, p + 4, end);
+    }
 
     // The best match at p, or 0. Positions up to p are entered into the tables; p must not be smaller than any position searched before.
     // Bounds: p + 8 <= end <= window.Length, so eight-byte reads at p are inside the window.
@@ -524,10 +686,51 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void CatchUpRows(ReadOnlySpan<byte> window, int p)
     {
-        for (int q = _next; q < p; q++)
+        int q = _next;
+        if (q >= p)
         {
-            InsertRow(RowHash(window, q), q);
+            return;
         }
+
+        byte[] heads = _heads;
+        byte[] tags = _tags;
+        uint[] slots = _slots;
+        int shift = _shift;
+        int rowShift = _rowShift;
+        int tagShift = _tagShift;
+        int rowLog = _rowLog;
+        int rowMask = _rowMask;
+        do
+        {
+            ulong hash = (Raw.ReadUInt64(window, q) << shift) * 0x9E3779B185EBCA87UL;
+            int row = (int)(hash >> rowShift);
+            int slot = (row << rowLog) + ((Raw.Get(heads, row) - 1) & rowMask);
+            Raw.Set(heads, row, (byte)(slot & rowMask));
+            Raw.Set(tags, slot, (byte)(hash >> tagShift));
+            Raw.Set(slots, slot, (uint)q);
+        }
+        while (++q < p);
+    }
+
+    // Brings the table lines of the rows of the next few positions into the cache before they are searched or filled in: the rows are
+    // at random places in tables far larger than the cache, so a row first touched at its search costs the whole memory latency.
+    // Positions are warmed once, in order, WarmDistance ahead of the one being handled.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void WarmRowsAhead(ReadOnlySpan<byte> window, int p, int end)
+    {
+        int to = Math.Min(p + WarmDistance, end - 8);
+        int q = Math.Max(_warmed, Math.Max(_next, p - 32));
+        for (; q <= to; q++)
+        {
+            int row = (int)(((Raw.ReadUInt64(window, q) << _shift) * 0x9E3779B185EBCA87UL) >> _rowShift);
+            int at = row << _rowLog;
+            Raw.Warm(_tags, at);
+            Raw.Warm(_heads, row);
+            Raw.Warm(_slots, at);
+            Raw.Warm(_slots, at + _rowMask);
+        }
+
+        _warmed = q;
     }
 
     // Visits the entries of p's row whose tag equals p's, newest first, and enters p. The tags are a filter: one byte per entry, compared

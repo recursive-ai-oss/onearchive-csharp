@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 #if !CHECKED
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 #endif
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -292,6 +293,42 @@ internal static class Raw
         span[checked((int)index)] = value;
 #else
         Unsafe.Add(ref MemoryMarshal.GetReference(span), index) = value;
+#endif
+    }
+
+    /// <summary>True when <see cref="Warm{T}"/> is a prefetch hint; elsewhere it does nothing and callers skip the work of finding the row.</summary>
+    public static bool CanWarm
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+#if CHECKED
+            return false;
+#else
+            return Sse.IsSupported;
+#endif
+        }
+    }
+
+    /// <summary>
+    /// Starts loading <c>array[index]</c> into the cache so that a table row needed a little later is already there. It is a
+    /// prefetch hint on x86, which cannot fault, and does nothing elsewhere (see <see cref="CanWarm"/>); it has no effect on any value
+    /// the encoder computes. The caller guarantees <c>0 &lt;= index &lt; array.Length</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe uint Warm<T>(T[] array, int index)
+        where T : unmanaged
+    {
+#if CHECKED
+        _ = array[index];
+        return 0;
+#else
+        if (Sse.IsSupported)
+        {
+            Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), index)));
+        }
+
+        return 0;
 #endif
     }
 }
