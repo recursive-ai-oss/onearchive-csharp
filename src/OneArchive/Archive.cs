@@ -180,6 +180,13 @@ public sealed class Archive : IDisposable, IAsyncDisposable
 
         ArchiveFormat nameFormat = name is null ? ArchiveFormat.Unknown : ArchiveDetector.FromFileName(name).Format;
         ArchiveCompression compression = options.Compression ?? ArchiveDetector.DetectCompression(prefix.AsSpan(0, got));
+        if (options.Compression is null && compression == ArchiveCompression.None && name is not null
+            && ArchiveDetector.FromFileName(name).Compression == ArchiveCompression.Brotli
+            && ArchiveDetector.DetectFormat(prefix.AsSpan(0, got)) == ArchiveFormat.Unknown)
+        {
+            // Brotli has no magic (RFC 7932 section 9.1), so the name decides, and only when the bytes are not already a container.
+            compression = ArchiveCompression.Brotli;
+        }
 
         ArchiveFormat format = options.Format ?? ArchiveFormat.Unknown;
         Stream top = raw;
@@ -274,7 +281,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
         if (name is null)
         {
             string file = archiveName is null ? string.Empty : Path.GetFileName(archiveName);
-            foreach (string suffix in new[] { ".gz", ".bz2", ".zst", ".zstd", ".lz4", ".xz", ".lz" })
+            foreach (string suffix in new[] { ".gz", ".bz2", ".zst", ".zstd", ".lz4", ".xz", ".lz", ".br" })
             {
                 if (file.Length > suffix.Length && file.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
                 {
