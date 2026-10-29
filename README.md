@@ -103,16 +103,17 @@ x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0
 | lzip compress, levels 4-9 | enwik8 0.91-0.97, Silesia 0.85-0.92 (levels 4, 8, 9 below 0.87); size -0.02% to +0.48% | enwik8 0.89-0.93, Silesia 0.81-0.89; same sizes |
 | lzip decompress | 0.99-1.14, at the target | 1.28-1.44, at the target |
 | 7z archive size (LZMA2, against `7zz -mx=1/5/9 -mmt=1`) | -0.89% to +0.91%, at the target | |
-| bzip2 compress, levels 1 and 9 (against `bzip2`, start-up subtracted) | 1.11-1.14, at the target; size -0.02% to +0.01% | _pending: being re-measured after the speed work_ |
-| Brotli compress, quality 0 and 5 (window 22) | 0.37 and 0.59; size -9.84% and -0.11% | _pending: being re-measured after the speed work_ |
-| Brotli compress, quality 11 | 1.10; size +2.04% | _pending_ |
+| bzip2 compress, levels 1 and 9 (against `bzip2`, start-up subtracted) | 1.11-1.14, at the target; size -0.02% to +0.01% | 1.09-1.10, at the target; same sizes |
+| Brotli compress, quality 0 and 5 (window 22) | 0.37 and 0.59; size -9.84% and -0.11% | 0.32 and 0.56; same sizes |
+| Brotli compress, quality 11 | 1.10; size +2.04% | 1.17; size +2.04% |
 | Brotli decompress, quality 5 and 11 (against `brotli` 1.2.1) | 0.83-0.93 (0.83 on one stream written by the tool, quality 5); other streams at the target | 0.92-1.01, at the target |
 | Deflate64 compress, levels 1, 5, 9 (against `7zz` zip Deflate64) | 1.03, 0.92 and 3.03, at the target; size -1.04% to +0.38% | 1.00, 0.92 and 3.22, at the target; same sizes |
 | Deflate64 decompress | 0.94-1.07, at the target | 0.71-0.74 |
 | LZX decompress (against `cabextract` 1.11, on a cabinet from our test encoder) | 1.06, at the target | 1.01, at the target |
 | PPMd compress, 7z PPMD, mx 1 and 5 (against `7zz`) | 0.59 and 0.61; size equal | 0.57 and 0.59; size equal |
 | PPMd decompress, mx 1 and 5 | 0.60-0.63 | 0.62-0.66 |
-| PPMd compress and decompress, mx 8 and 9 | _pending_ | _pending_ |
+| PPMd compress, mx 8 and 9 | 0.65 and 0.67; size equal | 0.65 and 0.67; size equal |
+| PPMd decompress, mx 8 and 9 | 0.68-0.70 | 0.72 |
 | Dictionary training | 2.9-73x the tool's time on one thread, 1.4-26x with the default thread count; 5-30x its memory | 3-35x the tool's time, 20-40x its memory; output with our dictionaries within 1% of the tool's overall, up to 2.6% larger on tiny training sets and 1.1-2.1% larger with 64 KiB and larger dictionaries on Silesia |
 
 Peak memory of the LZMA family's in-memory calls is 0.5-2 GB on these corpora, because they hold the whole input and
