@@ -4,9 +4,30 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.3.0-preview.1] - 2026-10-28
+
+Everything new here is preview and carries `[Experimental]`. The LZMA family meets the size target and is below the reference speed in some rows; the README has the measurements from both machines.
+
 ### Added
 
+- Brotli (RFC 7932, `ONECOMPRESS008`): decoder with the built-in dictionary and transforms, and encoder at qualities 0-11 (windows 10-24), in three layers. Single streams `.br` and `.tar.br` in the archive layer, detected by file name (brotli streams have no magic number).
+- bzip2 encoder at levels 1-9 (`ONECOMPRESS004`), zip method 12 writing, and `.bz2`/`.tar.bz2` writing.
+- Deflate64 decoder and encoder (`ONECOMPRESS003`), `Deflate64Stream`, zip method 9 read and write, and the 7z Deflate64 coder.
+- LZX decoder (`ONECOMPRESS009`) with verbatim, aligned and uncompressed blocks and call translation.
+- 7z writing: solid and non-solid folders, LZMA2, LZMA, Copy, Deflate and Zstandard coders, the branch and delta filters, and encoded headers.
+- cpio (newc, crc and odc) and ar (common, GNU and BSD) read and write.
+- cab read: stored, MSZIP and LZX folders, every header field, checksums, and a typed error for spanned cabinets and Quantum.
+- xz and lzip single streams: `.xz`, `.lz`, `.tar.xz` and `.tar.lz`, read and write.
 - Encryption (`ONEARCHIVE001`): zip WinZip AES-128/192/256 (AE-1 and AE-2) read and write, traditional zip encryption read; 7z AES-256 read and write, with encrypted headers. `ZipReaderOptions.Password`, `ZipWriterOptions.Password`, `SevenZipReaderOptions.Password`, `SevenZipWriterOptions.Password`, and `Password` on `ArchiveOpenOptions` and `ArchiveCreateOptions`. A missing or wrong password is an `ArchivePasswordException`. AES needs `System.Security.Cryptography.Aes`, which the browser does not provide.
+
+### Changed
+
+- LZMA-family speed: decoder fast paths and match-finder prefetching. Deflate speed: a faster decoder loop and table build, and faster encoder levels 1-7. Deflate levels 2-4 now hash four bytes, so their output differs from 0.2 (still identical on every platform); other compressed bytes are unchanged.
+- 7z reading: empty-stream vectors in the order the format defines, and coders without streams.
+
+### Not supported
+
+- PPMd (zip method 98, 7z PPMD) and BCJ2 are listed but refused with a typed "unsupported method" error.
 
 ## [0.2.0-preview.1] - 2026-10-28
 
@@ -47,6 +68,7 @@ First preview. Both codecs are preview and their public types carry `[Experiment
 - Input is treated as untrusted: the Zstandard decoder caps the window it will allocate (8 MiB by default), malformed input is a typed error, and every decoder has a fuzz target.
 - NativeAOT, trimming and browser WebAssembly are supported; output is byte-identical on every platform.
 
-[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v0.2.0-preview.1...HEAD
+[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v0.3.0-preview.1...HEAD
+[0.3.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.3.0-preview.1
 [0.2.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.2.0-preview.1
 [0.1.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.1.0-preview.1

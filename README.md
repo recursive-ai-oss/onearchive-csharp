@@ -33,23 +33,26 @@ for example one directory per git worktree.
 
 ## Preview codecs
 
-Zstandard, LZ4, Deflate, zlib and gzip are preview while their speed is below the reference tools'. Their
-compression ratio and byte-identical output are already at the target; speed is what is still being tuned. The
-bzip2 decoder meets its target and stays preview with the rest of this release. The LZMA family is preview until it
-has been measured on the benchmark machines. The archive layer is preview while the containers are being added and
-the formats' interop and fuzz coverage grows. PPMd, BCJ2, Deflate64 and encryption are not supported: archive
-entries that use them are listed, and opening them is a typed "unsupported method" error. Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
+Zstandard, LZ4, Deflate, zlib, gzip and the LZMA family (LZMA, LZMA2, xz, lzip) are preview while their speed is
+below the reference tools' in some rows. Their compression ratio and byte-identical output are already at the
+target; speed is what is still being tuned. The bzip2 decoder and the lzip decoder meet their targets and stay
+preview with the rest of this release. Brotli, the bzip2 encoder, Deflate64 and LZX are preview until they have been
+measured on the benchmark machines. The archive layer is preview while the containers are being added and the
+formats' interop and fuzz coverage grows. PPMd and BCJ2 are not supported: archive entries that use them are listed,
+and opening them is a typed "unsupported method" error. Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
 
 | Codec | Diagnostic ID |
 |---|---|
 | Zstandard (including dictionary training and the seekable format) | `ONECOMPRESS001` |
 | LZ4 | `ONECOMPRESS002` |
-| Deflate, zlib and gzip | `ONECOMPRESS003` |
-| bzip2 (decoder) | `ONECOMPRESS004` |
+| Deflate, zlib, gzip and Deflate64 | `ONECOMPRESS003` |
+| bzip2 | `ONECOMPRESS004` |
 | LZMA and LZMA2 | `ONECOMPRESS005` |
 | xz and the branch and delta filters | `ONECOMPRESS006` |
 | lzip | `ONECOMPRESS007` |
-| OneArchive: `Archive`, the entry model, readers and writers, tar, zip, 7z | `ONEARCHIVE001` |
+| Brotli | `ONECOMPRESS008` |
+| LZX (decoder) | `ONECOMPRESS009` |
+| OneArchive: `Archive`, the entry model, readers and writers, every container, encryption | `ONEARCHIVE001` |
 
 ```xml
 <PropertyGroup>
@@ -64,7 +67,8 @@ meets its speed target.
 
 The target for every codec: compressed size within 1% of the reference tool, and compress and decompress
 speed at least 0.87 of the reference tool's, at every level. Measured memory to memory against
-`zstd` 1.5.7, `lz4` 1.10.0, libdeflate 1.26 (one call), zlib-ng 2.3.3 (streaming) and `bzip2` 1.0.8, single-threaded unless noted, on Silesia and enwik8 and on small game
+`zstd` 1.5.7, `lz4` 1.10.0, libdeflate 1.26 (one call), zlib-ng 2.3.3 (streaming), `bzip2` 1.0.8, `xz` 5.8.4, `lzip` 1.26 and
+7-Zip `7zz` 26.05, single-threaded unless noted, on Silesia and enwik8 and on small game
 snapshot payloads with trained dictionaries. Speed is ours divided by the reference (1.00 = same speed).
 x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0.402 with the JIT.
 
@@ -82,12 +86,23 @@ x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0
 | LZ4 decompress | 0.80-0.90 | 0.82-0.89 |
 | Small payloads (256 B to 16 KiB) with a dictionary, reused encoder and decoder, Zstandard levels 1 and 3 | compress 0.26-0.74, decompress 0.68-1.06; size 0.73-1.01; no allocation per payload | not yet measured |
 | Small payloads with a dictionary, LZ4 | compress 0.27-0.86, decompress 0.45-1.31; size within +2.9% (level 3), +2.5% (fast levels) | not yet measured |
-| Deflate compress, one call, levels 1-9 (against libdeflate) | 0.58-0.81; size -1.71% to +0.61% | 0.55-0.81 (level 8 at the target) |
-| Deflate compress, one call, levels 10-12 | Silesia 0.89-0.96, enwik8 0.84-0.86; size within +0.90% | 0.89-1.07, at the target |
+| Deflate compress, one call, levels 1-9 (against libdeflate) | 0.58-0.81; size -1.71% to +0.61% | 0.60-0.88 |
+| Deflate compress, one call, levels 10-12 | Silesia 0.89-0.96, enwik8 0.84-0.86; size within +0.90% | at the target |
 | Deflate compress, streaming in 64 KiB pieces, levels 1-9 (against zlib-ng) | levels 1-4 0.56-0.79, Silesia 5-8 and enwik8 6, 7, 9 at the target; output 0.5-26% smaller | levels 7 and 8 at the target, the rest 0.64-0.79 |
-| Deflate decompress | 0.60-0.71 of libdeflate, 0.88-0.97 of zlib-ng | 0.61-0.70 of libdeflate, 1.01-1.15 of zlib-ng |
-| bzip2 decompress (against `bzip2 -d`, start-up subtracted) | 1.28-1.47, at the target | 0.99-1.10, at the target |
+| Deflate decompress | 0.60-0.71 of libdeflate, 0.88-0.97 of zlib-ng | 0.72-0.78 of libdeflate, 1.14-1.29 of zlib-ng |
+| bzip2 decompress (against `bzip2 -d`, start-up subtracted) | 1.28-1.47, at the target | 1.00-1.10, at the target |
+| xz compress, presets 0-3 | 0.71-1.29; size -0.29% to +0.79%, except preset 1 (+2.29% Silesia, +1.44% enwik8) and enwik8 preset 3 (+1.28%) | 0.69-1.14; same sizes |
+| xz compress, presets 4-9 | 0.87-0.96 (Silesia preset 4 0.87); size +0.23% to +0.72% | enwik8 0.88-0.93, Silesia 0.82-0.84; same sizes |
+| xz decompress | 0.58-0.66 | 0.96-1.05, at the target |
+| lzip compress, levels 0-3 | 0.37-0.85; size -4.3% to +0.02% | 0.44-0.84 |
+| lzip compress, levels 4-9 | enwik8 0.91-0.97, Silesia 0.85-0.92 (levels 4, 8, 9 below 0.87); size -0.02% to +0.48% | enwik8 0.89-0.93, Silesia 0.81-0.89; same sizes |
+| lzip decompress | 0.99-1.14, at the target | 1.28-1.44, at the target |
+| 7z archive size (LZMA2, against `7zz -mx=1/5/9 -mmt=1`) | -0.89% to +0.91%, at the target | |
+| Brotli, bzip2 compress, Deflate64, LZX | not yet measured on these machines | not yet measured |
 | Dictionary training | 2.9-73x the tool's time on one thread, 1.4-26x with the default thread count; 5-30x its memory | 3-35x the tool's time, 20-40x its memory; output with our dictionaries within 1% of the tool's overall, up to 2.6% larger on tiny training sets and 1.1-2.1% larger with 64 KiB and larger dictionaries on Silesia |
+
+Peak memory of the LZMA family's in-memory calls is 0.5-2 GB on these corpora, because they hold the whole input and
+output; the tools stream (5-675 MB). Use the stream types to bound it.
 
 Output is byte-identical across x64 and arm64, the JIT and NativeAOT, with and without hardware
 intrinsics, at any thread count, and in the browser (WebAssembly).
@@ -100,10 +115,12 @@ Archive.Create("backup.tar.zst").Add("assets/").Save();          // format and c
 using var archive = Archive.Open("data.tar");                  // entries, random access when the source can seek
 ```
 
-tar (ustar, pax, GNU, sparse files) and zip (store, Deflate and Zstandard; zip64, data descriptors; LZMA, xz and bzip2
-entries read) are read and written; 7z is read (Copy, Deflate, BZip2, LZMA, LZMA2, Delta, the branch filters, Zstandard;
-solid folders, encoded headers). Single streams (`.gz`, `.zst`, `.lz4`, and `.bz2` for reading) and tar inside them
-(`.tar.gz`, `.tar.zst`, ...) are one archive. The other containers plug into the same reader and writer interfaces. The model, the safety defaults and limits, and the tar coverage are in `docs/archive.md`.
+Read and written: tar (ustar, pax, GNU, sparse files); zip (store, Deflate, Deflate64, bzip2 and Zstandard; LZMA and xz
+entries read; zip64, data descriptors; WinZip AES, and traditional encryption for reading); 7z (Copy, Deflate,
+Deflate64, BZip2, LZMA, LZMA2, Delta, the branch filters, Zstandard; solid folders, encoded headers, AES-256); cpio
+(newc, crc, odc) and ar (common, GNU, BSD). Read only: cab (stored, MSZIP, LZX). Single streams (`.gz`, `.zst`, `.lz4`,
+`.bz2`, `.xz`, `.lz`, and `.br`, which is recognised by its name) and tar inside them (`.tar.gz`, `.tar.zst`, ...) are
+one archive. AES needs `System.Security.Cryptography.Aes`, which the browser does not provide. The other containers plug into the same reader and writer interfaces. The model, the safety defaults and limits, and the tar coverage are in `docs/archive.md`.
 
 ## Layout
 
