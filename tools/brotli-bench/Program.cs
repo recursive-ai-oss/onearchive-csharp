@@ -48,19 +48,39 @@ if (outPath is not null)
 
 times.Sort();
 Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-    $"ours  q{quality} {Path.GetFileName(args[0])} size {output.Length} ratio {(double)data.Length / output.Length:F4} best {mb / times[0]:F2} MB/s median {mb / times[times.Count / 2]:F2} MB/s"));
+    $"ours  q{quality} {Path.GetFileName(args[0])} size {output.Length} ratio {(double)data.Length / output.Length:F4} best {mb / times[0]:F2} MB/s median {mb / times[times.Count / 2]:F2} MB/s peak_KB={Process.GetCurrentProcess().PeakWorkingSet64 / 1024}"));
 
 if (tool is not null)
 {
     string tmp = Path.Combine(Path.GetTempPath(), "brotlibench-" + Environment.ProcessId + ".br");
     string empty = Path.Combine(Path.GetTempPath(), "brotlibench-" + Environment.ProcessId + ".empty");
     File.WriteAllBytes(empty, []);
+    long toolPeakKb = 0;
+    // The tool runs under /usr/bin/time (-v on Linux, -l on macOS) so that its peak memory comes from the same run as its time. The
+    // wrapper's own start-up is in the empty-file runs too, so it cancels in the subtraction.
     double Run(string input)
     {
+        bool mac = OperatingSystem.IsMacOS();
+        string[] toolArgs = [mac ? "-l" : "-v", tool, "-f", "-q", quality.ToString(CultureInfo.InvariantCulture), "-w", window.ToString(CultureInfo.InvariantCulture), "-o", tmp, input];
         long t0 = Stopwatch.GetTimestamp();
-        using var p = Process.Start(new ProcessStartInfo(tool, ["-f", "-q", quality.ToString(CultureInfo.InvariantCulture), "-w", window.ToString(CultureInfo.InvariantCulture), "-o", tmp, input]))!;
+        var psi = new ProcessStartInfo("/usr/bin/time", toolArgs) { RedirectStandardError = true };
+        using var p = Process.Start(psi)!;
+        string err = p.StandardError.ReadToEnd();
         p.WaitForExit();
-        return Stopwatch.GetElapsedTime(t0).TotalSeconds;
+        double seconds = Stopwatch.GetElapsedTime(t0).TotalSeconds;
+        foreach (string line in err.Split('\n'))
+        {
+            if (line.Contains("Maximum resident set size", StringComparison.Ordinal))
+            {
+                toolPeakKb = Math.Max(toolPeakKb, long.Parse(line[(line.LastIndexOf(' ') + 1)..], CultureInfo.InvariantCulture));
+            }
+            else if (line.Contains("maximum resident set size", StringComparison.Ordinal))
+            {
+                toolPeakKb = Math.Max(toolPeakKb, long.Parse(line.Trim().Split(' ')[0], CultureInfo.InvariantCulture) / 1024);
+            }
+        }
+
+        return seconds;
     }
 
     double startup = double.MaxValue;
@@ -80,7 +100,7 @@ if (tool is not null)
     File.Delete(empty);
     tt.Sort();
     Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-        $"tool  q{quality} {Path.GetFileName(args[0])} size {size} ratio {(double)data.Length / size:F4} best {mb / tt[0]:F2} MB/s median {mb / tt[tt.Count / 2]:F2} MB/s  (ours/tool size {(double)output.Length / size:F4}, speed {tt[0] / times[0]:F2})"));
+        $"tool  q{quality} {Path.GetFileName(args[0])} size {size} ratio {(double)data.Length / size:F4} best {mb / tt[0]:F2} MB/s median {mb / tt[tt.Count / 2]:F2} MB/s  peak_KB={toolPeakKb} (ours/tool size {(double)output.Length / size:F4}, speed {tt[0] / times[0]:F2})"));
 }
 
 return 0;
