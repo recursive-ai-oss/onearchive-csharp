@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- An app that only reads compound files (.doc, .xls, .msg) through Archive and CompoundFileReader. Published with NativeAOT and
+       trimming; must produce no warnings, and the binary must contain no codec (build/ci.sh checks that). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>AotTrimCfbSmoke</AssemblyName>
+    <RootNamespace>RecursiveAI.Smoke</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <PublishAot>true</PublishAot>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="RecursiveAI.OneArchive.AllCodecs" Value="false" Trim="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="../../testdata/cfb/v3-basic.cfb" LogicalName="v3-basic.cfb" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
+    <ProjectReference Include="../../src/OneArchive/OneArchive.csproj" />
+  </ItemGroup>
+
+</Project>

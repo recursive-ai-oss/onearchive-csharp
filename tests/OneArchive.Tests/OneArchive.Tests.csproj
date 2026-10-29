@@ -23,6 +23,9 @@
     <Content Include="../../testdata/ar/*.a;../../testdata/ar/*.deb"
              Link="testdata/ar/%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../testdata/cfb/**/*"
+             Link="testdata/cfb/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../testdata/rar/**/*"
              Link="testdata/rar/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />

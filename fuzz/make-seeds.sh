@@ -173,6 +173,7 @@ bash "$here/seeds-long.sh" "$out/zstd-encode-long-roundtrip" >/dev/null
 bash "$here/seeds-seekable.sh" "$out/zstd-seekable-read" >/dev/null
 bash "$here/seeds-tar.sh" "$out" "$payloads" >/dev/null
 bash "$here/seeds-cpio-ar.sh" "$out" >/dev/null
+bash "$here/seeds-cfb.sh" "$out" >/dev/null
 bash "$here/seeds-iso.sh" "$out" >/dev/null
 bash "$here/seeds-rar.sh" "$out" >/dev/null
 bash "$here/seeds-zip.sh" "$out" "$payloads" >/dev/null

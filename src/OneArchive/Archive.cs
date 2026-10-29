@@ -3,6 +3,7 @@ using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cpio;
 using RecursiveAI.OneArchive.Cab;
+using RecursiveAI.OneArchive.Cfb;
 using RecursiveAI.OneArchive.Iso;
 using RecursiveAI.OneArchive.Rar;
 using RecursiveAI.OneArchive.SevenZip;
@@ -347,6 +348,21 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                 }
 
                 return new CabReader(stream, cab, leaveOpen: !ownsTop);
+            case ArchiveFormat.CompoundFile:
+                var cfb = new CompoundFileReaderOptions { Limits = options.Limits, MaxDirectoryEntries = options.CompoundFile?.MaxDirectoryEntries ?? CompoundFileReaderOptions.DefaultMaxDirectoryEntries };
+                if (!stream.CanSeek)
+                {
+                    // Sector chains are followed by offset: a source that cannot seek is copied into memory first.
+                    Stream spooled = SpoolToMemory(stream, options.Limits, CompoundFileReader.Name);
+                    if (ownsTop)
+                    {
+                        stream.Dispose();
+                    }
+
+                    return new CompoundFileReader(spooled, cfb, leaveOpen: false);
+                }
+
+                return new CompoundFileReader(stream, cfb, leaveOpen: !ownsTop);
             case ArchiveFormat.Rar:
                 RarReaderOptions rar = options.Rar is { } rr
                     ? new RarReaderOptions { Limits = options.Limits, VerifyChecksum = rr.VerifyChecksum, Volumes = rr.Volumes, MaxSfxSize = rr.MaxSfxSize }

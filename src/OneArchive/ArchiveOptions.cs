@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cab;
+using RecursiveAI.OneArchive.Cfb;
 using RecursiveAI.OneArchive.Cpio;
 using RecursiveAI.OneArchive.Iso;
 using RecursiveAI.OneArchive.Rar;
@@ -40,6 +41,9 @@ public class ArchiveOpenOptions
 
     /// <summary>Gets the cabinet reading options (the limits above override <see cref="CabReaderOptions.Limits"/>). Default: the cabinet defaults.</summary>
     public CabReaderOptions? Cab { get; init; }
+
+    /// <summary>Gets the compound file reading options (the limits above override <see cref="CompoundFileReaderOptions.Limits"/>). Default: the compound file defaults.</summary>
+    public CompoundFileReaderOptions? CompoundFile { get; init; }
 
     /// <summary>Gets the ISO 9660 reading options (the limits above override <see cref="IsoReaderOptions.Limits"/>). Default: the ISO 9660 defaults.</summary>
     public IsoReaderOptions? Iso { get; init; }

@@ -9,7 +9,9 @@
 # RARLAB shareware binaries (rar, unrar) are used as black-box oracles only; the
 # release archive holds binaries and text, and the unrar source archive is never
 # fetched. zip, unzip, cpio and ar come from the
-# operating system and are recorded, not pinned (see install-tools.sh).
+# operating system and are recorded, not pinned (see install-tools.sh). LibreOffice (soffice, used by
+# tools/cfb/make-office-vectors.sh to write .doc/.xls/.ppt files) is a system package and recorded the same way in
+# testdata/cfb/office/VERSIONS.txt; the olefile package that checks them is pinned in tools/cfb/requirements.txt.
 cmake	4.4.4	cmake-4.4.4-linux-x86_64.tar.gz	https://github.com/Kitware/CMake/releases/download/v4.4.4/cmake-4.4.4-linux-x86_64.tar.gz	e5bb807f7728cb60cd8b27ebc97a2edb469b68655f21e844a600c3575b76f5bb	linux-x64
 cmake	4.4.4	cmake-4.4.4-macos-universal.tar.gz	https://github.com/Kitware/CMake/releases/download/v4.4.4/cmake-4.4.4-macos-universal.tar.gz	4b7b73704b1db9b374e5c9ab8e17ac6148b817b6396ee75cd94a852cbac9d305	osx-arm64
 zlib	1.3.2	zlib-1.3.2.tar.gz	https://zlib.net/zlib-1.3.2.tar.gz	bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16	all

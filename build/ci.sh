@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The one script CI, the build machines and developers all run.
 #
-#   build/ci.sh [step...]     steps: build test aot wasm   (default: build test aot)
+#   build/ci.sh [step...]     steps: build test aot aotcfb wasm   (default: build test aot)
 #
 # Needs the .NET SDK named in global.json on PATH (or DOTNET_ROOT). Output goes to
 # $ONEARCHIVE_ARTIFACTS (default: artifacts/ at the repository root).
@@ -56,6 +56,21 @@ step_aot() {
   for name in BrotliStream BrotliDecoder BrotliEncoder timedownlifeleft LzmaDecoder LzmaEncoder Lzma2Decoder XzDecoder XzStream \
       BZip2Stream BZip2Decoder Deflate64Decoder DeflateDecoder LzxDecoder LzipStream Lz4Stream PpmdStream PpmdHDecoder PpmdIModel; do
     if grep -qa "$name" "$exe"; then echo "slim check: $name is in the .tar.zst-only binary"; return 1; fi
+  done
+}
+
+step_aotcfb() {
+  # An app that only reads compound files: no codec, and none of the names below, may be in its binary.
+  cfb="$artifacts/publish/aot-trim-cfb"
+  rm -rf "$cfb"
+  dotnet publish smoke/aot-trim-cfb -c Release -o "$cfb" "${quiet[@]}"
+  exe="$cfb/AotTrimCfbSmoke"
+  if [ -f "$exe.exe" ]; then exe="$exe.exe"; fi
+  "$exe"
+  grep -qa CompoundFileReader "$exe" || { echo "cfb check: CompoundFileReader not found in the binary"; return 1; }
+  for name in ZstdStream ZstdDecoder BrotliStream BrotliDecoder timedownlifeleft LzmaDecoder Lzma2Decoder XzDecoder BZip2Decoder \
+      Deflate64Decoder DeflateDecoder LzxDecoder LzipStream Lz4Stream PpmdHDecoder; do
+    if grep -qa "$name" "$exe"; then echo "cfb check: $name is in the compound-file-only binary"; return 1; fi
   done
 }
 

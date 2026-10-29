@@ -55,7 +55,7 @@ listing, random access and extraction into a scratch directory, then a check tha
 `tar-roundtrip` (entries built from the input are written and read back). Seeds come from `seeds-tar.sh`: GNU tar and bsdtar
 archives over a tree with long names, links and sparse files, and the hostile set from `testdata/tar/make-hostile.py`.
 
-Also covered: `cpio-read`, `cpio-roundtrip`, `ar-read`, `ar-roundtrip`, `iso-read`, `iso-roundtrip`, `sevenzip-read`, `sevenzip-roundtrip` and `cab-read`, with seeds from the matching `seeds-*.sh`.
+Also covered: `cpio-read`, `cpio-roundtrip`, `ar-read`, `ar-roundtrip`, `iso-read`, `iso-roundtrip`, `cfb-read` (compound files; seeds from `seeds-cfb.sh`), `sevenzip-read`, `sevenzip-roundtrip` and `cab-read`, with seeds from the matching `seeds-*.sh`.
 
 ## Zip and single-stream targets
 
