@@ -103,6 +103,12 @@ internal sealed class BrotliQualityPlan
     /// </summary>
     internal int FullInsertLength = 16;
 
+    /// <summary>For the one-slot parse: how many bytes of a position its hash reads (4 to 8), and so the shortest copy found through the table.</summary>
+    internal int FastHashLength = 4;
+
+
+    /// <summary>True for the qualities whose parse hands the writer a <see cref="BrotliFastBlock"/>.</summary>
+    internal bool UsesFastBlock => Quality <= 2;
 
     internal static BrotliQualityPlan For(int quality)
     {
@@ -115,20 +121,24 @@ internal sealed class BrotliQualityPlan
                 p.ChainDepth = 1;
                 p.SkipShift = 6;
                 p.FullInsertLength = 4;
+                p.FastHashLength = 5;
                 break;
             case 1:
                 p.BlockSize = 1 << 17;
                 p.HashBits = 17;
                 p.ChainDepth = 1;
                 p.SkipShift = 6;
+                p.FullInsertLength = 4;
+                p.FastHashLength = 6;
                 break;
             case 2:
                 p.BlockSize = 1 << 17;
                 p.HashBits = 16;
                 p.BucketBits = 2;
                 p.ChainDepth = 2;
-                p.SkipShift = 5;
+                p.SkipShift = 6;
                 p.SparseInsert = 32;
+                p.FastHashLength = 5;
                 break;
             case 3:
                 p.BlockSize = 1 << 18;

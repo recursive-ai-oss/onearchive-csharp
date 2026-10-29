@@ -20,6 +20,7 @@ internal sealed partial class BrotliEncoderCore
     private readonly BrotliBitWriter _bits = new();
     private readonly BrotliMetaBlockWriter _writer;
     private readonly BrotliCommandList _commands = new();
+    private readonly BrotliFastBlock _fast = new();
     private readonly int[] _ring = [4, 11, 15, 16];
 
     private byte[] _buffer = [];
@@ -154,9 +155,26 @@ internal sealed partial class BrotliEncoderCore
         EnsureHeader();
         int start = _blockStart;
         int length = _length - start;
-        _commands.Clear();
-        Parse(start, start + length);
-        _writer.Write(_bits, _buffer, start, length, _commands, _ring, isLast);
+        if (_plan.UsesFastBlock)
+        {
+            // The writer looks up eight literals past the start of every run, whatever its length, so it may read a few bytes beyond the
+            // data; the buffer must have them.
+            if (_buffer.Length < _length + Margin)
+            {
+                Array.Resize(ref _buffer, _length + Margin);
+            }
+
+            _fast.Clear();
+            Parse(start, start + length);
+            BrotliMetaBlockWriter.Write(_bits, _buffer, start, length, _fast, _ring, isLast);
+        }
+        else
+        {
+            _commands.Clear();
+            Parse(start, start + length);
+            _writer.Write(_bits, _buffer, start, length, _commands, _ring, isLast);
+        }
+
         _blockStart = start + length;
     }
 
