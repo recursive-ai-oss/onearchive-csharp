@@ -17,7 +17,6 @@
 // for symbol lists and contexts, and every link is a 32-bit offset into that array (0 is null).
 // Matching the layout exactly is what makes the output byte-identical to PPMd var.H as 7-Zip writes it.
 
-using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Ppmd;
@@ -154,34 +153,20 @@ public sealed partial class PpmdHModel : IPpmdModel
 
     // ---- raw memory access ----
 
-    private int U16(int a) => BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(_m, a, 2));
-
-    private void SetU16(int a, int v)
-    {
-        BinaryPrimitives.WriteUInt16LittleEndian(new Span<byte>(_m, a, 2), (ushort)v);
-    }
-
-    private int U32(int a) => BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(_m, a, 4));
-
-    private void SetU32(int a, int v)
-    {
-        BinaryPrimitives.WriteInt32LittleEndian(new Span<byte>(_m, a, 4), v);
-    }
-
     // A state is 6 bytes; both parts are read before either is written, so overlapping ranges copy correctly.
-    private void Copy6(int dst, int src)
+    private static void Copy6(Span<byte> mem, int dst, int src)
     {
-        int lo = U32(src);
-        int hi = U16(src + 4);
-        SetU32(dst, lo);
-        SetU16(dst + 4, hi);
+        int lo = PpmdRaw.U32(mem, src);
+        int hi = PpmdRaw.U16(mem, src + 4);
+        PpmdRaw.SetU32(mem, dst, lo);
+        PpmdRaw.SetU16(mem, dst + 4, hi);
     }
 
-    private void Swap6(int a, int b)
+    private static void Swap6(Span<byte> mem, int a, int b)
     {
         for (int i = 0; i < StateSize; i++)
         {
-            (_m[a + i], _m[b + i]) = (_m[b + i], _m[a + i]);
+            (PpmdRaw.At(mem, a + i), PpmdRaw.At(mem, b + i)) = (PpmdRaw.At(mem, b + i), PpmdRaw.At(mem, a + i));
         }
     }
 
@@ -195,14 +180,16 @@ public sealed partial class PpmdHModel : IPpmdModel
 
     private void InsertNode(int node, int indx)
     {
-        SetU32(node, _freeList[indx]);
+        Span<byte> mem = _m;
+        PpmdRaw.SetU32(mem, node, _freeList[indx]);
         _freeList[indx] = node;
     }
 
     private int RemoveNode(int indx)
     {
+        Span<byte> mem = _m;
         int node = _freeList[indx];
-        _freeList[indx] = U32(node);
+        _freeList[indx] = PpmdRaw.U32(mem, node);
         return node;
     }
 
@@ -224,13 +211,14 @@ public sealed partial class PpmdHModel : IPpmdModel
     // list its first four bytes hold the list link instead, so the glue pass rewrites them as it walks.
     private void GlueFreeBlocks()
     {
+        Span<byte> mem = _m;
         int n = 0;
         _glueCount = 255;
 
         // A guard node at LoUnit stops a block from gluing into the free gap between LoUnit and HiUnit.
         if (_loUnit != _hiUnit)
         {
-            SetU16(_loUnit, 1);
+            PpmdRaw.SetU16(mem, _loUnit, 1);
         }
 
         for (int i = 0; i < NumIndexes; i++)
@@ -241,10 +229,10 @@ public sealed partial class PpmdHModel : IPpmdModel
             while (next != 0)
             {
                 int node = next;
-                next = U32(node);
-                SetU16(node, 0);
-                SetU16(node + 2, nu);
-                SetU32(node + 4, n);
+                next = PpmdRaw.U32(mem, node);
+                PpmdRaw.SetU16(mem, node, 0);
+                PpmdRaw.SetU16(mem, node + 2, nu);
+                PpmdRaw.SetU32(mem, node + 4, n);
                 n = node;
             }
         }
@@ -256,8 +244,8 @@ public sealed partial class PpmdHModel : IPpmdModel
         while (n != 0)
         {
             int node = n;
-            int nu = U16(node + 2);
-            n = U32(node + 4);
+            int nu = PpmdRaw.U16(mem, node + 2);
+            n = PpmdRaw.U32(mem, node + 4);
             if (nu == 0)
             {
                 if (prev < 0)
@@ -266,7 +254,7 @@ public sealed partial class PpmdHModel : IPpmdModel
                 }
                 else
                 {
-                    SetU32(prev, n);
+                    PpmdRaw.SetU32(mem, prev, n);
                 }
 
                 continue;
@@ -276,22 +264,22 @@ public sealed partial class PpmdHModel : IPpmdModel
             for (;;)
             {
                 int node2 = node + (nu * UnitSize);
-                nu += U16(node2 + 2);
-                if (U16(node2) != 0 || nu >= 0x10000)
+                nu += PpmdRaw.U16(mem, node2 + 2);
+                if (PpmdRaw.U16(mem, node2) != 0 || nu >= 0x10000)
                 {
                     break;
                 }
 
-                SetU16(node + 2, nu);
-                SetU16(node2 + 2, 0);
+                PpmdRaw.SetU16(mem, node + 2, nu);
+                PpmdRaw.SetU16(mem, node2 + 2, 0);
             }
         }
 
         for (n = head; n != 0;)
         {
             int node = n;
-            int nu = U16(node + 2);
-            n = U32(node + 4);
+            int nu = PpmdRaw.U16(mem, node + 2);
+            n = PpmdRaw.U32(mem, node + 4);
             if (nu == 0)
             {
                 continue;
@@ -372,6 +360,7 @@ public sealed partial class PpmdHModel : IPpmdModel
 
     private void RestartModel()
     {
+        Span<byte> mem = _m;
         Array.Clear(_freeList);
         _text = _alignOffset;
         _hiUnit = _text + _size;
@@ -389,16 +378,16 @@ public sealed partial class PpmdHModel : IPpmdModel
         _maxContext = _minContext = mc;
         _foundState = s;
 
-        SetU16(mc, 256);
-        SetU16(mc + 2, 256 + 1);
-        SetU32(mc + 4, s);
-        SetU32(mc + 8, 0);
+        PpmdRaw.SetU16(mem, mc, 256);
+        PpmdRaw.SetU16(mem, mc + 2, 256 + 1);
+        PpmdRaw.SetU32(mem, mc + 4, s);
+        PpmdRaw.SetU32(mem, mc + 8, 0);
 
         for (int i = 0; i < 256; i++, s += StateSize)
         {
-            _m[s] = (byte)i;
-            _m[s + 1] = 1;
-            SetU32(s + 2, 0);
+            PpmdRaw.At(mem, s) = (byte)i;
+            PpmdRaw.At(mem, s + 1) = 1;
+            PpmdRaw.SetU32(mem, s + 2, 0);
         }
 
         for (int i = 0; i < 128; i++)
@@ -435,8 +424,9 @@ public sealed partial class PpmdHModel : IPpmdModel
     // and for the identical raw links in the suffix contexts. Returns 0 when memory runs out.
     private int CreateSuccessors()
     {
+        Span<byte> mem = _m;
         int c = _minContext;
-        int upBranch = U32(_foundState + 2);
+        int upBranch = PpmdRaw.U32(mem, _foundState + 2);
         int numPs = 0;
 
         if (_orderFall != 0)
@@ -444,15 +434,15 @@ public sealed partial class PpmdHModel : IPpmdModel
             _ps[numPs++] = _foundState;
         }
 
-        while (U32(c + 8) != 0)
+        while (PpmdRaw.U32(mem, c + 8) != 0)
         {
-            c = U32(c + 8);
+            c = PpmdRaw.U32(mem, c + 8);
             int s;
-            if (U16(c) != 1)
+            if (PpmdRaw.U16(mem, c) != 1)
             {
-                byte sym = _m[_foundState];
-                s = U32(c + 4);
-                while (_m[s] != sym)
+                byte sym = PpmdRaw.At(mem, _foundState);
+                s = PpmdRaw.U32(mem, c + 4);
+                while (PpmdRaw.At(mem, s) != sym)
                 {
                     s += StateSize;
                 }
@@ -462,7 +452,7 @@ public sealed partial class PpmdHModel : IPpmdModel
                 s = c + 2;
             }
 
-            int successor = U32(s + 2);
+            int successor = PpmdRaw.U32(mem, s + 2);
             if (successor != upBranch)
             {
                 c = successor;
@@ -477,24 +467,24 @@ public sealed partial class PpmdHModel : IPpmdModel
             _ps[numPs++] = s;
         }
 
-        byte newSym = _m[upBranch];
+        byte newSym = PpmdRaw.At(mem, upBranch);
         upBranch++;
 
         byte newFreq;
-        if (U16(c) == 1)
+        if (PpmdRaw.U16(mem, c) == 1)
         {
-            newFreq = _m[c + 3];
+            newFreq = PpmdRaw.At(mem, c + 3);
         }
         else
         {
-            int s = U32(c + 4);
-            while (_m[s] != newSym)
+            int s = PpmdRaw.U32(mem, c + 4);
+            while (PpmdRaw.At(mem, s) != newSym)
             {
                 s += StateSize;
             }
 
-            uint cf = (uint)_m[s + 1] - 1;
-            uint s0 = (uint)U16(c + 2) - (uint)U16(c) - cf;
+            uint cf = (uint)PpmdRaw.At(mem, s + 1) - 1;
+            uint s0 = (uint)PpmdRaw.U16(mem, c + 2) - (uint)PpmdRaw.U16(mem, c) - cf;
             newFreq = (byte)(1 + ((2 * cf <= s0) ? (5 * cf > s0 ? 1u : 0u) : (((2 * cf) + s0 - 1) / (2 * s0)) + 1));
         }
 
@@ -519,12 +509,12 @@ public sealed partial class PpmdHModel : IPpmdModel
                 }
             }
 
-            SetU16(c1, 1);
-            _m[c1 + 2] = newSym;
-            _m[c1 + 3] = newFreq;
-            SetU32(c1 + 4, upBranch);
-            SetU32(c1 + 8, c);
-            SetU32(_ps[--numPs] + 2, c1);
+            PpmdRaw.SetU16(mem, c1, 1);
+            PpmdRaw.At(mem, c1 + 2) = newSym;
+            PpmdRaw.At(mem, c1 + 3) = newFreq;
+            PpmdRaw.SetU32(mem, c1 + 4, upBranch);
+            PpmdRaw.SetU32(mem, c1 + 8, c);
+            PpmdRaw.SetU32(mem, _ps[--numPs] + 2, c1);
             c = c1;
         }
         while (numPs != 0);
@@ -534,45 +524,46 @@ public sealed partial class PpmdHModel : IPpmdModel
 
     private void UpdateModel()
     {
+        Span<byte> mem = _m;
         int fs = _foundState;
-        int fSym = _m[fs];
-        int fFreq = _m[fs + 1];
+        int fSym = PpmdRaw.At(mem, fs);
+        int fFreq = PpmdRaw.At(mem, fs + 1);
         int maxSuccessor;
         int minSuccessor;
 
-        if (fFreq < MaxFreq / 4 && U32(_minContext + 8) != 0)
+        if (fFreq < MaxFreq / 4 && PpmdRaw.U32(mem, _minContext + 8) != 0)
         {
-            int c = U32(_minContext + 8);
-            if (U16(c) == 1)
+            int c = PpmdRaw.U32(mem, _minContext + 8);
+            if (PpmdRaw.U16(mem, c) == 1)
             {
                 int s = c + 2;
-                if (_m[s + 1] < 32)
+                if (PpmdRaw.At(mem, s + 1) < 32)
                 {
-                    _m[s + 1]++;
+                    PpmdRaw.At(mem, s + 1)++;
                 }
             }
             else
             {
-                int s = U32(c + 4);
-                if (_m[s] != fSym)
+                int s = PpmdRaw.U32(mem, c + 4);
+                if (PpmdRaw.At(mem, s) != fSym)
                 {
                     do
                     {
                         s += StateSize;
                     }
-                    while (_m[s] != fSym);
+                    while (PpmdRaw.At(mem, s) != fSym);
 
-                    if (_m[s + 1] >= _m[s - StateSize + 1])
+                    if (PpmdRaw.At(mem, s + 1) >= PpmdRaw.At(mem, s - StateSize + 1))
                     {
-                        Swap6(s, s - StateSize);
+                        Swap6(mem, s, s - StateSize);
                         s -= StateSize;
                     }
                 }
 
-                if (_m[s + 1] < MaxFreq - 9)
+                if (PpmdRaw.At(mem, s + 1) < MaxFreq - 9)
                 {
-                    _m[s + 1] += 2;
-                    SetU16(c + 2, U16(c + 2) + 2);
+                    PpmdRaw.At(mem, s + 1) += 2;
+                    PpmdRaw.SetU16(mem, c + 2, PpmdRaw.U16(mem, c + 2) + 2);
                 }
             }
         }
@@ -587,13 +578,13 @@ public sealed partial class PpmdHModel : IPpmdModel
                 return;
             }
 
-            SetU32(_foundState + 2, _minContext);
+            PpmdRaw.SetU32(mem, _foundState + 2, _minContext);
             return;
         }
 
         {
             int text = _text;
-            _m[text++] = _m[_foundState];
+            PpmdRaw.At(mem, text++) = PpmdRaw.At(mem, _foundState);
             _text = text;
             if (text >= _unitsStart)
             {
@@ -604,7 +595,7 @@ public sealed partial class PpmdHModel : IPpmdModel
             maxSuccessor = text;
         }
 
-        minSuccessor = U32(_foundState + 2);
+        minSuccessor = PpmdRaw.U32(mem, _foundState + 2);
 
         if (minSuccessor != 0)
         {
@@ -632,7 +623,7 @@ public sealed partial class PpmdHModel : IPpmdModel
         else
         {
             // Only the root context holds null successors; the next context is the root again.
-            SetU32(_foundState + 2, maxSuccessor);
+            PpmdRaw.SetU32(mem, _foundState + 2, maxSuccessor);
             minSuccessor = _minContext;
         }
 
@@ -640,18 +631,19 @@ public sealed partial class PpmdHModel : IPpmdModel
         int cc = _maxContext;
 
         _maxContext = _minContext = minSuccessor;
+        PpmdRaw.PrefetchStats(mem, minSuccessor);
 
         if (cc == mc)
         {
             return;
         }
 
-        int ns = U16(mc);
-        uint s0 = (uint)U16(mc + 2) - (uint)ns - ((uint)_m[_foundState + 1] - 1);
+        int ns = PpmdRaw.U16(mem, mc);
+        uint s0 = (uint)PpmdRaw.U16(mem, mc + 2) - (uint)ns - ((uint)PpmdRaw.At(mem, _foundState + 1) - 1);
 
         do
         {
-            int ns1 = U16(cc);
+            int ns1 = PpmdRaw.U16(mem, cc);
             uint sum;
 
             if (ns1 != 1)
@@ -670,14 +662,14 @@ public sealed partial class PpmdHModel : IPpmdModel
                             return;
                         }
 
-                        int oldPtr = U32(cc + 4);
+                        int oldPtr = PpmdRaw.U32(mem, cc + 4);
                         Mem12Copy(ptr, oldPtr, oldNU);
                         InsertNode(oldPtr, i);
-                        SetU32(cc + 4, ptr);
+                        PpmdRaw.SetU32(mem, cc + 4, ptr);
                     }
                 }
 
-                sum = (uint)U16(cc + 2);
+                sum = (uint)PpmdRaw.U16(mem, cc + 2);
                 sum += (uint)((2 * ns1 < ns ? 1 : 0) + (2 * ((4 * ns1 <= ns ? 1 : 0) & (sum <= (uint)(8 * ns1) ? 1 : 0))));
             }
             else
@@ -690,10 +682,10 @@ public sealed partial class PpmdHModel : IPpmdModel
                     return;
                 }
 
-                uint freq = _m[cc + 3];
-                _m[s] = _m[cc + 2];
-                SetU32(s + 2, U32(cc + 4));
-                SetU32(cc + 4, s);
+                uint freq = PpmdRaw.At(mem, cc + 3);
+                PpmdRaw.At(mem, s) = PpmdRaw.At(mem, cc + 2);
+                PpmdRaw.SetU32(mem, s + 2, PpmdRaw.U32(mem, cc + 4));
+                PpmdRaw.SetU32(mem, cc + 4, s);
                 if (freq < (MaxFreq / 4) - 1)
                 {
                     freq <<= 1;
@@ -703,17 +695,17 @@ public sealed partial class PpmdHModel : IPpmdModel
                     freq = MaxFreq - 4;
                 }
 
-                _m[s + 1] = (byte)freq;
+                PpmdRaw.At(mem, s + 1) = (byte)freq;
                 sum = freq + (uint)_initEsc + (ns > 3 ? 1u : 0u);
             }
 
             {
-                int s = U32(cc + 4) + (ns1 * StateSize);
-                uint cf = 2 * (sum + 6) * _m[_foundState + 1];
+                int s = PpmdRaw.U32(mem, cc + 4) + (ns1 * StateSize);
+                uint cf = 2 * (sum + 6) * PpmdRaw.At(mem, _foundState + 1);
                 uint sf = s0 + sum;
-                _m[s] = _m[_foundState];
-                SetU16(cc, ns1 + 1);
-                SetU32(s + 2, maxSuccessor);
+                PpmdRaw.At(mem, s) = PpmdRaw.At(mem, _foundState);
+                PpmdRaw.SetU16(mem, cc, ns1 + 1);
+                PpmdRaw.SetU32(mem, s + 2, maxSuccessor);
 
                 if (cf < 6 * sf)
                 {
@@ -726,76 +718,77 @@ public sealed partial class PpmdHModel : IPpmdModel
                     sum += cf;
                 }
 
-                SetU16(cc + 2, (int)(sum & 0xFFFF));
-                _m[s + 1] = (byte)cf;
+                PpmdRaw.SetU16(mem, cc + 2, (int)(sum & 0xFFFF));
+                PpmdRaw.At(mem, s + 1) = (byte)cf;
             }
 
-            cc = U32(cc + 8);
+            cc = PpmdRaw.U32(mem, cc + 8);
         }
         while (cc != mc);
     }
 
     private void Rescale()
     {
+        Span<byte> mem = _m;
         int mc = _minContext;
-        int stats = U32(mc + 4);
+        int stats = PpmdRaw.U32(mem, mc + 4);
         int s = _foundState;
 
         // Move the found state to the front.
         if (s != stats)
         {
-            byte tSym = _m[s];
-            byte tFreq = _m[s + 1];
-            int tSucc = U32(s + 2);
+            byte tSym = PpmdRaw.At(mem, s);
+            byte tFreq = PpmdRaw.At(mem, s + 1);
+            int tSucc = PpmdRaw.U32(mem, s + 2);
             do
             {
-                Copy6(s, s - StateSize);
+                Copy6(mem, s, s - StateSize);
                 s -= StateSize;
             }
             while (s != stats);
-            _m[s] = tSym;
-            _m[s + 1] = tFreq;
-            SetU32(s + 2, tSucc);
+            PpmdRaw.At(mem, s) = tSym;
+            PpmdRaw.At(mem, s + 1) = tFreq;
+            PpmdRaw.SetU32(mem, s + 2, tSucc);
         }
 
-        uint sumFreq = _m[s + 1];
-        uint escFreq = (uint)U16(mc + 2) - sumFreq;
+        uint sumFreq = PpmdRaw.At(mem, s + 1);
+        uint escFreq = (uint)PpmdRaw.U16(mem, mc + 2) - sumFreq;
 
         // Symbols may be dropped from a maximum-order context only.
         uint adder = _orderFall != 0 ? 1u : 0u;
 
         sumFreq = (sumFreq + 4 + adder) >> 1;
-        int i = U16(mc) - 1;
-        _m[s + 1] = (byte)sumFreq;
+        int i = PpmdRaw.U16(mem, mc) - 1;
+        PpmdRaw.At(mem, s + 1) = (byte)sumFreq;
 
         do
         {
             s += StateSize;
-            uint freq = _m[s + 1];
+            uint freq = PpmdRaw.At(mem, s + 1);
             escFreq -= freq;
             freq = (freq + adder) >> 1;
             sumFreq += freq;
-            _m[s + 1] = (byte)freq;
-            if (freq > _m[s - StateSize + 1])
+            PpmdRaw.At(mem, s + 1) = (byte)freq;
+            if (freq > PpmdRaw.At(mem, s - StateSize + 1))
             {
-                byte tSym = _m[s];
-                int tSucc = U32(s + 2);
+                byte tSym = PpmdRaw.At(mem, s);
+                int tSucc = PpmdRaw.U32(mem, s + 2);
                 int s1 = s;
                 do
                 {
-                    Copy6(s1, s1 - StateSize);
+                    Copy6(mem, s1, s1 - StateSize);
                     s1 -= StateSize;
                 }
-                while (s1 != stats && freq > _m[s1 - StateSize + 1]);
+                while (s1 != stats && freq > PpmdRaw.At(mem, s1 - StateSize + 1));
 
-                _m[s1] = tSym;
-                _m[s1 + 1] = (byte)freq;
-                SetU32(s1 + 2, tSucc);
+                PpmdRaw.At(mem, s1) = tSym;
+                PpmdRaw.At(mem, s1 + 1) = (byte)freq;
+                PpmdRaw.SetU32(mem, s1 + 2, tSucc);
             }
         }
         while (--i != 0);
 
-        if (_m[s + 1] == 0)
+        if (PpmdRaw.At(mem, s + 1) == 0)
         {
             // Remove every symbol whose frequency fell to zero.
             i = 0;
@@ -804,17 +797,17 @@ public sealed partial class PpmdHModel : IPpmdModel
                 i++;
                 s -= StateSize;
             }
-            while (_m[s + 1] == 0);
+            while (PpmdRaw.At(mem, s + 1) == 0);
 
             escFreq += (uint)i;
-            int numStats = U16(mc);
+            int numStats = PpmdRaw.U16(mem, mc);
             int numStatsNew = numStats - i;
-            SetU16(mc, numStatsNew);
+            PpmdRaw.SetU16(mem, mc, numStatsNew);
             int n0 = (numStats + 1) >> 1;
 
             if (numStatsNew == 1)
             {
-                uint freq = _m[stats + 1];
+                uint freq = PpmdRaw.At(mem, stats + 1);
                 do
                 {
                     escFreq >>= 1;
@@ -823,8 +816,8 @@ public sealed partial class PpmdHModel : IPpmdModel
                 while (escFreq > 1);
 
                 s = mc + 2;
-                Copy6(s, stats);
-                _m[s + 1] = (byte)freq;
+                Copy6(mem, s, stats);
+                PpmdRaw.At(mem, s + 1) = (byte)freq;
                 _foundState = s;
                 InsertNode(stats, U2I(n0));
                 return;
@@ -840,7 +833,7 @@ public sealed partial class PpmdHModel : IPpmdModel
                     if (_freeList[i1] != 0)
                     {
                         int ptr = RemoveNode(i1);
-                        SetU32(mc + 4, ptr);
+                        PpmdRaw.SetU32(mem, mc + 4, ptr);
                         Mem12Copy(ptr, stats, n1);
                         InsertNode(stats, i0);
                     }
@@ -852,22 +845,23 @@ public sealed partial class PpmdHModel : IPpmdModel
             }
         }
 
-        SetU16(mc + 2, (int)((sumFreq + escFreq - (escFreq >> 1)) & 0xFFFF));
-        _foundState = U32(mc + 4);
+        PpmdRaw.SetU16(mem, mc + 2, (int)((sumFreq + escFreq - (escFreq >> 1)) & 0xFFFF));
+        _foundState = PpmdRaw.U32(mem, mc + 4);
     }
 
     // Picks the secondary-estimation slot for an escape from the current context and returns its index;
     // escFreq receives the escape frequency to code.
     private int MakeEscFreq(int numMasked, out uint escFreq)
     {
+        Span<byte> mem = _m;
         int mc = _minContext;
-        uint numStats = (uint)U16(mc);
+        uint numStats = (uint)PpmdRaw.U16(mem, mc);
         if (numStats != 256)
         {
             uint nonMasked = numStats - (uint)numMasked;
             int see = (s_ns2Indx[(int)nonMasked - 1] * 16)
-                + (nonMasked < (uint)U16(U32(mc + 8)) - numStats ? 1 : 0)
-                + (2 * (U16(mc + 2) < 11 * numStats ? 1 : 0))
+                + (nonMasked < (uint)PpmdRaw.U16(mem, PpmdRaw.U32(mem, mc + 8)) - numStats ? 1 : 0)
+                + (2 * (PpmdRaw.U16(mem, mc + 2) < 11 * numStats ? 1 : 0))
                 + (4 * ((uint)numMasked > nonMasked ? 1 : 0))
                 + _hiBitsFlag;
             if (_journaling)
@@ -897,10 +891,12 @@ public sealed partial class PpmdHModel : IPpmdModel
 
     private void NextContext()
     {
-        int c = U32(_foundState + 2);
+        Span<byte> mem = _m;
+        int c = PpmdRaw.U32(mem, _foundState + 2);
         if (_orderFall == 0 && c > _text)
         {
             _maxContext = _minContext = c;
+            PpmdRaw.PrefetchStats(mem, c);
         }
         else
         {
@@ -910,14 +906,15 @@ public sealed partial class PpmdHModel : IPpmdModel
 
     private void Update1()
     {
+        Span<byte> mem = _m;
         int s = _foundState;
         int mc = _minContext;
-        uint freq = (uint)_m[s + 1] + 4;
-        SetU16(mc + 2, U16(mc + 2) + 4);
-        _m[s + 1] = (byte)freq;
-        if (freq > _m[s - StateSize + 1])
+        uint freq = (uint)PpmdRaw.At(mem, s + 1) + 4;
+        PpmdRaw.SetU16(mem, mc + 2, PpmdRaw.U16(mem, mc + 2) + 4);
+        PpmdRaw.At(mem, s + 1) = (byte)freq;
+        if (freq > PpmdRaw.At(mem, s - StateSize + 1))
         {
-            Swap6(s, s - StateSize);
+            Swap6(mem, s, s - StateSize);
             _foundState = s -= StateSize;
             if (freq > MaxFreq)
             {
@@ -930,15 +927,16 @@ public sealed partial class PpmdHModel : IPpmdModel
 
     private void Update1_0()
     {
+        Span<byte> mem = _m;
         int s = _foundState;
         int mc = _minContext;
-        uint freq = _m[s + 1];
-        uint summFreq = (uint)U16(mc + 2);
+        uint freq = PpmdRaw.At(mem, s + 1);
+        uint summFreq = (uint)PpmdRaw.U16(mem, mc + 2);
         _prevSuccess = 2 * freq > summFreq ? 1 : 0;
         _runLength += _prevSuccess;
-        SetU16(mc + 2, (int)((summFreq + 4) & 0xFFFF));
+        PpmdRaw.SetU16(mem, mc + 2, (int)((summFreq + 4) & 0xFFFF));
         freq += 4;
-        _m[s + 1] = (byte)freq;
+        PpmdRaw.At(mem, s + 1) = (byte)freq;
         if (freq > MaxFreq)
         {
             Rescale();
@@ -949,12 +947,13 @@ public sealed partial class PpmdHModel : IPpmdModel
 
     private void Update2()
     {
+        Span<byte> mem = _m;
         int s = _foundState;
         int mc = _minContext;
-        uint freq = (uint)_m[s + 1] + 4;
+        uint freq = (uint)PpmdRaw.At(mem, s + 1) + 4;
         _runLength = _initRl;
-        SetU16(mc + 2, U16(mc + 2) + 4);
-        _m[s + 1] = (byte)freq;
+        PpmdRaw.SetU16(mem, mc + 2, PpmdRaw.U16(mem, mc + 2) + 4);
+        PpmdRaw.At(mem, s + 1) = (byte)freq;
         if (freq > MaxFreq)
         {
             Rescale();
@@ -970,13 +969,14 @@ public sealed partial class PpmdHModel : IPpmdModel
     // Index of the binary-context probability for the current one-symbol context; also sets the high-bits flag.
     private int BinSummIndex()
     {
+        Span<byte> mem = _m;
         int mc = _minContext;
         int one = mc + 2;
-        _hiBitsFlag = HiBitsFlag3(_m[_foundState]);
-        return ((_m[one + 1] - 1) * 64)
+        _hiBitsFlag = HiBitsFlag3(PpmdRaw.At(mem, _foundState));
+        return ((PpmdRaw.At(mem, one + 1) - 1) * 64)
             + _prevSuccess + ((_runLength >> 26) & 0x20)
-            + s_ns2BsIndx[U16(U32(mc + 8)) - 1]
-            + HiBitsFlag4(_m[one])
+            + s_ns2BsIndx[PpmdRaw.U16(mem, PpmdRaw.U32(mem, mc + 8)) - 1]
+            + HiBitsFlag4(PpmdRaw.At(mem, one))
             + _hiBitsFlag;
     }
 }
