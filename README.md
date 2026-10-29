@@ -39,7 +39,7 @@ Zstandard, LZ4, Deflate, zlib, gzip and the LZMA family (LZMA, LZMA2, xz, lzip) 
 below the reference tools' in some rows. Their compression ratio and byte-identical output are already at the
 target; speed is what is still being tuned. The bzip2 decoder and the lzip decoder meet their targets and stay
 preview with the rest of this release. Brotli (compress is below the tool's speed at qualities 0 and 5, and quality 11 is
-2% larger), PPMd (speed 0.57-0.66 of 7-Zip's, same sizes) and the bzip2 encoder on arm64 are preview. Deflate64 and LZX meet the
+2% larger), PPMd (speed 0.57-0.72 of 7-Zip's, same sizes) are preview; the bzip2 encoder meets its target on both machines. Deflate64 and LZX meet the
 targets on x64; Deflate64 decode is below it on arm64. They stay preview with the rest of this release. The archive layer
 is preview while the formats' interop and fuzz coverage grows. BCJ2 is not supported: 7z entries that use it are listed,
 and opening them is a typed "unsupported method" error. RAR 5 is read only: compressed entries raise a typed error.
