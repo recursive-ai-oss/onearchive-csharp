@@ -47,6 +47,9 @@ public static class ZstdCoverTrainer
     private const long TwoFoldBytes = 4L << 20;
     private const long StatFoldBytes = 24L << 20;
 
+    // Sample sets up to this size are cheap enough to score every candidate, whatever the search mode.
+    private const long ExhaustiveBytes = 256L << 10;
+
     /// <summary>
     /// Trains a complete dictionary (content chosen by COVER or FastCover, tables measured on the samples) no larger than
     /// <see cref="ZstdDictionaryTrainingOptions.DictionarySize"/>.
@@ -65,7 +68,7 @@ public static class ZstdCoverTrainer
         ZstdTrainingSet set = Prepare(samples, options);
         int size = options.DictionarySize;
         List<ZstdCoverParameters> candidates = options.Optimize
-            ? Narrow(Candidates(options), options, set)
+            ? Candidates(options)
             : [Validate(new ZstdCoverParameters(options.SegmentSize, options.DmerSize, options.Score))];
 
         // Each fold: content chosen from the samples outside it, and the tables measured by parsing the samples inside it. A frame
@@ -198,7 +201,7 @@ public static class ZstdCoverTrainer
     {
         options ??= ZstdDictionaryTrainingOptions.Default;
         ZstdTrainingSet set = Prepare(samples, options);
-        List<ZstdCoverParameters> candidates = Narrow(Candidates(options), options, set);
+        List<ZstdCoverParameters> candidates = Candidates(options);
         if (candidates.Count == 1)
         {
             return candidates[0];
@@ -345,6 +348,16 @@ public static class ZstdCoverTrainer
 
         public void Set(int d, ZstdDmerIndex index) => _indexes[d] = index;
 
+        /// <summary>Releases the indexes of every d-mer size but <paramref name="d"/>.</summary>
+        public void KeepOnly(int d)
+        {
+            foreach (int other in _indexes.Keys.Where(k => k != d).ToArray())
+            {
+                _indexes[other].Release();
+                _indexes.Remove(other);
+            }
+        }
+
         public void Release()
         {
             foreach (ZstdDmerIndex index in _indexes.Values)
@@ -381,10 +394,27 @@ public static class ZstdCoverTrainer
 
         public CancellationToken CancellationToken { get; }
 
+        public long Length => _set.Length;
+
         /// <summary>Takes a scratch set from the pool (or makes one); the arrays in it are reused by the next candidate, not reallocated.</summary>
         public ZstdTrainingScratch Rent() => _pool.TryTake(out ZstdTrainingScratch? scratch) ? scratch : new ZstdTrainingScratch();
 
         public void Return(ZstdTrainingScratch scratch) => _pool.Add(scratch);
+
+        /// <summary>Drops what was counted and indexed for every d-mer size but <paramref name="d"/>: the search has settled on it.</summary>
+        public void KeepOnly(Fold[] folds, int d)
+        {
+            foreach (Fold fold in folds)
+            {
+                fold.KeepOnly(d);
+            }
+
+            foreach (int other in _counts.Keys.Where(k => k != d).ToArray())
+            {
+                _counts[other].Release();
+                _counts.Remove(other);
+            }
+        }
 
         public void Dispose()
         {
@@ -412,7 +442,7 @@ public static class ZstdCoverTrainer
 
         /// <summary>Gets how many folds the tables are measured on: all of them for sample sets up to 24 MiB, one above that (where the
         /// dictionary is a small part of the data and one fold has plenty of samples).</summary>
-        public int StatFoldCount => FoldCount == 1 ? 1 : _set.Length <= StatFoldBytes ? FoldCount : 1;
+        public int StatFoldCount => FoldCount == 1 ? 1 : _set.Length <= StatFoldBytes ? Math.Min(FoldCount, 4) : 1;
 
         // Samples next to each other are often alike (ticks of one game, pieces of one file), so holding out single samples would let a
         // candidate score well by memorizing the neighbours of what it is tested on, while one block at the end would test it on data
@@ -608,21 +638,6 @@ public static class ZstdCoverTrainer
     // guided search walks one variant's segment sizes on a coarse grid, then climbs from the best one to its neighbours until neither
     // is better, and finally tries the other variants at the best segment size; the exhaustive search tries them all. The cost of a
     // dictionary against segment size is smooth (it falls, flattens, and rises again), so the climb ends next to the best.
-    // The variant searched first: the largest d up to 8, which is the d-mer size the zstd tool starts with.
-    private static int PrimaryVariant(List<ZstdCoverParameters> candidates, List<int> starts)
-    {
-        int primary = 0;
-        for (int v = 0; v < starts.Count - 1; v++)
-        {
-            if (candidates[starts[v]].DmerSize <= 8)
-            {
-                primary = v;
-            }
-        }
-
-        return primary;
-    }
-
     private static List<int> VariantStarts(List<ZstdCoverParameters> candidates)
     {
         var starts = new List<int>();
@@ -636,20 +651,6 @@ public static class ZstdCoverTrainer
 
         starts.Add(candidates.Count);
         return starts;
-    }
-
-    // On a large sample set another d-mer size gains little (a few tenths of a percent) and costs a counting pass, a selection and a
-    // scoring, so the guided search keeps only the first variant there; small sets are cheap enough to try the others.
-    private static List<ZstdCoverParameters> Narrow(List<ZstdCoverParameters> candidates, ZstdDictionaryTrainingOptions options, ZstdTrainingSet set)
-    {
-        if (options.SearchMode == ZstdTrainingSearch.Exhaustive || candidates.Count <= 6 || set.Length <= TwoFoldBytes)
-        {
-            return candidates;
-        }
-
-        List<int> starts = VariantStarts(candidates);
-        int primary = PrimaryVariant(candidates, starts);
-        return candidates.GetRange(starts[primary], starts[primary + 1] - starts[primary]);
     }
 
     private static Evaluation RunSearch(Run run, Fold[] folds, List<ZstdCoverParameters> candidates, int budget)
@@ -676,60 +677,74 @@ public static class ZstdCoverTrainer
 
         List<int> starts = VariantStarts(candidates);
         int variants = starts.Count - 1;
-        if (options.SearchMode == ZstdTrainingSearch.Exhaustive || count <= 6)
+        if (options.SearchMode == ZstdTrainingSearch.Exhaustive || count <= 6 || run.Length <= ExhaustiveBytes)
         {
             Run(Enumerable.Range(0, count));
             return Best();
         }
 
-        int primary = PrimaryVariant(candidates, starts);
-        int from = starts[primary];
-        int length = starts[primary + 1] - from;
-        var grid = new SortedSet<int>();
-        foreach (int third in new[] { 1, 3, 5 })
+        // Stage 1: the middle segment size of every variant. The d-mer size (and score) that does better there is kept; the others are
+        // dropped, with their counts, and the segment sizes of the kept one are searched.
+        int firstLength = starts[1] - starts[0];
+        int middleSize = candidates[starts[0] + ((firstLength - 1) * 3 / 6)].SegmentSize;
+        var middles = new List<int>();
+        for (int v = 0; v < variants; v++)
         {
-            grid.Add(from + ((length - 1) * third / 6));
+            middles.Add(NearestSize(candidates, starts[v], starts[v + 1], middleSize));
+        }
+
+        Run(middles);
+        int kept = 0;
+        while (starts[kept + 1] <= Best().Candidate)
+        {
+            kept++;
+        }
+
+        int from = starts[kept];
+        int to = starts[kept + 1];
+        run.KeepOnly(folds, candidates[from].DmerSize);
+
+        // Stage 2: the rest of a coarse grid over the kept variant's segment sizes.
+        var grid = new SortedSet<int>();
+        int[] marks = run.Length <= TwoFoldBytes ? [0, 1, 2, 3, 4] : [1, 3, 5];
+        int divisor = run.Length <= TwoFoldBytes ? 4 : 6;
+        foreach (int mark in marks)
+        {
+            grid.Add(from + (((to - from) - 1) * mark / divisor));
         }
 
         Run(grid);
 
-        // Climb from the best of the grid while a neighbour is better by more than a quarter of a percent: the cost is flat near its
-        // minimum, and a step that gains less is not worth another round of selecting and scoring.
+        // Stage 3: climb from the best of the grid while a neighbour is better by more than a quarter of a percent: the cost is flat
+        // near its minimum, and a step that gains less is not worth another round of selecting and scoring.
+        Evaluation BestKept() => done.Where(e => e is not null && e.Candidate >= from && e.Candidate < to).OrderBy(e => e!.Total).ThenBy(e => e!.Candidate).First()!;
         while (true)
         {
-            Evaluation current = Best();
-            Run(new[] { current.Candidate - 1, current.Candidate + 1 }.Where(c => c >= from && c < from + length));
-            Evaluation next = Best();
+            Evaluation current = BestKept();
+            Run(new[] { current.Candidate - 1, current.Candidate + 1 }.Where(c => c >= from && c < to));
+            Evaluation next = BestKept();
             if (next.Candidate == current.Candidate || (current.Total - next.Total) * 400 < current.Total)
             {
                 break;
             }
         }
 
-        // The other variants, at the best segment size (or the nearest one they have).
-        int bestSize = candidates[Best().Candidate].SegmentSize;
-        var others = new List<int>();
-        for (int v = 0; v < variants; v++)
+        return BestKept();
+    }
+
+    // The candidate of a variant whose segment size is nearest `size` (the smaller on a tie).
+    private static int NearestSize(List<ZstdCoverParameters> candidates, int from, int to, int size)
+    {
+        int pick = from;
+        for (int c = from; c < to; c++)
         {
-            if (v == primary)
+            if (Math.Abs(candidates[c].SegmentSize - size) < Math.Abs(candidates[pick].SegmentSize - size))
             {
-                continue;
+                pick = c;
             }
-
-            int pick = starts[v];
-            for (int c = starts[v]; c < starts[v + 1]; c++)
-            {
-                if (Math.Abs(candidates[c].SegmentSize - bestSize) < Math.Abs(candidates[pick].SegmentSize - bestSize))
-                {
-                    pick = c;
-                }
-            }
-
-            others.Add(pick);
         }
 
-        Run(others);
-        return Best();
+        return pick;
     }
 
     private static long TotalCompressedSize(byte[] content, IReadOnlyList<ReadOnlyMemory<byte>> test, int level, ZstdTrainingScratch scratch, CancellationToken cancellationToken)

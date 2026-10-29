@@ -25,13 +25,19 @@ segments chosen per epoch by the frequencies of their k-mers, covered k-mers set
    bytes (`d <= 8`), or for `d` of 9 to 16 the mix `(a * 0xC2B2AE3D27D4EB4F) xor rotl(b * 0x165667B19E3779F9, 31)` of the first and
    last eight bytes read as little-endian 64-bit values (`a`, `b`), computed modulo 2^64.
    - *Cover* gives each distinct key its own id (exact).
-   - *FastCover* has `2^HashBits` ids, `id = (key * 0x9E3779B97F4A7C15 mod 2^64) >> (64 - HashBits)` (collisions share an id), and
-     only positions whose offset within their sample is a multiple of `Acceleration` start a d-mer.
-2. **Frequency.** The frequency of an id is the number of samples that contain a d-mer with that id (a sample counts once).
-3. **Weight.** `Frequency` score: the frequency. `SquareRoot` score: `isqrt(frequency << 16)`, the floor of the integer square
-   root (the paper's ℓ0.5 norm up to the final monotone square, with 8 fractional bits).
-4. **Epochs.** `E = clamp(ceil(D / k), 1, max(1, N / k))` where `N` is the total sample bytes; epoch `e` covers positions
-   `[e * (N / E), (e + 1) * (N / E))`, the last one up to `N`.
+   - *FastCover* has `2^b` ids with `b = clamp(floor(log2(N)) + 3, 12, HashBits)` for `N` total sample bytes (a table much larger
+     than the data only costs time; `b` comes from the whole sample set, whichever part of it is trained on),
+     `id = (key * 0x9E3779B97F4A7C15 mod 2^64) >> (64 - b)` (collisions share an id), and only positions whose offset within their
+     sample is a multiple of `Acceleration` start a d-mer.
+2. **Frequency.** The frequency of an id is the number of samples that contain a d-mer with that id (a sample counts once). It is
+   counted per *group* of samples (see "Held-out parts") and saturates at 65535 in each group; the frequency over a part of the
+   samples is the sum over its groups, capped at 65535 (so a d-mer found in 65535 or more samples counts as exactly that many).
+3. **Weight.** A frequency below 2 has weight 0 (a d-mer in one sample only cannot help any other). Otherwise `Frequency` score:
+   the frequency. `SquareRoot` score: `isqrt(frequency << 16)`, the floor of the integer square root (the paper's ℓ0.5 norm up to
+   the final monotone square, with 8 fractional bits). Weights are 16 bits.
+4. **Epochs.** `E = clamp(ceil(D / k), 1, max(1, N / k))` where `N` is the number of bytes trained on (all the samples, or all
+   but a held-out part); epoch `e` covers positions `[e * (N / E), (e + 1) * (N / E))` of those bytes laid end to end, the last
+   one up to `N`.
 5. **Segment.** In epoch `e` with room `R` left of the budget, the window is `w = min(k, R, epoch length)`; epochs with `w < d` are
    skipped. The score of a window placement is the sum of the weights of the *distinct* ids of the d-mers starting inside it
    (positions `s .. s + w - d`). The best-scoring placement wins; among equal scores the earliest. A best score of 0 adds nothing.
@@ -42,43 +48,58 @@ segments chosen per epoch by the frequencies of their k-mers, covered k-mers set
 
 ## Parameter search
 
-With `Optimize` (the default), `ZstdCoverTrainer.Optimize` tries every combination of `DmerSizeCandidates`, `ScoreCandidates` and
-`SegmentSizeCandidates` (distinct values, `k >= d`), in the order d ascending, then score (`SquareRoot` before `Frequency`, when both are given), then k
-ascending. A combination is scored by the total size of the held-out samples compressed with the dictionary it makes at
-`ScoringLevel` by this library's encoder; the **smallest total wins, and the first of equal totals** (the rule above). Scoring runs
-on `MaxDegreeOfParallelism` threads (0: the processor count, at most 8); each combination's total is independent of the others,
-so the choice does not depend on scheduling.
+With `Optimize` (the default), `ZstdCoverTrainer.Optimize` looks for the combination of `DmerSizeCandidates`, `ScoreCandidates` and
+`SegmentSizeCandidates` (distinct values, `k >= d`) with the smallest total. Candidates are numbered in the order d ascending, then
+score (`SquareRoot` before `Frequency`, when both are given), then k ascending; a *variant* is one pair of d and score and its
+candidates differ in k. A candidate is scored by the total size of the held-out samples compressed at `ScoringLevel` by this
+library's encoder with the dictionary the candidate's content makes (a raw-content dictionary: the content only, no entropy tables,
+so that only the content is judged); a held-out sample is a frame of its own. **The smallest total wins, and the first of equal
+totals** (lowest candidate number). Scoring runs on `MaxDegreeOfParallelism` threads (0: the processor count, at most 8); each total
+is independent of the others, so the choice does not depend on scheduling.
 
-- **Held-out samples.** `TrainingPercent` (default 75) gives `F = ceil(100 / (100 - TrainingPercent))` folds (4 for 75; 1 and
-  train = test when 100). The samples are cut into blocks of `max(1, count / 16)` consecutive samples; block `j` belongs to fold
-  `j mod F`. Fold `f` is scored by training on the samples outside it and compressing those inside it (at most
-  `MaxScoringSamples`, default 2000, thinned by taking every n-th). Sample sets up to 24 MiB add up the totals of the first
-  `min(F, 4)` folds; larger ones use fold 0 only. Blocks, not single samples, are held out because neighbouring samples (ticks of one
-  game, pieces of one file) are alike.
-- **Candidate dictionaries** are built exactly as the final one, except that their tables are measured on the fold's held-out
-  samples (at most 2000, every n-th), against content chosen from the fold's training samples; with one fold (training percent 100)
-  on at most 2000 training samples and 4 MiB (every n-th).
+- **`SearchMode.Exhaustive`** scores every candidate.
+- **`SearchMode.Guided`** (the default) scores a subset, chosen from totals only (the same totals whatever the thread count):
+  1. If there are more than 6 candidates and the samples exceed 4 MiB, only the first variant is searched (below).
+  2. The *first variant* is the one with the largest d up to 8 (else the first variant). Its segment sizes `k_0 < ... < k_(m-1)`
+     are scored at positions `(m-1)/6`, `3(m-1)/6` and `5(m-1)/6` (integer division) of the list.
+  3. From the best candidate so far, its two neighbours in the list (previous and next k) are scored, unless already scored. If a
+     neighbour beat the best by more than a quarter of a percent (`(best - new) * 400 >= best`), this repeats from it; otherwise
+     it stops. The smallest total scored so far stays the best.
+  4. Each other variant is scored at the segment size nearest the best one (the smaller on a tie).
+  5. With 6 or fewer candidates all are scored.
+- **Held-out parts.** `TrainingPercent` (default 75) gives `F = ceil(100 / (100 - TrainingPercent))` folds (4 for 75; 1 and
+  train = test when 100). The samples are cut into blocks of `max(1, count / 16)` consecutive samples; block `j` belongs to *group*
+  `j mod F`, and fold `f` holds out group `f` and trains on the rest. Blocks, not single samples, are held out because neighbouring
+  samples (ticks of one game, pieces of one file) are alike. If a group would be empty or the other groups hold fewer than 8 bytes
+  (very few samples), there is one fold that trains and is scored on everything. The training samples of a fold are a few stretches
+  of the original data and are never copied; the d-mers are counted once for all folds.
+- **Folds scored.** Sample sets up to 1 MiB score the first `min(F, 4)` folds and add their totals; up to 4 MiB the first
+  `min(F, 2)`; larger ones the first fold only. A fold is scored on at most `MaxScoringSamples` (default 2000) of its held-out samples
+  and 1 MiB of them: every n-th, where `n = max(ceil(samples / MaxScoringSamples), ceil(bytes / 1 MiB))`.
 
-Defaults: `d` in {6, 8}; `k` in {32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048}; the `SquareRoot` score only (26 combinations). Without `Optimize`,
-`SegmentSize` (256), `DmerSize` (8) and `Score` (`SquareRoot`) are used.
+Defaults: `d` in {6, 8}; `k` in {32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048}; the `SquareRoot` score only (26
+combinations; a guided search scores about 6 to 9 of them). Without `Optimize`, `SegmentSize` (256), `DmerSize` (8) and `Score`
+(`SquareRoot`) are used.
 
 ## The dictionary file
 
 `ZstdDictionaryBuilder.Build(content, samples, id)` writes: magic `0xEC30A437`, the ID, the Huffman table for literals, the FSE
 tables for offsets, match lengths and literal lengths, three repeat offsets (1, 4, 8) and the content (RFC 8878 §5). Total size
-is at most `DictionarySize`: the content is chosen with 350 bytes reserved for the tables, then again with the real size of the
-tables; if the final tables are bigger, the oldest (first) content bytes are dropped.
+is at most `DictionarySize`: content for the held-out parts is chosen with 350 bytes reserved for the tables, the tables are
+measured, and the content from all the samples is then chosen with the real size of the tables (a whole-set choice of the same
+length as the held-out content is kept as it is); if the final tables are bigger, the oldest (first) content bytes are dropped.
 
-- **Statistics.** Sample sets up to 24 MiB with at least 8 samples are measured on held-out frames: the samples are cut into 4
-  folds as for the search (blocks of `max(1, count / 16)` samples, block `j` in fold `j mod 4`); for each fold, content of the
-  final content's length is chosen from the other three folds with the final `k`, `d` and score, and the fold's samples are parsed
-  against that content. The four histograms are added. Measuring against the final content itself would parse samples that the
-  content was cut from, so almost every sample would be one long match and the tables would describe nothing like new data; the
-  effect grows as the dictionary approaches the size of the samples. Larger sample sets, where the content is a small part of
-  the samples, are measured against the final content. In both cases each sample is parsed by the level-3 fast match finder with the content as history (one sample is one frame;
-  blocks of 128 KiB). Every sequence is counted in the literal length code, match length code and offset code histograms
-  (offset *value*: 1 to 3 for repeat offsets as the decoder resolves them, otherwise offset + 3; code = floor(log2 value)), starting
-  each sample from the repeat offsets 1, 4, 8. All literals, including those after the last match, go into the byte histogram.
+- **Statistics.** The tables are measured on held-out frames. With one fold (see "Held-out parts"), the content chosen from all
+  the samples is used and every sample is parsed. Otherwise, for each fold `f` of the first `min(F, 4)` (all of them when the
+  samples total at most 24 MiB, else the first only), content of the reserved size is chosen from the samples outside the fold with
+  the final `k`, `d` and score, and the fold's samples (every n-th when more than 20000 or 8 MiB, as for scoring) are parsed
+  against it. The histograms are added. Measuring against the final content itself would parse samples that the content was cut
+  from, so almost every sample would be one long match and the tables would describe nothing like new data; the effect grows as
+  the dictionary approaches the size of the samples. Each sample is parsed by the level-3 fast match finder with the content as
+  history (one sample is one frame; blocks of 128 KiB). Every sequence is counted in the literal length code, match length code and
+  offset code histograms (offset *value*: 1 to 3 for repeat offsets as the decoder resolves them, otherwise offset + 3; code =
+  floor(log2 value)), starting each sample from the repeat offsets 1, 4, 8. All literals, including those after the last match, go
+  into the byte histogram. The header is as large as the first fold's content and these histograms need.
 - **Huffman.** Every byte gets a code: weight counts are `max(count, 1)`, built with the library's length-limited builder (11
   bits). If that cannot be described (no samples; a perfectly even spread) a text-like prior replaces the counts: space 64,
   `a`-`z` 32, `A`-`Z` and digits 16, other printable 8, control bytes 2, others 1.
@@ -97,11 +118,19 @@ tables; if the final tables are bigger, the oldest (first) content bytes are dro
 `TrainingPercent` 1 to 100; `ScoringLevel` 1 to 22 (a level above the encoder's highest is scored at its highest). Bad options throw `ArgumentException`; samples that cannot give a dictionary throw
 `CompressionDictionaryException`; cancellation throws `OperationCanceledException`.
 
+## Time and memory
+
+The d-mers of the samples are counted once per d-mer size, in one pass that keeps the counts of each group apart; a fold's
+weights are the sum of the other groups' counts, so holding out a part costs no second pass. Working arrays come from a pool and are
+reused by the next candidate; none of this affects the output, which does not depend on what the arrays held before.
+`tools/zstd-train-bench/timing.sh` measures time and peak memory against `zstd --train`, and `bench/Managed` against the fastest
+managed implementation; method and figures are in the changelog and `docs/bench-method.md`.
+
 ## Measured against `zstd --train`
 
 `tools/zstd-train-bench/quality.sh` compresses held-back payloads with zstd's own compressor and a dictionary from each trainer, so
-only the dictionary differs; `timing.sh` measures training time and peak memory. On game snapshot data (trained on one run, judged
-on another) the total over all kinds and dictionary sizes is within 0.3% of `zstd --train` (smaller), with most rows within 1%.
+only the dictionary differs. On game snapshot data (trained on one run, judged on another) the total over all kinds and dictionary
+sizes is within 0.3% of `zstd --train` (smaller), with most rows within 1%.
 Known gaps, left for later tuning: sample sets of a few hundred small payloads against a dictionary larger than the data (the
 reference writes a dictionary smaller than the data; ours keeps nearly all of it), and heterogeneous bulk data cut into 4 KiB
 chunks with dictionaries of 64 KiB and up (about 2% larger totals; the entropy tables are not the cause, the chosen content is).
