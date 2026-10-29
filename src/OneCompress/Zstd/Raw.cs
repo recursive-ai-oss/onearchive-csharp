@@ -260,4 +260,38 @@ internal static class Raw
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), index), BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value));
 #endif
     }
+
+    /// <summary>Reads four bytes at <paramref name="index"/> as a little-endian integer, with a native-width index. The caller guarantees <c>index + 4 &lt;= span.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint ReadUInt32(ReadOnlySpan<byte> span, nint index)
+    {
+#if CHECKED
+        return System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(checked((int)index), 4));
+#else
+        uint value = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), index));
+        return BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value);
+#endif
+    }
+
+    /// <summary>Reads <c>span[index]</c> of a table, with a native-width index. The caller guarantees <c>index &lt; span.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T Get<T>(Span<T> span, nuint index)
+    {
+#if CHECKED
+        return span[checked((int)index)];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetReference(span), index);
+#endif
+    }
+
+    /// <summary>Writes <c>span[index] = value</c> of a table, with a native-width index. The caller guarantees <c>index &lt; span.Length</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Set<T>(Span<T> span, nuint index, T value)
+    {
+#if CHECKED
+        span[checked((int)index)] = value;
+#else
+        Unsafe.Add(ref MemoryMarshal.GetReference(span), index) = value;
+#endif
+    }
 }
