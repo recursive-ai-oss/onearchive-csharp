@@ -91,7 +91,7 @@ The references are the tools pinned in `tools/pins.tsv` (version, URL, SHA-256),
 | lzip | `lzip` |
 
 7-Zip (`7zz`), pigz, zlib's `minigzip`, bsdtar, GNU tar, Info-ZIP, cpio, ar, xorriso, cabextract and the RARLAB
-`rar`/`unrar` binaries are installed for interoperability tests and as references for later codecs.
+`rar`/`unrar` binaries are installed for interoperability tests and as references for the container and decoder rows.
 Every row records the reference's version string.
 
 ## Peak memory
@@ -118,7 +118,7 @@ SHA-256 in `tools/corpora.sha256`:
   lanterns, bricks and solitaire, kinds are frames, snapshots, saves, recordings and transfer. The generator is
   deterministic, and the manifest SHA-256 it prints is pinned per seed, so every host builds identical data.
   Dictionaries are trained on seed 1 and benchmarked on seed 2, per (game, kind). Rows for these payload sets
-  (ratio against dictionary size, speed on small frames) are defined when the dictionary codecs land.
+  (ratio against dictionary size, speed on small frames) are measured by `tools/zstd-encode-bench`, `tools/zstd-decode-bench`, `tools/lz4-bench` and `tools/small-bench`.
 
 ## Deflate, zlib and gzip
 
@@ -193,6 +193,10 @@ sides (for the brotli encoder, around the tool inside `BrotliBench` and from the
 - **Quick mode.** `BAR_QUICK=1` (with `tools/bar-x64/run.sh 0.4` or either `bar.sh`) cuts each input to its first 1 MiB and uses one
   repeat, to prove the scripts run; its numbers mean nothing. Use a private `BAR_LOCK_FILE` and `BAR_OUT`.
 - **Pass rule** as above. `run.sh 0.4 --list` shows the steps and their expected minutes.
+
+## Managed .NET comparison
+
+`bench/Managed/run.sh` compares our codecs with the fastest implementations written entirely in managed code (ZstdSharp, K4os, SharpCompress, SharpZipLib, DotNetZip, BrotliSharpLib and others, as packages used only from `bench/`). It is single-threaded (except one two-worker Zstandard row), memory to memory, best of three interleaved runs, and decodes each candidate's compressed output with our decoder to prove it is a real stream. Rows give speed and size of each candidate; the native tool is shown for information. It is not part of the pass rule above.
 
 ## Running
 

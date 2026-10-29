@@ -44,12 +44,18 @@ fix the cause, and add the minimized input (under 1 MB) with a regression test t
 A target added as one line in `FuzzTargets.All` is picked up by both drivers, the seed directory
 `seeds/<target>` is optional (a one-byte seed is used when absent), and `make-seeds.sh` is where its seeds go.
 
+## Codec targets
+
+Every decoder has a `<codec>-decode` target (`zstd`, `lz4`, `deflate`, `gzip`, `zlib`, `bzip2`, `lzma`, `xz`, `lzip`, `brotli`, `deflate64`, `ppmd`, `lzx`) and every encoder a `<codec>-encode-roundtrip` target (random input and options, then the decoder must return the input), including `zstd-train-roundtrip` for dictionary training. `fuzz list` prints them all. Seeds for `cab-read` and `lzx-decode` come from `seeds-cab.sh` (`fuzz seeds-cab DIR`).
+
 ## Archive targets
 
 `tar-read` (the tar reader on a seekable and a forward-only stream, which must agree), `archive-open` (detection, `Archive.Open`,
 listing, random access and extraction into a scratch directory, then a check that nothing was created outside it) and
 `tar-roundtrip` (entries built from the input are written and read back). Seeds come from `seeds-tar.sh`: GNU tar and bsdtar
 archives over a tree with long names, links and sparse files, and the hostile set from `testdata/tar/make-hostile.py`.
+
+Also covered: `cpio-read`, `cpio-roundtrip`, `ar-read`, `ar-roundtrip`, `iso-read`, `iso-roundtrip`, `sevenzip-read`, `sevenzip-roundtrip` and `cab-read`, with seeds from the matching `seeds-*.sh`.
 
 ## Zip and single-stream targets
 
@@ -66,7 +72,6 @@ set from `testdata/zip/make-hostile.py`.
 targets run with the password `fuzz-password`: WinZip AES and traditional headers, verifiers and authentication codes, 7z AES
 properties, encrypted headers and the wrong-password paths. The 7z read target caps the key-derivation power at 8 so that a
 mutated power is a limit error instead of a stall. Round trips write with the salt and IV hooks fixed, so two writes agree.
-Seeds for `cab-read` and `lzx-decode` come from `seeds-cab.sh` (`fuzz seeds-cab DIR`).
 
 `rar-read` reads the input as a RAR 5 archive from a seekable and from a forward-only stream (which must agree), then again after the
 header CRC-32 values along the block chain are repaired, so that mutated fields reach the parsers; later volumes, when asked for, are the

@@ -8,7 +8,7 @@ Two packages:
 - `RecursiveAI.OneCompress` - codecs and checksums.
 - `RecursiveAI.OneArchive` - archive containers and a simple `Archive` API, built on OneCompress.
 
-**Status: 0.5.0-preview.1.** OneCompress has Zstandard (frames, skippable frames, dictionaries and
+**Status: preview.** The latest release on nuget.org is 0.5.0-preview.1; this page describes the code on `main`, and the measurements below are from 0.5.0-preview.1. OneCompress has Zstandard (frames, skippable frames, dictionaries and
 dictionary training, long-distance matching, multithreaded compression in fixed-size jobs, the seekable
 format), LZ4 (block and frame), Deflate, zlib, gzip and Deflate64, LZMA, LZMA2, xz (with the branch and delta
 filters) and lzip, bzip2, Brotli (with its built-in dictionary), the LZX decoder, and CRC32, CRC32C, CRC64,
@@ -37,10 +37,9 @@ for example one directory per git worktree.
 
 Zstandard, LZ4, Deflate, zlib, gzip and the LZMA family (LZMA, LZMA2, xz, lzip) are preview while their speed is
 below the reference tools' in some rows. Their compression ratio and byte-identical output are already at the
-target; speed is what is still being tuned. The bzip2 decoder and the lzip decoder meet their targets and stay
-preview with the rest of this release. Brotli (compress is below the tool's speed at qualities 0 and 5, and quality 11 is
-2% larger), PPMd (decompression at the target on both machines; compression 0.85-0.91 of 7-Zip's speed, same sizes) are preview; the bzip2 encoder meets its target on both machines. Deflate64 and LZX meet the
-targets on both machines and stay preview with the rest of this release. The archive layer
+target; speed is what is still being tuned. Brotli (compress is below the tool's speed at qualities 0 and 5, and quality 11 is
+2% larger) and PPMd (decompression at the target on both machines; compression 0.85-0.91 of 7-Zip's speed, same sizes) are preview too.
+The bzip2 codec, the lzip decoder, Deflate64 and LZX meet their targets on both machines and stay preview with the rest. The archive layer
 is preview while the formats' interop and fuzz coverage grows. BCJ2 is not supported: 7z entries that use it are listed,
 and opening them is a typed "unsupported method" error. RAR 5 is read only: compressed entries raise a typed error.
 Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
@@ -77,10 +76,13 @@ speed at least 0.87 of the reference tool's, at every level. Measured memory to 
 snapshot payloads with trained dictionaries. Speed is ours divided by the reference (1.00 = same speed).
 x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0.402 with the JIT.
 
+The table is the 0.5.0-preview.1 measurement. Since then `main` has changed Deflate compression (levels 1-9), LZ4 levels 2-12,
+Zstandard levels 1-2 and 5-9, and dictionary training (see the CHANGELOG); those rows are marked and will be remeasured at the next release.
+
 | Rows | x64 | arm64 |
 |---|---|---|
-| Zstandard compress, levels 1-4 | 0.71-0.80; size within +0.94% | 0.76-0.86 |
-| Zstandard compress, levels -5 to 15 (other than 1-4) | 0.56-0.84; size within +0.93% | 0.63-0.87 (level -5 at the target) |
+| Zstandard compress, levels 1-4 (levels 1-2 faster on main) | 0.71-0.80; size within +0.94% | 0.76-0.86 |
+| Zstandard compress, levels -5 to 15 (other than 1-4; 5-9 changed on main) | 0.56-0.84; size within +0.93% | 0.63-0.87 (level -5 at the target) |
 | Zstandard compress, levels 16-19 | 0.76-0.85 (enwik8 16-18 at the target) | 0.78-0.87 |
 | Zstandard compress, levels 20 and 22 | 0.86-1.07; enwik8 level 22 size +1.17% | 0.90-1.02; enwik8 level 22 size +1.17% |
 | Zstandard decompress | 12 of 16 rows at the target; the rest 0.86-0.87 | 5 of 8 at the target; the rest 0.86-0.87 |
@@ -88,13 +90,13 @@ x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0
 | Zstandard multithreaded jobs (levels 1 and 3, 4 to 16 workers) | 0.62-0.86; size within +0.82% | 0.68-0.85 |
 | Game payloads with dictionaries, compress | per-tick frames 1.0-1.4x faster; snapshots and saves 0.26-0.58 at level 3, 0.06-0.39 at level 19 (size -4.8% to +0.44%) | 10 of 48 rows at the target |
 | Game payloads with dictionaries, decompress | 29 of 48 rows at the target; frames 1.02-1.44x faster; the rest 0.83-0.86 | not yet measured |
-| LZ4 compress | 0.58-0.82; level 2 size +2.2% (Silesia) | 0.54-0.83 |
+| LZ4 compress (changed on main: level 2 is now within 0.2% of the tool's size) | 0.58-0.82; level 2 size +2.2% (Silesia) | 0.54-0.83 |
 | LZ4 decompress | 0.80-0.90 | 0.82-0.89 |
 | Small payloads (256 B to 16 KiB) with a dictionary, reused encoder and decoder, Zstandard levels 1 and 3 | compress 0.26-0.74, decompress 0.68-1.06; size 0.73-1.01; no allocation per payload | not yet measured |
 | Small payloads with a dictionary, LZ4 | compress 0.27-0.86, decompress 0.45-1.31; size within +2.9% (level 3), +2.5% (fast levels) | not yet measured |
-| Deflate compress, one call, levels 1-9 (against libdeflate) | 0.58-0.81; size -1.71% to +0.61% | 0.60-0.88 |
+| Deflate compress, one call, levels 1-9 (against libdeflate; changed on main) | 0.58-0.81; size -1.71% to +0.61% | 0.60-0.88 |
 | Deflate compress, one call, levels 10-12 | Silesia 0.89-0.96, enwik8 0.84-0.86; size within +0.90% | at the target |
-| Deflate compress, streaming in 64 KiB pieces, levels 1-9 (against zlib-ng) | levels 1-4 0.56-0.79, Silesia 5-8 and enwik8 6, 7, 9 at the target; output 0.5-26% smaller | levels 7 and 8 at the target, the rest 0.64-0.79 |
+| Deflate compress, streaming in 64 KiB pieces, levels 1-9 (against zlib-ng; changed on main, where enwik8 level 7 is +0.14%) | levels 1-4 0.56-0.79, Silesia 5-8 and enwik8 6, 7, 9 at the target; output 0.5-26% smaller | levels 7 and 8 at the target, the rest 0.64-0.79 |
 | Deflate decompress | 0.60-0.71 of libdeflate, 0.88-0.97 of zlib-ng | 0.72-0.78 of libdeflate, 1.14-1.29 of zlib-ng |
 | bzip2 decompress (against `bzip2 -d`, start-up subtracted) | 1.28-1.47, at the target | 1.00-1.10, at the target |
 | xz compress, presets 0-3 | 0.71-1.29; size -0.29% to +0.79%, except preset 1 (+2.29% Silesia, +1.44% enwik8) and enwik8 preset 3 (+1.28%) | 0.69-1.14; same sizes |
@@ -113,7 +115,7 @@ x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0
 | LZX decompress (against `cabextract` 1.11, on a cabinet from our test encoder) | 1.06, at the target | 1.01, at the target |
 | PPMd compress, 7z PPMD, mx 1, 5 and 9 (against `7zz`) | 0.89, 0.87 and 0.86 (mx 1 and 5 at the target); size equal | 0.85, 0.87 and 0.91 (mx 5 and 9 at the target); size equal |
 | PPMd decompress, mx 1, 5 and 9 | 0.91-0.95, at the target | 0.89-0.93, at the target |
-| Dictionary training | 2.9-73x the tool's time on one thread, 1.4-26x with the default thread count; 5-30x its memory | 3-35x the tool's time, 20-40x its memory; output with our dictionaries within 1% of the tool's overall, up to 2.6% larger on tiny training sets and 1.1-2.1% larger with 64 KiB and larger dictionaries on Silesia |
+| Dictionary training (changed on main: 3-9 times faster, 4-12 times less memory) | 2.9-73x the tool's time on one thread, 1.4-26x with the default thread count; 5-30x its memory | 3-35x the tool's time, 20-40x its memory; output with our dictionaries within 1% of the tool's overall, up to 2.6% larger on tiny training sets and 1.1-2.1% larger with 64 KiB and larger dictionaries on Silesia |
 
 Peak memory of the LZMA family's in-memory calls is 0.5-2 GB on these corpora, because they hold the whole input and
 output; the tools stream (5-675 MB). Use the stream types to bound it.
@@ -141,7 +143,9 @@ one archive. AES needs `System.Security.Cryptography.Aes`, which the browser doe
 - `src/OneCompress`, `src/OneArchive` - the two packages.
 - `tests/` - xUnit tests.
 - `fuzz/` - in-process mutational fuzz driver and targets.
-- `bench/` - benchmarks; the only project that may reference comparison libraries.
+- `bench/` - the bar runner, micro-benchmarks and `bench/Managed`, which compares against the fastest managed .NET libraries; the only projects that may reference comparison libraries.
+- `tools/` - corpus and reference-tool scripts, table generators, the hash-matrix runner and the per-codec bench drivers.
+- `docs/` - normative notes on each codec and container (formats, tuning choices, benchmark method).
 - `smoke/aot-trim`, `smoke/wasm` - NativeAOT/trim and browser-wasm smoke apps.
 - `build/ci.sh` - the script CI and developers run.
 

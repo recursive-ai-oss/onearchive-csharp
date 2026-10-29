@@ -12,6 +12,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - Zstandard: levels 1-2 compress 3-11% faster (most on text), with identical output.
 - Zstandard dictionary training: COVER and fast-COVER training is 3-9 times faster and uses 4-12 times less memory (a 1024 x 8 KiB sample set trains in under a second in under 100 MiB, from 6.6 s and 1.2 GiB). D-mers are counted once per size and the parameter search is guided; sets up to 256 KiB are searched exhaustively. The new `SearchMode` option selects the search. Trained dictionaries differ from 0.5 (still identical on every platform and thread count) and compress held-out game data within about 1% of the previous ones and of `zstd --train` (the worst case is +1.2% against the tool, at a 4 KiB dictionary).
 
+### Added
+
+- `bench/Managed`: compares each codec with the fastest managed .NET implementations (ZstdSharp, K4os, SharpCompress and others), reporting speed and size per row.
+
 ## [0.5.0-preview.1] - 2026-10-29
 
 Everything is still preview and carries `[Experimental]`. The README has the new measurements from both machines.

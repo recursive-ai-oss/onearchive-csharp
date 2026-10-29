@@ -41,7 +41,7 @@ Rules:
 
 ## Options
 
-- Every tunable is a property on a sealed options class: `ZstdDecompressionOptions`, later `ZstdOptions`.
+- Every tunable is a property on a sealed options class: `ZstdDecompressionOptions`, `ZstdCompressionOptions`.
   No tunable is an overload or an extra parameter.
 - Properties are `init`-only, with the default in the property's XML doc and as a `Default...` constant when it is a
   number. The class has a shared `Default` instance. Options are read once, when a decoder or stream is constructed.

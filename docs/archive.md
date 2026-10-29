@@ -51,8 +51,7 @@ uncompressed tar. `.tar.bz2` and `.bz2` can be read, not written.
 
 ### Detection
 
-1. Compression from the first bytes: Zstandard `28 B5 2F FD`, LZ4 frame `04 22 4D 18`, gzip `1F 8B`, bzip2 `BZh`, xz `FD 37 7A 58 5A 00`, lzip `LZIP`,
-   xz `FD 37 7A 58 5A 00`. Magic bytes win over the file name.
+1. Compression from the first bytes: Zstandard `28 B5 2F FD`, LZ4 frame `04 22 4D 18`, gzip `1F 8B`, bzip2 `BZh`, xz `FD 37 7A 58 5A 00`, lzip `LZIP`. Magic bytes win over the file name.
 2. If compressed, the first 512 bytes of the decompressed stream are examined; otherwise the first 512 bytes.
 3. Container from those bytes: `PK\3\4` (also `PK\5\6`, the whole of an empty zip, and the span markers `PK\7\8` and `PK00`) is
    zip; `MSCF` is a cabinet (see `cab-reader.md`; `.cab` by extension); `ustar` at offset 257 is tar; a block with no magic but a valid header checksum, numeric mode and size fields and a
