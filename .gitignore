@@ -14,3 +14,4 @@ feed/
 .DS_Store
 /corpus/
 /findings/
+__pycache__/
