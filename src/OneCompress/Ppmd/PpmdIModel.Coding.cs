@@ -108,15 +108,46 @@ public sealed partial class PpmdIModel
 
     private void MaskAll()
     {
-        int s = U32(_minContext + 4);
-        int n = _m[_minContext] + 1;
+        Span<byte> mem = _m;
+        int s = PpmdRaw.U32(mem, _minContext + 4);
+        int n = PpmdRaw.At(mem, _minContext) + 1;
         for (int i = 0; i < n; i++, s += StateSize)
         {
-            _mask[_m[s]] = 0;
+            PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)) = 0;
         }
     }
 
     private uint Correct(uint sum) => sum > _range ? _range : sum;
+
+    int IPpmdModel.EncodeBlock(ReadOnlySpan<byte> source, int maxPending)
+    {
+        int i = 0;
+        while (i < source.Length && _outLen - _outStart < maxPending)
+        {
+            EncodeSymbol(source[i++]);
+        }
+
+        return i;
+    }
+
+    int IPpmdModel.DecodeBlock(ReadOnlySpan<byte> input, ref int pos, Span<byte> destination, out int count)
+    {
+        int n = 0;
+        while (n < destination.Length)
+        {
+            int sym = DecodeSymbol(input, ref pos);
+            if (sym < 0)
+            {
+                count = n;
+                return sym;
+            }
+
+            destination[n++] = (byte)sym;
+        }
+
+        count = n;
+        return 0;
+    }
 
     /// <summary>Encodes one byte, or the end marker when <paramref name="symbol"/> is -1.</summary>
     /// <param name="symbol">A byte value 0 to 255, or -1.</param>
@@ -124,24 +155,26 @@ public sealed partial class PpmdIModel
     /// <exception cref="CompressionException">The model's frequency total passed the range coder's capacity.</exception>
     public void EncodeSymbol(int symbol)
     {
+        Span<byte> mem = _m;
         if (!_rangeActive)
         {
             throw new InvalidOperationException("Call StartEncoding first.");
         }
 
         int mc = _minContext;
-        if (_m[mc] != 0)
+        if (PpmdRaw.At(mem, mc) != 0)
         {
-            int s = U32(mc + 4);
-            uint summFreq = Correct((uint)U16(mc + 2));
+            int s = PpmdRaw.U32(mem, mc + 4);
+            PpmdRaw.Prefetch(mem, PpmdRaw.U32(mem, s + 2));
+            uint summFreq = Correct((uint)PpmdRaw.U16(mem, mc + 2));
             if (summFreq == 0)
             {
                 throw CapacityError();
             }
 
-            if (_m[s] == symbol)
+            if (PpmdRaw.At(mem, s) == symbol)
             {
-                Encode(0, _m[s + 1], summFreq);
+                Encode(0, PpmdRaw.At(mem, s + 1), summFreq);
                 EncNorm();
                 _foundState = s;
                 Update1_0();
@@ -149,21 +182,21 @@ public sealed partial class PpmdIModel
             }
 
             _prevSuccess = 0;
-            uint sum = _m[s + 1];
-            int i = _m[mc];
+            uint sum = PpmdRaw.At(mem, s + 1);
+            int i = PpmdRaw.At(mem, mc);
             do
             {
                 s += StateSize;
-                if (_m[s] == symbol)
+                if (PpmdRaw.At(mem, s) == symbol)
                 {
-                    Encode(sum, _m[s + 1], summFreq);
+                    Encode(sum, PpmdRaw.At(mem, s + 1), summFreq);
                     EncNorm();
                     _foundState = s;
                     Update1();
                     return;
                 }
 
-                sum += _m[s + 1];
+                sum += PpmdRaw.At(mem, s + 1);
             }
             while (--i != 0);
 
@@ -175,23 +208,25 @@ public sealed partial class PpmdIModel
         {
             int idx = BinSummIndex();
             int s = mc + 2;
+            PpmdRaw.Prefetch(mem, PpmdRaw.U32(mem, mc + 4));
             uint pr = _binSumm[idx];
             uint bound = (_range >> 14) * pr;
             pr -= (pr + (1u << (PpmdTables.PeriodBits - 2))) >> PpmdTables.PeriodBits;
-            if (_m[s] == symbol)
+            if (PpmdRaw.At(mem, s) == symbol)
             {
                 _binSumm[idx] = (ushort)(pr + (1u << PpmdTables.IntBits));
                 _range = bound;
                 EncNorm();
-                uint freq = _m[s + 1];
-                int c = U32(s + 2);
+                uint freq = PpmdRaw.At(mem, s + 1);
+                int c = PpmdRaw.U32(mem, s + 2);
                 _foundState = s;
                 _prevSuccess = 1;
                 _runLength++;
-                _m[s + 1] = (byte)(freq + (freq < 196 ? 1u : 0u));
+                PpmdRaw.At(mem, s + 1) = (byte)(freq + (freq < 196 ? 1u : 0u));
                 if (_orderFall == 0 && c >= _unitsStart)
                 {
                     _maxContext = _minContext = c;
+                    PpmdRaw.PrefetchStats(mem, c);
                 }
                 else
                 {
@@ -206,7 +241,7 @@ public sealed partial class PpmdIModel
             _low += bound;
             _range = (_range & ~((uint)PpmdTables.BinScale - 1)) - bound;
             Array.Fill(_mask, (byte)0xFF);
-            _mask[_m[s]] = 0;
+            PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)) = 0;
             _prevSuccess = 0;
         }
 
@@ -215,11 +250,11 @@ public sealed partial class PpmdIModel
             EncNorm();
 
             mc = _minContext;
-            int numMasked = _m[mc];
+            int numMasked = PpmdRaw.At(mem, mc);
             do
             {
                 _orderFall++;
-                int suffix = U32(mc + 8);
+                int suffix = PpmdRaw.U32(mem, mc + 8);
                 if (suffix == 0)
                 {
                     return; // end marker
@@ -227,25 +262,25 @@ public sealed partial class PpmdIModel
 
                 mc = suffix;
             }
-            while (_m[mc] == numMasked);
+            while (PpmdRaw.At(mem, mc) == numMasked);
 
             _minContext = mc;
             int see = MakeEscFreq(numMasked, out uint escFreq);
-            int s = U32(mc + 4);
-            int n = _m[mc] + 1;
+            int s = PpmdRaw.U32(mem, mc + 4);
+            int n = PpmdRaw.At(mem, mc) + 1;
             uint sum = 0;
             for (int i = 0; i < n; i++, s += StateSize)
             {
-                if (_m[s] == symbol)
+                if (PpmdRaw.At(mem, s) == symbol)
                 {
                     uint low = sum;
-                    uint freq = _m[s + 1];
+                    uint freq = PpmdRaw.At(mem, s + 1);
                     SeeUpdate(see);
                     _foundState = s;
                     uint total = sum + escFreq;
                     for (int j = i; j < n; j++)
                     {
-                        total += (uint)(_m[s + 1] & _mask[_m[s]]);
+                        total += (uint)(PpmdRaw.At(mem, s + 1) & PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)));
                         s += StateSize;
                     }
 
@@ -261,7 +296,7 @@ public sealed partial class PpmdIModel
                     return;
                 }
 
-                sum += (uint)(_m[s + 1] & _mask[_m[s]]);
+                sum += (uint)(PpmdRaw.At(mem, s + 1) & PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)));
             }
 
             {
@@ -288,6 +323,9 @@ public sealed partial class PpmdIModel
     // bytes again with more after them. Before the model is updated a symbol changes only the range coder, a few scalars and some
     // adaptive probabilities; those are journaled here and restored by Rollback.
     private bool _journaling;
+
+    // Input bytes that must remain before a symbol for it to be decoded without a journal: well above 2 * (MaxOrder + 2) + 4.
+    private const int JournalMargin = 512;
     private uint _jRange;
     private uint _jCode;
     private uint _jLow;
@@ -405,17 +443,27 @@ public sealed partial class PpmdIModel
     /// <exception cref="InvalidOperationException">Decoding was not started.</exception>
     public int DecodeSymbol(ReadOnlySpan<byte> input, ref int pos)
     {
+        Span<byte> mem = _m;
         if (!_rangeActive)
         {
             throw new InvalidOperationException("Call StartDecoding first.");
         }
 
-        BeginSymbol(pos);
-        int mc = _minContext;
-        if (_m[mc] != 0)
+        // A symbol reads at most two bytes per escape level and a model is at most MaxOrder + 1 levels deep, so with this much input
+        // left it cannot run past the end and needs no journal to roll back.
+        bool journal = input.Length - pos < JournalMargin;
+        _journaling = journal;
+        if (journal)
         {
-            int s = U32(mc + 4);
-            uint summFreq = Correct((uint)U16(mc + 2));
+            BeginSymbol(pos);
+        }
+
+        int mc = _minContext;
+        if (PpmdRaw.At(mem, mc) != 0)
+        {
+            int s = PpmdRaw.U32(mem, mc + 4);
+            PpmdRaw.Prefetch(mem, PpmdRaw.U32(mem, s + 2));
+            uint summFreq = Correct((uint)PpmdRaw.U16(mem, mc + 2));
             if (summFreq == 0 || _range / summFreq == 0)
             {
                 return -2;
@@ -424,7 +472,7 @@ public sealed partial class PpmdIModel
             _range /= summFreq;
             uint count = _code / _range;
             uint hiCnt = count;
-            uint f = _m[s + 1];
+            uint f = PpmdRaw.At(mem, s + 1);
 
             if ((int)(count -= f) < 0)
             {
@@ -436,17 +484,18 @@ public sealed partial class PpmdIModel
                 }
 
                 _foundState = s;
-                int sym = _m[s];
+
+                int sym = PpmdRaw.At(mem, s);
                 Update1_0();
                 return sym;
             }
 
             _prevSuccess = 0;
-            int i = _m[mc];
+            int i = PpmdRaw.At(mem, mc);
             do
             {
                 s += StateSize;
-                f = _m[s + 1];
+                f = PpmdRaw.At(mem, s + 1);
                 if ((int)(count -= f) < 0)
                 {
                     Decode(hiCnt - count - f, f);
@@ -457,7 +506,8 @@ public sealed partial class PpmdIModel
                     }
 
                     _foundState = s;
-                    int sym = _m[s];
+
+                    int sym = PpmdRaw.At(mem, s);
                     Update1();
                     return sym;
                 }
@@ -478,10 +528,15 @@ public sealed partial class PpmdIModel
         {
             int idx = BinSummIndex();
             int s = mc + 2;
+            PpmdRaw.Prefetch(mem, PpmdRaw.U32(mem, mc + 4));
             uint pr = _binSumm[idx];
             uint size0 = (_range >> 14) * pr;
-            _jBinIndex = idx;
-            _jBinOld = (ushort)pr;
+            if (journal)
+            {
+                _jBinIndex = idx;
+                _jBinOld = (ushort)pr;
+            }
+
             pr -= (pr + (1u << (PpmdTables.PeriodBits - 2))) >> PpmdTables.PeriodBits;
 
             if (_code < size0)
@@ -494,16 +549,17 @@ public sealed partial class PpmdIModel
                     return Rollback(ref pos);
                 }
 
-                uint freq = _m[s + 1];
-                int c = U32(s + 2);
-                int sym = _m[s];
+                uint freq = PpmdRaw.At(mem, s + 1);
+                int c = PpmdRaw.U32(mem, s + 2);
+                int sym = PpmdRaw.At(mem, s);
                 _foundState = s;
                 _prevSuccess = 1;
                 _runLength++;
-                _m[s + 1] = (byte)(freq + (freq < 196 ? 1u : 0u));
+                PpmdRaw.At(mem, s + 1) = (byte)(freq + (freq < 196 ? 1u : 0u));
                 if (_orderFall == 0 && c >= _unitsStart)
                 {
                     _maxContext = _minContext = c;
+                    PpmdRaw.PrefetchStats(mem, c);
                 }
                 else
                 {
@@ -519,7 +575,7 @@ public sealed partial class PpmdIModel
             _code -= size0;
             _range = (_range & ~((uint)PpmdTables.BinScale - 1)) - size0;
             Array.Fill(_mask, (byte)0xFF);
-            _mask[_m[s]] = 0;
+            PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)) = 0;
             _prevSuccess = 0;
         }
 
@@ -532,11 +588,11 @@ public sealed partial class PpmdIModel
             }
 
             mc = _minContext;
-            int numMasked = _m[mc];
+            int numMasked = PpmdRaw.At(mem, mc);
             do
             {
                 _orderFall++;
-                int suffix = U32(mc + 8);
+                int suffix = PpmdRaw.U32(mem, mc + 8);
                 if (suffix == 0)
                 {
                     return -1;
@@ -544,14 +600,14 @@ public sealed partial class PpmdIModel
 
                 mc = suffix;
             }
-            while (_m[mc] == numMasked);
+            while (PpmdRaw.At(mem, mc) == numMasked);
 
-            int s = U32(mc + 4);
-            int num = _m[mc] + 1;
+            int s = PpmdRaw.U32(mem, mc + 4);
+            int num = PpmdRaw.At(mem, mc) + 1;
             uint hiCnt = 0;
             for (int i = 0, t = s; i < num; i++, t += StateSize)
             {
-                hiCnt += (uint)(_m[t + 1] & _mask[_m[t]]);
+                hiCnt += (uint)(PpmdRaw.At(mem, t + 1) & PpmdRaw.Slot(_mask, PpmdRaw.At(mem, t)));
             }
 
             _minContext = mc;
@@ -571,7 +627,7 @@ public sealed partial class PpmdIModel
                 hiCnt = count;
                 for (;;)
                 {
-                    count -= (uint)(_m[s + 1] & _mask[_m[s]]);
+                    count -= (uint)(PpmdRaw.At(mem, s + 1) & PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)));
                     s += StateSize;
                     if ((int)count < 0)
                     {
@@ -580,7 +636,7 @@ public sealed partial class PpmdIModel
                 }
 
                 s -= StateSize;
-                uint f = _m[s + 1];
+                uint f = PpmdRaw.At(mem, s + 1);
                 Decode(hiCnt - count - f, f);
                 DecNorm(input, ref pos);
                 if (pos > input.Length)
@@ -590,7 +646,7 @@ public sealed partial class PpmdIModel
 
                 SeeUpdate(see);
                 _foundState = s;
-                int sym = _m[s];
+                int sym = PpmdRaw.At(mem, s);
                 Update2();
                 return sym;
             }

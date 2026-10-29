@@ -19,6 +19,8 @@ internal sealed class PpmdEncoderCore
     /// <summary>Gets a value indicating whether the stream has been finished (the final block was fully written).</summary>
     internal bool IsFinished => _finished;
 
+    private const int MaxPendingOutput = 4096;
+
     private bool Drain(Span<byte> destination, ref int written)
     {
         ReadOnlySpan<byte> pending = _model.PendingOutput;
@@ -56,7 +58,8 @@ internal sealed class PpmdEncoderCore
                 break;
             }
 
-            _model.EncodeSymbol(source[consumed++]);
+            // A run of symbols between drains: one call per chunk instead of three interface calls per byte.
+            consumed += _model.EncodeBlock(source[consumed..], MaxPendingOutput);
         }
 
         if (!isFinalBlock)
@@ -185,7 +188,21 @@ internal sealed class PpmdDecoderCore
                 throw new CompressionLimitException(_format, "MaxOutputSize", _maxOutputSize, _produced + 1);
             }
 
-            int sym = _model.DecodeSymbol(source, ref pos);
+            long room = destination.Length - written;
+            if (_outputSize >= 0)
+            {
+                room = Math.Min(room, _outputSize - _produced);
+            }
+
+            room = Math.Min(room, _maxOutputSize - _produced);
+            int sym = _model.DecodeBlock(source, ref pos, destination.Slice(written, (int)room), out int n);
+            written += n;
+            _produced += n;
+            if (sym == 0)
+            {
+                continue;
+            }
+
             if (sym == -3)
             {
                 // The model is unchanged and pos is where the symbol began: the caller presents these bytes again with more after them.
@@ -198,26 +215,20 @@ internal sealed class PpmdDecoderCore
                 break;
             }
 
-            if (sym < 0)
+            long at = _inputOffset + pos;
+            if (sym == -2)
             {
-                long at = _inputOffset + pos;
-                if (sym == -2)
-                {
-                    throw new CompressionFormatException(_format, at, "a symbol that fits the model's frequency table");
-                }
-
-                if (_outputSize >= 0)
-                {
-                    throw new CompressionFormatException(_format, at, $"{_outputSize} decoded bytes but the end marker came after {_produced}");
-                }
-
-                _done = true;
-                status = OperationStatus.Done;
-                break;
+                throw new CompressionFormatException(_format, at, "a symbol that fits the model's frequency table");
             }
 
-            destination[written++] = (byte)sym;
-            _produced++;
+            if (_outputSize >= 0)
+            {
+                throw new CompressionFormatException(_format, at, $"{_outputSize} decoded bytes but the end marker came after {_produced}");
+            }
+
+            _done = true;
+            status = OperationStatus.Done;
+            break;
         }
 
         consumed = pos;
