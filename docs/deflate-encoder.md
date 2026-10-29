@@ -31,15 +31,15 @@ the mapping is by number.
 | Level | Parser | Hash | Chain | Nice | MaxLazy | Tail | Good | Passes |
 |---|---|---|---|---|---|---|---|---|
 | 0 | stored blocks of at most 65535 bytes | | | | | | | |
-| 1 | greedy, one probe, 2-way bucket | 4 bytes, 17 bits | 1 | 32 | 32 | 4 | | |
-| 2 | greedy | 4 bytes, 15 bits | 12 | 40 | 32 | 4 | | |
-| 3 | greedy | 4 bytes, 15 bits | 24 | 48 | 48 | 4 | | |
+| 1 | greedy, one probe, 2-way bucket | 4 bytes, 17 bits | 1 | 32 | 16 | 4 | | |
+| 2 | greedy | 4 bytes, 15 bits | 10 | 40 | 32 | 4 | | |
+| 3 | greedy | 4 bytes, 15 bits | 18 | 48 | 48 | 4 | | |
 | 4 | lazy | 4 bytes, 15 bits | 8 | 32 | 16 | | 8 | |
-| 5 | lazy | 3 bytes, 15 bits | 12 | 48 | 24 | | 12 | |
-| 6 | lazy | 3 bytes, 15 bits | 20 | 64 | 64 | | 16 | |
-| 7 | lazy | 3 bytes, 15 bits | 48 | 100 | 100 | | 16 | |
-| 8 | lazy, look-ahead 2 | 3 bytes, 15 bits | 128 | 160 | 200 | | 16 | |
-| 9 | lazy, look-ahead 2 | 3 bytes, 15 bits | 512 | 258 | 258 | | 16 | |
+| 5 | lazy | 3 bytes, 15 bits | 10 | 48 | 24 | | 12 | |
+| 6 | lazy | 3 bytes, 15 bits | 20 | 64 | 64 | | 8 | |
+| 7 | lazy | 3 bytes, 15 bits | 32 | 100 | 100 | | 16 | |
+| 8 | lazy, look-ahead 2 | 3 bytes, 15 bits | 48 | 160 | 200 | | 16 | |
+| 9 | lazy, look-ahead 2 | 3 bytes, 15 bits | 64 | 258 | 258 | | 16 | |
 | 10 | optimal, binary tree | 4 bytes 16 bits + 3 bytes 16 bits | 24 | 64 | | | | 1 |
 | 11 | optimal | as 10 | 64 | 128 | | | | 2 |
 | 12 | optimal | as 10 | 256 | 258 | | | | 3 |
@@ -96,6 +96,13 @@ integer squaring with 8 fractional bits (no floating point); match lengths add t
 costs are those of the fixed codes (literal 8.5 bits, length 7 bits plus extra bits, distance slot 5 bits). The statistics are
 updated with each emitted run and halved after every run. With `Passes` > 1 the run is parsed again with prices from the previous pass
 and the cheapest result is kept. Matches longer than `Nice` end the search at that position and are taken whole.
+
+### Sequence storage and writing
+
+The parsers of levels 1 to 9 (and the two strategies that bypass the finder) do not store literals. A block holds the matches in
+order, each with the input position it starts at; the literals between two matches are the input bytes between them, and the writer
+reads them back from the input. The entry count that decides when a block is checked still counts literals and matches together,
+so block boundaries and the bytes written are the same as if every literal had been stored. Levels 10 to 12 store every entry.
 
 ## Blocks
 

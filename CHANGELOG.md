@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Changed
+
+- Deflate, zlib and gzip: faster one-shot and streaming compression at levels 1-9. The greedy and lazy parsers no longer store literals and the block writer emits literal runs straight from the input (identical bytes by itself); levels 1-3 and 5-9 use shallower hash-chain searches (level 1 enters fewer positions of long matches, levels 6-9 also give up on the lazy look-ahead sooner), so their compressed bytes differ from 0.5 while staying within 1% of libdeflate's size. Levels 0, 4 and 10-12 and Deflate64 are unchanged.
+
 ## [0.5.0-preview.1] - 2026-10-29
 
 Everything is still preview and carries `[Experimental]`. The README has the new measurements from both machines.

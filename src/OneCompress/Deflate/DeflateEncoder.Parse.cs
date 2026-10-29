@@ -50,15 +50,15 @@ internal readonly struct LevelParameters
     public static LevelParameters For(int level) => level switch
     {
         0 => new() { Mode = ParseMode.Stored },
-        1 => new() { Mode = ParseMode.Greedy, HashBits = 17, HashBytes = 4, Chain = 1, Nice = 32, MaxLazy = 32, Tail = 4, SkipAfter = 16 },
-        2 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 4, Chain = 12, Nice = 40, MaxLazy = 32, Tail = 4, SkipAfter = 16 },
-        3 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 4, Chain = 24, Nice = 48, MaxLazy = 48, Tail = 4, SkipAfter = 16 },
+        1 => new() { Mode = ParseMode.Greedy, HashBits = 17, HashBytes = 4, Chain = 1, Nice = 32, MaxLazy = 16, Tail = 4, SkipAfter = 16 },
+        2 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 4, Chain = 10, Nice = 40, MaxLazy = 32, Tail = 4, SkipAfter = 16 },
+        3 => new() { Mode = ParseMode.Greedy, HashBits = 15, HashBytes = 4, Chain = 18, Nice = 48, MaxLazy = 48, Tail = 4, SkipAfter = 16 },
         4 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 4, Chain = 8, Nice = 32, MaxLazy = 16, Good = 8, SkipAfter = 16 },
-        5 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 12, Nice = 48, MaxLazy = 24, Good = 12, SkipAfter = 16 },
-        6 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 20, Nice = 64, MaxLazy = 64, Good = 16, SkipAfter = 16 },
-        7 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 48, Nice = 100, MaxLazy = 100, Good = 16, SkipAfter = 16 },
-        8 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 128, Nice = 160, MaxLazy = 200, Good = 16, Lazy2 = 4 },
-        9 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 512, Nice = 258, MaxLazy = 258, Good = 16, Lazy2 = 4 },
+        5 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 10, Nice = 48, MaxLazy = 24, Good = 12, SkipAfter = 16 },
+        6 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 20, Nice = 64, MaxLazy = 64, Good = 8, SkipAfter = 16 },
+        7 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 32, Nice = 100, MaxLazy = 100, Good = 16, SkipAfter = 16 },
+        8 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 48, Nice = 160, MaxLazy = 200, Good = 16, Lazy2 = 4 },
+        9 => new() { Mode = ParseMode.Lazy, HashBits = 15, HashBytes = 3, Chain = 64, Nice = 258, MaxLazy = 258, Good = 16, Lazy2 = 4 },
         10 => new() { Mode = ParseMode.Optimal, Chain = 24, Nice = 64, Passes = 1 },
         11 => new() { Mode = ParseMode.Optimal, Chain = 64, Nice = 128, Passes = 2 },
         _ => new() { Mode = ParseMode.Optimal, Chain = 256, Nice = 258, Passes = 3 },
@@ -83,19 +83,24 @@ public sealed partial class DeflateEncoder
     private static int Gain(int length, int distance) => length * 4 - (31 - System.Numerics.BitOperations.LeadingZeroCount((uint)distance));
 
     // The parsers below keep the entry count and the position in locals and store them back before they call anything that
-    // reads the encoder's state (CheckBlock, which may close the block). An entry is written at words[count] only while
-    // count < checkAt <= capacity, because a check follows every entry.
+    // reads the encoder's state (CheckBlock, which may close the block). A match is written at words[matches] only while
+    // matches <= count < checkAt <= capacity, because a check follows every entry.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void PutLiteral(uint[] words, uint[] literalCounts, ref int count, byte value)
+    private static void PutLiteral(uint[] literalCounts, ref int count, byte value)
     {
-        DeflateEncRaw.Set(words, count++, (uint)value << 9);
+        // A literal is only counted: the bytes of a run of literals are read back from the window when the block is written
+        // (see DeflateSequenceBuffer), so nothing is stored per literal.
+        count++;
         DeflateEncRaw.Increment(literalCounts, value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void PutMatch(uint[] words, uint[] literalCounts, uint[] distanceCounts, ref int count, int length, int distance)
+    private static void PutMatch(uint[] words, uint[] starts, uint[] literalCounts, uint[] distanceCounts, ref int count, ref int matches, int position, int length, int distance)
     {
-        DeflateEncRaw.Set(words, count++, (uint)length | ((uint)(distance - 1) << 9));
+        // Match number m is words[m] with the window position it starts at in starts[m]; count also counts the literals.
+        count++;
+        DeflateEncRaw.Set(words, matches, (uint)length | ((uint)(distance - 1) << 9));
+        DeflateEncRaw.Set(starts, matches++, (uint)position);
         DeflateEncRaw.Increment(literalCounts, 257 + DeflateEncRaw.Get(DeflateSymbols.LengthSlot, length));
         DeflateEncRaw.Increment(distanceCounts, DeflateSymbols.DistanceSlot(distance));
     }
@@ -103,14 +108,13 @@ public sealed partial class DeflateEncoder
     private void ParseLiterals(int limit)
     {
         byte[] window = _window;
-        uint[] words = _sequences.Words;
         uint[] literalCounts = _sequences.LiteralLengthCounts;
         int count = _sequences.CountValue;
         int checkAt = _checkAt;
         int position = _position;
         while (position < limit)
         {
-            PutLiteral(words, literalCounts, ref count, window[position++]);
+            PutLiteral(literalCounts, ref count, window[position++]);
             if (count >= checkAt)
             {
                 _sequences.CountValue = count;
@@ -130,9 +134,11 @@ public sealed partial class DeflateEncoder
     {
         byte[] window = _window;
         uint[] words = _sequences.Words;
+        uint[] starts = _sequences.Starts;
         uint[] literalCounts = _sequences.LiteralLengthCounts;
         uint[] distanceCounts = _sequences.DistanceCounts;
         int count = _sequences.CountValue;
+        int matches = _sequences.MatchCountValue;
         int checkAt = _checkAt;
         int position = _position;
         while (position < limit)
@@ -146,25 +152,28 @@ public sealed partial class DeflateEncoder
 
             if (run >= DeflateTables.MinMatchLength)
             {
-                PutMatch(words, literalCounts, distanceCounts, ref count, run, 1);
+                PutMatch(words, starts, literalCounts, distanceCounts, ref count, ref matches, position, run, 1);
                 position += run;
             }
             else
             {
-                PutLiteral(words, literalCounts, ref count, window[position++]);
+                PutLiteral(literalCounts, ref count, window[position++]);
             }
 
             if (count >= checkAt)
             {
                 _sequences.CountValue = count;
+                _sequences.MatchCountValue = matches;
                 _position = position;
                 CheckBlock();
                 count = _sequences.CountValue;
+                matches = _sequences.MatchCountValue;
                 checkAt = _checkAt;
             }
         }
 
         _sequences.CountValue = count;
+        _sequences.MatchCountValue = matches;
         _position = position;
     }
 
@@ -174,9 +183,11 @@ public sealed partial class DeflateEncoder
         LevelParameters p = _parameters;
         byte[] window = _window;
         uint[] words = _sequences.Words;
+        uint[] starts = _sequences.Starts;
         uint[] literalCounts = _sequences.LiteralLengthCounts;
         uint[] distanceCounts = _sequences.DistanceCounts;
         int count = _sequences.CountValue;
+        int matches = _sequences.MatchCountValue;
         int checkAt = _checkAt;
         int position = _position;
         int fill = _fill;
@@ -197,7 +208,7 @@ public sealed partial class DeflateEncoder
 
             if (length >= DeflateTables.MinMatchLength && (length > 3 || distance <= GreedyTooFar))
             {
-                PutMatch(words, literalCounts, distanceCounts, ref count, length, distance);
+                PutMatch(words, starts, literalCounts, distanceCounts, ref count, ref matches, position, length, distance);
                 int end = position + length;
                 {
                     int last = Math.Min(end, insertEnd);
@@ -215,16 +226,18 @@ public sealed partial class DeflateEncoder
             }
             else
             {
-                PutLiteral(words, literalCounts, ref count, window[position++]);
+                PutLiteral(literalCounts, ref count, window[position++]);
                 misses++;
             }
 
             if (count >= checkAt)
             {
                 _sequences.CountValue = count;
+                _sequences.MatchCountValue = matches;
                 _position = position;
                 CheckBlock();
                 count = _sequences.CountValue;
+                matches = _sequences.MatchCountValue;
                 checkAt = _checkAt;
             }
 
@@ -233,12 +246,13 @@ public sealed partial class DeflateEncoder
                 int extra = Math.Min(Math.Min((misses - skipT) >> SkipShift, limit - position), checkAt - count - 1);
                 for (int i = 0; i < extra; i++)
                 {
-                    PutLiteral(words, literalCounts, ref count, window[position++]);
+                    PutLiteral(literalCounts, ref count, window[position++]);
                 }
             }
         }
 
         _sequences.CountValue = count;
+        _sequences.MatchCountValue = matches;
         _position = position;
     }
 
@@ -251,9 +265,11 @@ public sealed partial class DeflateEncoder
         LevelParameters p = _parameters;
         byte[] window = _window;
         uint[] words = _sequences.Words;
+        uint[] starts = _sequences.Starts;
         uint[] literalCounts = _sequences.LiteralLengthCounts;
         uint[] distanceCounts = _sequences.DistanceCounts;
         int count = _sequences.CountValue;
+        int matches = _sequences.MatchCountValue;
         int checkAt = _checkAt;
         int position = _position;
         int fill = _fill;
@@ -273,7 +289,7 @@ public sealed partial class DeflateEncoder
 
             if (length != 0)
             {
-                PutMatch(words, literalCounts, distanceCounts, ref count, length, distance);
+                PutMatch(words, starts, literalCounts, distanceCounts, ref count, ref matches, position, length, distance);
                 int end = position + length;
                 {
                     int last = Math.Min(end, insertEnd);
@@ -291,16 +307,18 @@ public sealed partial class DeflateEncoder
             }
             else
             {
-                PutLiteral(words, literalCounts, ref count, window[position++]);
+                PutLiteral(literalCounts, ref count, window[position++]);
                 misses++;
             }
 
             if (count >= checkAt)
             {
                 _sequences.CountValue = count;
+                _sequences.MatchCountValue = matches;
                 _position = position;
                 CheckBlock();
                 count = _sequences.CountValue;
+                matches = _sequences.MatchCountValue;
                 checkAt = _checkAt;
             }
 
@@ -309,12 +327,13 @@ public sealed partial class DeflateEncoder
                 int extra = Math.Min(Math.Min((misses - skipT) >> SkipShift, limit - position), checkAt - count - 1);
                 for (int i = 0; i < extra; i++)
                 {
-                    PutLiteral(words, literalCounts, ref count, window[position++]);
+                    PutLiteral(literalCounts, ref count, window[position++]);
                 }
             }
         }
 
         _sequences.CountValue = count;
+        _sequences.MatchCountValue = matches;
         _position = position;
     }
 
@@ -326,9 +345,11 @@ public sealed partial class DeflateEncoder
         LevelParameters p = _parameters;
         byte[] window = _window;
         uint[] words = _sequences.Words;
+        uint[] starts = _sequences.Starts;
         uint[] literalCounts = _sequences.LiteralLengthCounts;
         uint[] distanceCounts = _sequences.DistanceCounts;
         int count = _sequences.CountValue;
+        int matches = _sequences.MatchCountValue;
         int checkAt = _checkAt;
         int position = _position;
         int fill = _fill;
@@ -353,14 +374,16 @@ public sealed partial class DeflateEncoder
 
             if (length < DeflateTables.MinMatchLength)
             {
-                PutLiteral(words, literalCounts, ref count, window[position++]);
+                PutLiteral(literalCounts, ref count, window[position++]);
                 misses++;
                 if (count >= checkAt)
                 {
                     _sequences.CountValue = count;
+                    _sequences.MatchCountValue = matches;
                     _position = position;
                     CheckBlock();
                     count = _sequences.CountValue;
+                    matches = _sequences.MatchCountValue;
                     checkAt = _checkAt;
                 }
 
@@ -369,7 +392,7 @@ public sealed partial class DeflateEncoder
                     int extra = Math.Min(Math.Min((misses - skipT) >> SkipShift, limit - position), checkAt - count - 1);
                     for (int i = 0; i < extra; i++)
                     {
-                        PutLiteral(words, literalCounts, ref count, window[position++]);
+                        PutLiteral(literalCounts, ref count, window[position++]);
                     }
                 }
 
@@ -388,16 +411,18 @@ public sealed partial class DeflateEncoder
                 if (distance2 > 0 && Gain(length2, distance2) > Gain(length, distance) + LazyMargin
                     && !(length2 == DeflateTables.MinMatchLength && distance2 > TooFar))
                 {
-                    PutLiteral(words, literalCounts, ref count, window[position]);
+                    PutLiteral(literalCounts, ref count, window[position]);
                     position = next;
                     length = length2;
                     distance = distance2;
                     if (count >= checkAt)
                     {
                         _sequences.CountValue = count;
+                        _sequences.MatchCountValue = matches;
                         _position = position;
                         CheckBlock();
                         count = _sequences.CountValue;
+                        matches = _sequences.MatchCountValue;
                         checkAt = _checkAt;
                     }
 
@@ -412,26 +437,30 @@ public sealed partial class DeflateEncoder
                     if (distance3 > 0 && Gain(length3, distance3) > Gain(length, distance) + p.Lazy2
                         && !(length3 == DeflateTables.MinMatchLength && distance3 > TooFar))
                     {
-                        PutLiteral(words, literalCounts, ref count, window[position]);
+                        PutLiteral(literalCounts, ref count, window[position]);
                         if (count >= checkAt)
                         {
                             _sequences.CountValue = count;
+                            _sequences.MatchCountValue = matches;
                             _position = position + 1;
                             CheckBlock();
                             count = _sequences.CountValue;
+                            matches = _sequences.MatchCountValue;
                             checkAt = _checkAt;
                         }
 
-                        PutLiteral(words, literalCounts, ref count, window[position + 1]);
+                        PutLiteral(literalCounts, ref count, window[position + 1]);
                         position = next2;
                         length = length3;
                         distance = distance3;
                         if (count >= checkAt)
                         {
                             _sequences.CountValue = count;
+                            _sequences.MatchCountValue = matches;
                             _position = position;
                             CheckBlock();
                             count = _sequences.CountValue;
+                            matches = _sequences.MatchCountValue;
                             checkAt = _checkAt;
                         }
 
@@ -444,7 +473,7 @@ public sealed partial class DeflateEncoder
 
             // Take the match at position; hashedTo is the first position not yet in the chains.
             misses = 0;
-            PutMatch(words, literalCounts, distanceCounts, ref count, length, distance);
+            PutMatch(words, starts, literalCounts, distanceCounts, ref count, ref matches, position, length, distance);
             int matchEnd = position + length;
             int insertLast = Math.Min(matchEnd, insertEnd);
             finder.InsertRange(Math.Max(hashedTo, position + 1), insertLast);
@@ -453,14 +482,17 @@ public sealed partial class DeflateEncoder
             if (count >= checkAt)
             {
                 _sequences.CountValue = count;
+                _sequences.MatchCountValue = matches;
                 _position = position;
                 CheckBlock();
                 count = _sequences.CountValue;
+                matches = _sequences.MatchCountValue;
                 checkAt = _checkAt;
             }
         }
 
         _sequences.CountValue = count;
+        _sequences.MatchCountValue = matches;
         _position = position;
     }
 }

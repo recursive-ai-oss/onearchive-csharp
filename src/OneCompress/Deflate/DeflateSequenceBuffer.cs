@@ -22,6 +22,12 @@ public sealed class DeflateSequenceBuffer
     public const int DistanceSymbolCount = 30;
 
     private readonly uint[] _sequences;
+
+    // The encoder's parsers use the buffer in run mode: only matches are stored (in _sequences, in the same layout), each with the
+    // window position it starts at in _starts, and the literals between matches are not stored at all because the writer reads
+    // them back from the input. _count still counts literals and matches together, so block sizes mean the same in both modes.
+    private readonly uint[]? _starts;
+    private int _matchCount;
     private readonly uint[] _literalLengthFrequencies = new uint[LiteralLengthSymbolCount + 2];
     private readonly uint[] _distanceFrequencies = new uint[32];
     private int _count;
@@ -30,9 +36,19 @@ public sealed class DeflateSequenceBuffer
     /// <param name="capacity">The most literals and matches one block holds; at least 1.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="capacity"/> is below 1.</exception>
     public DeflateSequenceBuffer(int capacity)
+        : this(capacity, runMode: false)
+    {
+    }
+
+    internal DeflateSequenceBuffer(int capacity, bool runMode)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
         _sequences = new uint[capacity];
+        if (runMode)
+        {
+            _starts = new uint[capacity];
+        }
+
         Clear();
     }
 
@@ -70,6 +86,20 @@ public sealed class DeflateSequenceBuffer
     // The parsers keep the entry count in a local while they run, and store it back through these before they call anything else.
     internal uint[] Words => _sequences;
 
+    internal bool IsRunMode => _starts is not null;
+
+    // Run mode only: the window position each match starts at, and how many matches there are.
+    internal uint[] Starts => _starts!;
+
+    internal int MatchCountValue
+    {
+        get => _matchCount;
+        set => _matchCount = value;
+    }
+
+    // Run mode only: the window index of the first byte of the block, which the writer subtracts from the match positions.
+    internal int RunBase { get; set; }
+
     internal int CountValue
     {
         get => _count;
@@ -84,6 +114,7 @@ public sealed class DeflateSequenceBuffer
     public void Clear()
     {
         _count = 0;
+        _matchCount = 0;
         Array.Clear(_literalLengthFrequencies);
         Array.Clear(_distanceFrequencies);
         _literalLengthFrequencies[DeflateTables.EndOfBlockSymbol] = 1;
