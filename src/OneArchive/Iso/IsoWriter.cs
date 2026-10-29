@@ -650,6 +650,34 @@ public sealed class IsoWriter : ArchiveWriter
             k++;
         }
 
+        // RRIP 4.1.4: a name may be cut into several NM entries, so the first one fills what is left of the record.
+        if (k < rr.Count && rr[k][0] == (byte)'N' && rr[k][1] == (byte)'M')
+        {
+            int room = avail - 28 - used - 5;
+            if (room > 0)
+            {
+                byte[] whole = rr[k];
+                byte[] first = new byte[5 + room];
+                first[0] = (byte)'N';
+                first[1] = (byte)'M';
+                first[2] = (byte)first.Length;
+                first[3] = 1;
+                first[4] = (byte)(whole[4] | 1);
+                Array.Copy(whole, 5, first, 5, room);
+                byte[] rest = new byte[whole.Length - room];
+                rest[0] = (byte)'N';
+                rest[1] = (byte)'M';
+                rest[2] = (byte)rest.Length;
+                rest[3] = 1;
+                rest[4] = whole[4];
+                Array.Copy(whole, 5 + room, rest, 5, whole.Length - 5 - room);
+                plan.Inline.Add(first);
+                used += first.Length;
+                rr = [.. rr];
+                rr[k] = rest;
+            }
+        }
+
         plan.Length = sysStart + used + 28 + ((used + 28) & 1);
         int index = k;
         while (index < rr.Count)
@@ -866,9 +894,9 @@ public sealed class IsoWriter : ArchiveWriter
         if (special == Special.RootDot)
         {
             // SUSP 5.5 and RRIP 4: identify the Rock Ridge protocol.
-            byte[] id = "IEEE_1282"u8.ToArray();
-            byte[] des = "THE IEEE 1282 PROTOCOL PROVIDES SUPPORT FOR POSIX FILE SYSTEM SEMANTICS."u8.ToArray();
-            byte[] src = "PLEASE CONTACT THE IEEE STANDARDS DEPARTMENT, PISCATAWAY, NJ, USA FOR THE 1282 SPECIFICATION."u8.ToArray();
+            byte[] id = "RRIP_1991A"u8.ToArray();
+            byte[] des = "THE ROCK RIDGE INTERCHANGE PROTOCOL PROVIDES SUPPORT FOR POSIX FILE SYSTEM SEMANTICS"u8.ToArray();
+            byte[] src = "PLEASE CONTACT DISC PUBLISHER FOR SPECIFICATION SOURCE.  SEE PUBLISHER IDENTIFIER IN PRIMARY VOLUME DESCRIPTOR FOR CONTACT INFORMATION."u8.ToArray();
             byte[] body = new byte[4 + id.Length + des.Length + src.Length];
             body[0] = (byte)id.Length;
             body[1] = (byte)des.Length;
