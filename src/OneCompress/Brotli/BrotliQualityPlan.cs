@@ -121,7 +121,7 @@ internal sealed class BrotliQualityPlan
                 p.ChainDepth = 1;
                 p.SkipShift = 6;
                 p.FullInsertLength = 4;
-                p.FastHashLength = 7;
+                p.FastHashLength = 5;
                 break;
             case 1:
                 p.BlockSize = 1 << 17;
@@ -129,16 +129,16 @@ internal sealed class BrotliQualityPlan
                 p.ChainDepth = 1;
                 p.SkipShift = 6;
                 p.FullInsertLength = 4;
-                p.FastHashLength = 7;
+                p.FastHashLength = 6;
                 break;
             case 2:
                 p.BlockSize = 1 << 17;
                 p.HashBits = 16;
                 p.BucketBits = 2;
                 p.ChainDepth = 2;
-                p.SkipShift = 5;
+                p.SkipShift = 6;
                 p.SparseInsert = 32;
-                p.FastHashLength = 6;
+                p.FastHashLength = 5;
                 break;
             case 3:
                 p.BlockSize = 1 << 18;

@@ -151,8 +151,8 @@ internal static class BrotliEncRaw
     }
 
     /// <summary>
-    /// <c>t[index]</c> of a histogram of ints. The caller guarantees <c>0 &lt;= index &lt; t.Length</c>: the index is a byte and the
-    /// histogram has 256 entries.
+    /// <c>t[index]</c> of a histogram of ints. The caller guarantees <c>0 &lt;= index &lt; t.Length</c>: the index is a byte (plus a multiple
+    /// of 256 when several histograms share an array of that many) or a symbol of the histogram's alphabet.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ref int Count(int[] t, int index)

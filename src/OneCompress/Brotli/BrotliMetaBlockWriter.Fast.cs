@@ -30,6 +30,8 @@ internal sealed partial class BrotliMetaBlockWriter
         BrotliFastCommand[] cmds = fb.Commands;
         int nCmd = fb.Count;
         int literalCount = fb.LiteralCount;
+        // Runs of literals are long (on average four a command or more) or short; each gets the loop that suits it. Neither changes a bit written.
+        bool longRuns = literalCount >= 4 * nCmd;
         // ---- Literal histogram: the input between the copies. ----
         int[]? litHistogram = null;
         if (literalCount > 0)
@@ -43,30 +45,41 @@ internal sealed partial class BrotliMetaBlockWriter
                 ref BrotliFastCommand c = ref BrotliEncRaw.Command(cmds, j);
                 int insert = c.Insert;
                 int end = pos + insert;
-                // The first eight literals of a run are always counted, those past its end with an increment of 0 (a mask, not a branch):
-                // the length of a run is the least predictable thing in this loop. The bytes read past the run's end fall on the next bytes of
-                // the block or, at the very end, on the margin of the buffer. Four tables side by side keep a byte repeated inside a run
-                // from waiting on the previous increment of its counter.
-                BrotliEncRaw.Count(counts, BrotliEncRaw.At(data, pos)) += (0 - insert) >> 31 & 1;
-                BrotliEncRaw.Count(counts, 256 + BrotliEncRaw.At(data, pos + 1)) += (1 - insert) >> 31 & 1;
-                BrotliEncRaw.Count(counts, 512 + BrotliEncRaw.At(data, pos + 2)) += (2 - insert) >> 31 & 1;
-                BrotliEncRaw.Count(counts, 768 + BrotliEncRaw.At(data, pos + 3)) += (3 - insert) >> 31 & 1;
-                BrotliEncRaw.Count(counts, BrotliEncRaw.At(data, pos + 4)) += (4 - insert) >> 31 & 1;
-                BrotliEncRaw.Count(counts, 256 + BrotliEncRaw.At(data, pos + 5)) += (5 - insert) >> 31 & 1;
-                BrotliEncRaw.Count(counts, 512 + BrotliEncRaw.At(data, pos + 6)) += (6 - insert) >> 31 & 1;
-                BrotliEncRaw.Count(counts, 768 + BrotliEncRaw.At(data, pos + 7)) += (7 - insert) >> 31 & 1;
-                if (insert > 8)
+                if (longRuns)
                 {
-                    int i = pos + 8;
-                    for (; i + 4 <= end; i += 4)
+                    // The first eight literals of a run are always counted, those past its end with an increment of 0 (a mask, not a branch):
+                    // the length of a run is the least predictable thing in this loop. The bytes read past the run's end fall on the next bytes of
+                    // the block or, at the very end, on the margin of the buffer. Four tables side by side keep a byte repeated inside a run
+                    // from waiting on the previous increment of its counter.
+                    BrotliEncRaw.Count(counts, BrotliEncRaw.At(data, pos)) += (0 - insert) >> 31 & 1;
+                    BrotliEncRaw.Count(counts, 256 + BrotliEncRaw.At(data, pos + 1)) += (1 - insert) >> 31 & 1;
+                    BrotliEncRaw.Count(counts, 512 + BrotliEncRaw.At(data, pos + 2)) += (2 - insert) >> 31 & 1;
+                    BrotliEncRaw.Count(counts, 768 + BrotliEncRaw.At(data, pos + 3)) += (3 - insert) >> 31 & 1;
+                    BrotliEncRaw.Count(counts, BrotliEncRaw.At(data, pos + 4)) += (4 - insert) >> 31 & 1;
+                    BrotliEncRaw.Count(counts, 256 + BrotliEncRaw.At(data, pos + 5)) += (5 - insert) >> 31 & 1;
+                    BrotliEncRaw.Count(counts, 512 + BrotliEncRaw.At(data, pos + 6)) += (6 - insert) >> 31 & 1;
+                    BrotliEncRaw.Count(counts, 768 + BrotliEncRaw.At(data, pos + 7)) += (7 - insert) >> 31 & 1;
+                    if (insert > 8)
                     {
-                        BrotliEncRaw.Count(counts, BrotliEncRaw.At(data, i))++;
-                        BrotliEncRaw.Count(counts, 256 + BrotliEncRaw.At(data, i + 1))++;
-                        BrotliEncRaw.Count(counts, 512 + BrotliEncRaw.At(data, i + 2))++;
-                        BrotliEncRaw.Count(counts, 768 + BrotliEncRaw.At(data, i + 3))++;
-                    }
+                        int i = pos + 8;
+                        for (; i + 4 <= end; i += 4)
+                        {
+                            BrotliEncRaw.Count(counts, BrotliEncRaw.At(data, i))++;
+                            BrotliEncRaw.Count(counts, 256 + BrotliEncRaw.At(data, i + 1))++;
+                            BrotliEncRaw.Count(counts, 512 + BrotliEncRaw.At(data, i + 2))++;
+                            BrotliEncRaw.Count(counts, 768 + BrotliEncRaw.At(data, i + 3))++;
+                        }
 
-                    for (; i < end; i++)
+                        for (; i < end; i++)
+                        {
+                            BrotliEncRaw.Count(counts, BrotliEncRaw.At(data, i))++;
+                        }
+                    }
+                }
+                else
+                {
+                    // Runs are mostly empty or a byte or two: a loop over each costs less than eight counts.
+                    for (int i = pos; i < end; i++)
                     {
                         BrotliEncRaw.Count(counts, BrotliEncRaw.At(data, i))++;
                     }
@@ -193,28 +206,60 @@ internal sealed partial class BrotliMetaBlockWriter
 
             int count = c.Insert;
             int litEnd = litPos + count;
-            // The usual run is short, and its length is the least predictable thing in the loop, so the first eight literals are always
-            // looked up and written, those past the run's end with a length of 0 (a mask, not a branch). The code table has 256 entries
-            // and the input is read only inside the run for the bits written; the extra reads fall on the next bytes of the block or,
-            // at the very end, on the margin of the buffer.
-            uint a0 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos)) & (uint)((0 - count) >> 31);
-            uint a1 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 1)) & (uint)((1 - count) >> 31);
-            uint a2 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 2)) & (uint)((2 - count) >> 31);
-            uint a3 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 3)) & (uint)((3 - count) >> 31);
-            uint a4 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 4)) & (uint)((4 - count) >> 31);
-            uint a5 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 5)) & (uint)((5 - count) >> 31);
-            uint a6 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 6)) & (uint)((6 - count) >> 31);
-            uint a7 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 7)) & (uint)((7 - count) >> 31);
-            bits.PutPair(a0, a1);
-            bits.PutPair(a2, a3);
-            bits.PutPair(a4, a5);
-            bits.PutPair(a6, a7);
-            if (count > 8)
+            if (longRuns)
             {
-                int i = litPos + 8;
+                // The usual run is short, and its length is the least predictable thing in the loop, so the first eight literals are always
+                // looked up and written, those past the run's end with a length of 0 (a mask, not a branch). The code table has 256 entries
+                // and the input is read only inside the run for the bits written; the extra reads fall on the next bytes of the block or,
+                // at the very end, on the margin of the buffer.
+                uint a0 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos)) & (uint)((0 - count) >> 31);
+                uint a1 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 1)) & (uint)((1 - count) >> 31);
+                uint a2 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 2)) & (uint)((2 - count) >> 31);
+                uint a3 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 3)) & (uint)((3 - count) >> 31);
+                uint a4 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 4)) & (uint)((4 - count) >> 31);
+                uint a5 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 5)) & (uint)((5 - count) >> 31);
+                uint a6 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 6)) & (uint)((6 - count) >> 31);
+                uint a7 = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 7)) & (uint)((7 - count) >> 31);
+                bits.PutPair(a0, a1);
+                bits.PutPair(a2, a3);
+                bits.PutPair(a4, a5);
+                bits.PutPair(a6, a7);
+                if (count > 8)
+                {
+                    int i = litPos + 8;
+                    for (; i + 1 < litEnd; i += 2)
+                    {
+                        // Two codes of at most 15 bits fit beside the fewer than 8 bits already held.
+                        bits.PutPair(BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, i)), BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, i + 1)));
+                    }
+
+                    if (i < litEnd)
+                    {
+                        uint a = BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, i));
+                        bits.Put(a & 0xFFFF, (int)(a >> 16));
+                    }
+                }
+            }
+            else if (count <= 4)
+            {
+                // The usual short run: four lookups whether or not the run is that long, the ones past its end with a length of 0. The
+                // code table has 256 entries and the input is read only inside the run for the bits written; bytes past it are read from
+                // the next bytes of the block or, at the very end, from the margin of the buffer.
+                uint a0 = count > 0 ? BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos)) : 0;
+                uint a1 = count > 1 ? BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 1)) : 0;
+                uint a2 = count > 2 ? BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 2)) : 0;
+                uint a3 = count > 3 ? BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, litPos + 3)) : 0;
+                if (count > 0)
+                {
+                    bits.PutPair(a0, a1);
+                    bits.PutPair(a2, a3);
+                }
+            }
+            else
+            {
+                int i = litPos;
                 for (; i + 1 < litEnd; i += 2)
                 {
-                    // Two codes of at most 15 bits fit beside the fewer than 8 bits already held.
                     bits.PutPair(BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, i)), BrotliEncRaw.Entry(litTable, BrotliEncRaw.At(data, i + 1)));
                 }
 

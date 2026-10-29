@@ -53,9 +53,9 @@ Large-window brotli (window above 24) is not part of RFC 7932 and is not produce
 
 | Q | Block | Table | Hash bytes | Depth | Long table | Parse | Contexts, splitting | Dictionary |
 |---|---|---|---|---|---|---|---|---|
-| 0 | 128 KiB | 2^15 heads | 7 | 1 | | greedy, one probe | none | no |
-| 1 | 128 KiB | 2^17 heads | 7 | 1 | | greedy, one probe | none | no |
-| 2 | 128 KiB | 2^16 x 2 | 6 | 2 | | greedy | none | no |
+| 0 | 128 KiB | 2^15 heads | 5 | 1 | | greedy, one probe | none | no |
+| 1 | 128 KiB | 2^17 heads | 6 | 1 | | greedy, one probe | none | no |
+| 2 | 128 KiB | 2^16 x 2 | 5 | 2 | | greedy | none | no |
 | 3 | 256 KiB | 2^15 x 8 | 6 | 4 | | lazy 1 | literal contexts | no |
 | 4 | 1 MiB | 2^15 x 8 | 6 | 8 | | lazy 1 | + block splitting | no |
 | 5 | 4 MiB | 2^16 x 16 | 6 | 8 | | lazy 1 | + context mode search | no |
@@ -68,7 +68,7 @@ Large-window brotli (window above 24) is not part of RFC 7932 and is not produce
 
 "Table" is the number of hash values times the slots each owns ("x 16"); "Depth" is the number of entries of a bucket (or tree nodes at q10
 and q11) visited per position. Qualities 0 to 5 skip ahead on incompressible data: after a miss the position advances by
-`1 + (bytes since the last copy >> S)`, with S = 6 at qualities 0 and 1 and 5 at qualities 2 to 5 (the positions skipped over are still
+`1 + (bytes since the last copy >> S)`, with S = 6 at qualities 0 to 2 and 5 at qualities 3 to 5 (the positions skipped over are still
 entered in the table at q4 and q5; at q2 and q3 see "Sparse entry" below). Qualities 6 to 11 do not skip. The nice length (a match this long ends the search) is 64, and 128 at qualities 10 and 11. The
 table is the single source; `BrotliQualityPlan.For` must match it.
 
@@ -79,11 +79,11 @@ table is the single source; `BrotliQualityPlan.For` must match it.
   shifted down to `HashBits`. (The tables of q0 to q2 do not shift the kept bytes up: their hash is `((word & (2^(8n) - 1)) * 0x9E3779B185EBCA87 mod 2^64) >> (64 - HashBits)`.) A position is entered only if every byte its hash reads is inside the block; the others are entered with
   the next block, because bytes past the end of the block are not input yet.
 - **Hash head** (q0, q1): one candidate per bucket, the latest position, stored with the four bytes found there (a slot is two
-  ints) so that a candidate that does not agree on them is refused without reading the input at its position. Hashes are of 7 bytes,
-  taken from the 64-bit word at the position, so a table candidate always agrees on seven bytes before its length is measured and
+  ints) so that a candidate that does not agree on them is refused without reading the input at its position. Hashes are of 5 bytes at q0 and 6 at q1,
+  taken from the 64-bit word at the position, so a table candidate always agrees on that many bytes before its length is measured and
   copies found through the table are at least that long (`FastHashLength` in the plan). Only positions with eight bytes inside the
   block are probed or entered; the last seven bytes of a block are literals.
-- **Two-way table** (q2): each hash value (6 bytes, taken the same way) owns two slots, the two latest positions, each with its four
+- **Two-way table** (q2): each hash value (5 bytes, taken the same way) owns two slots, the two latest positions, each with its four
   bytes; entering a position moves the newer slot to the older and writes the new one. Both are candidates, newest first. This is the
   bucketed table of q2 to q9 with a bucket size of 2 and a depth of 2, minus the entry counts.
 - **Bucketed table** (q2 to q9): each hash value owns `2^BucketBits` slots holding the latest positions with that hash, the oldest slot
@@ -144,9 +144,10 @@ finds, and entering them costs a hash and two stores each. The measured price is
 
 **Command records (q0 to q2).** The parse computes each command's insert-and-copy symbol, extra bits, distance symbol and distance
 context at the moment it finds the command, and counts the symbols into the histograms the writer builds its prefix codes from. The
-literal histogram is counted by the writer over the input between copies. The writer reads the literals of a run through a lookup
-that reads eight bytes past the start of the run whatever its length and writes zero bits for those past its end, so the buffer keeps
-sixteen bytes beyond the data.
+literal histogram is counted by the writer over the input between copies. In a block whose commands carry four literals or more on average,
+the writer counts and writes the first eight literals of every run through lookups that read eight bytes from the start of the run
+whatever its length and give zero bits for those past its end; other blocks use plain loops. Neither changes a bit written. The buffer
+keeps sixteen bytes beyond the data for those reads.
 
 ## Shortest-path parse (q10, q11)
 
