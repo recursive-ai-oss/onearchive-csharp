@@ -52,7 +52,11 @@ chain buffer when an xz block has filters. Steady-state decoding allocates nothi
   the errors do not depend on where the input is cut. Probability and input reads in this loop and the wide match copy skip bounds checks behind the accessors in `LzmaRaw`
   (bounds-checked in the `Checked` build): a symbol starts only with 32 input bytes left and consumes at most 25, and every probability
   index is a fixed offset of the model layout plus a state or tree node inside its table. Literals are decoded in their own methods and
-  the bit trees are unrolled so that the range coder state stays in registers; none of this changes a decision.
+  the bit trees are unrolled so that the range coder state stays in registers; none of this changes a decision. Details that only
+  affect speed: range and code are held as 64-bit values (both stay below 2^32), tree nodes are read through bounds-checked views of
+  the probability array, a matched literal reads the probabilities of both possible next nodes before the current bit is known,
+  the state transitions are arithmetic or a table lookup rather than branches, and the symbol methods are marked for full
+  optimization so the runtime's profile-guided tiering does not replace them.
 
 ## LZMA2
 
