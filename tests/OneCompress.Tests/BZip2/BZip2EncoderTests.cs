@@ -309,6 +309,65 @@ public class BZip2EncoderTests
         }
     }
 
+    // Blocks long enough for the second sorting phase: repeats longer than the first phase compares, a period that divides the block,
+    // a period that doesn't, near-constant data, and text with copied passages.
+    [Fact]
+    public void SorterMatchesRotationSortOnRepetitiveBlocks()
+    {
+        var sorter = new BZip2BlockSorter();
+        var rng = new Random(2024);
+        var blocks = new List<byte[]>();
+        foreach (int period in new[] { 1, 2, 3, 7, 31, 32, 33, 100, 1000 })
+        {
+            foreach (int n in new[] { 5000, 5001, 7919 })
+            {
+                byte[] unit = new byte[period];
+                rng.NextBytes(unit);
+                blocks.Add(Enumerable.Range(0, n).Select(i => unit[i % period]).ToArray());
+            }
+        }
+
+        {
+            byte[] mostlyZero = new byte[9000];
+            for (int i = 0; i < 40; i++)
+            {
+                mostlyZero[rng.Next(mostlyZero.Length)] = (byte)(1 + rng.Next(3));
+            }
+
+            blocks.Add(mostlyZero);
+        }
+
+        {
+            byte[] text = Text(3000, 5);
+            byte[] copied = new byte[12_000];
+            for (int i = 0; i < copied.Length; i += 300)
+            {
+                int from = rng.Next(text.Length - 300);
+                text.AsSpan(from, 300).CopyTo(copied.AsSpan(i));
+            }
+
+            blocks.Add(copied);
+            blocks.Add([.. text, .. text, .. text.Take(77)]);
+        }
+
+        foreach (byte[] block in blocks)
+        {
+            int n = block.Length;
+            byte[] doubled = [.. block, .. block];
+            int[] rotations = Enumerable.Range(0, n).ToArray();
+            Array.Sort(rotations, (x, y) =>
+            {
+                int c = doubled.AsSpan(x, n).SequenceCompareTo(doubled.AsSpan(y, n));
+                return c != 0 ? c : x.CompareTo(y);
+            });
+            byte[] expected = rotations.Select(p => block[(p + n - 1) % n]).ToArray();
+            byte[] last = new byte[n];
+            int row = sorter.Sort(block, last);
+            Assert.Equal(expected, last);
+            Assert.Equal(Array.IndexOf(rotations, 0), row);
+        }
+    }
+
     [Fact]
     public void HuffmanBuilderLimitsLengthsAndFillsTheCodeSpace()
     {

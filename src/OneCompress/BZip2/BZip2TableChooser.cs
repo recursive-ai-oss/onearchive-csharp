@@ -101,6 +101,7 @@ public sealed class BZip2TableChooser
         for (int g = 0; g < groups; g++)
         {
             int t = (int)((long)g * k / groups);
+            _selectors[g] = (byte)t;
             int from = g * GroupSize;
             foreach (ushort s in symbols.Slice(from, Math.Min(GroupSize, symbols.Length - from)))
             {
@@ -113,41 +114,77 @@ public sealed class BZip2TableChooser
             _builder.Build(_freq.AsSpan(t * stride, alphabetSize), _lengths.AsSpan(t * stride, alphabetSize), maxLength);
         }
 
-        Span<int> cost = stackalloc int[MaxTables];
+        // A group's cost under every table is added up in one go: each symbol's code lengths, one per table, sit in one 64-bit word as ten-bit
+        // lanes (a group's cost is at most 50 x 20 = 1000, which fits a lane, so no lane carries into the next).
+        Span<ulong> packed = stackalloc ulong[BZip2HuffmanTable.MaxAlphabetSize];
+        const ulong LaneMask = (1UL << 10) - 1;
+        Span<bool> changed = stackalloc bool[MaxTables];
         for (int pass = 0; pass < Passes; pass++)
         {
-            Array.Clear(_freq);
+            for (int s = 0; s < alphabetSize; s++)
+            {
+                ulong word = 0;
+                for (int t = 0; t < k; t++)
+                {
+                    word |= (ulong)_lengths[(t * stride) + s] << (10 * t);
+                }
+
+                packed[s] = word;
+            }
+
+            // The symbol counts of each table follow the groups it holds: a group that moves is taken out of one table's counts and put into
+            // the other's, which gives the counts a rebuild from scratch would.
+            bool moved = false;
+            changed.Clear();
             for (int g = 0; g < groups; g++)
             {
                 ReadOnlySpan<ushort> group = symbols.Slice(g * GroupSize, Math.Min(GroupSize, symbols.Length - (g * GroupSize)));
-                cost[..k].Clear();
+                ulong cost = 0;
                 foreach (ushort s in group)
                 {
-                    for (int t = 0; t < k; t++)
-                    {
-                        cost[t] += _lengths[(t * stride) + s];
-                    }
+                    cost += packed[s];
                 }
 
                 int best = 0;
+                ulong bestCost = cost & LaneMask;
                 for (int t = 1; t < k; t++)
                 {
-                    if (cost[t] < cost[best])
+                    ulong c = (cost >> (10 * t)) & LaneMask;
+                    if (c < bestCost)
                     {
                         best = t;
+                        bestCost = c;
                     }
                 }
 
-                _selectors[g] = (byte)best;
-                foreach (ushort s in group)
+                int previous = _selectors[g];
+                if (best != previous)
                 {
-                    _freq[(best * stride) + s]++;
+                    moved = true;
+                    changed[previous] = true;
+                    changed[best] = true;
+                    _selectors[g] = (byte)best;
+                    foreach (ushort s in group)
+                    {
+                        _freq[(previous * stride) + s]--;
+                        _freq[(best * stride) + s]++;
+                    }
                 }
             }
 
+            if (!moved)
+            {
+                // Nothing changed, so the tables would be rebuilt from the same counts and every later pass would choose the same again.
+                break;
+            }
+
+            // A table whose counts did not change gets the lengths it already has, so only the others are rebuilt.
             for (int t = 0; t < k; t++)
             {
-                _builder.Build(_freq.AsSpan(t * stride, alphabetSize), _lengths.AsSpan(t * stride, alphabetSize), maxLength);
+                if (changed[t])
+                {
+                    _builder.Build(_freq.AsSpan(t * stride, alphabetSize), _lengths.AsSpan(t * stride, alphabetSize), maxLength);
+                }
             }
         }
 

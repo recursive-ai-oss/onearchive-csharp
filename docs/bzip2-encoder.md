@@ -25,17 +25,21 @@ capacity is `Level × 100 000 − 19` bytes of output; a unit (a literal, or a r
 run in progress at the end of a block is written out with its count and the next block begins afresh (F3). The block CRC is the CRC of the input
 bytes of the block (F7); the combined CRC is `rotl(combined, 1) xor blockCrc`.
 2. **Sort** (`BZip2BlockSorter`). The last column of the sorted cyclic rotations of the block, and the row of rotation 0 (F6). Ties between
-equal rotations (a periodic block) go by rotation index, so the lowest index comes first and the origin is its row. Method: prefix doubling
-over group ranks, starting from the first two bytes, sorting each unsorted group by (rank of the rotation `h` bytes on, rotation index);
-see the class remarks. Any correct sort with the same tie rule gives the same bytes.
+equal rotations (a periodic block) go by rotation index, so the lowest index comes first and the origin is its row. The sorted order is
+fully defined by that rule, so any correct sort gives the same bytes; the method below is a speed choice, not a format fact.
+Method: the rotations are bucketed by their first two bytes (the block is read as cyclic), and each bucket is sorted on the five bytes after
+them, with the rotation index in the low 24 bits of the same 64-bit word as the key (large buckets are first split on one key byte at a time,
+smaller ones go to a quicksort with a branch-free partition). Rotations tied on those seven bytes go to prefix doubling over group ranks
+(Manber and Myers; Larsson and Sadakane): a group tied on `h` bytes is sorted by (rank of the rotation `h` bytes on, rotation index), which
+orders it on `2h` bytes, and only groups that are still tied are revisited as `h` doubles.
 3. **Move-to-front and zero runs** (`BZip2BlockWriter`). The list starts as the bytes in use, ascending. A move-to-front position 0 repeated
 *n* times is *n* in bijective base 2, least significant digit first, `RUNA` (0) for digit 1 and `RUNB` (1) for digit 2; any other position *p*
-is symbol *p* + 1; the block ends with symbol `used + 1` (F8). A run still open at the end is written before it.
+is symbol *p* + 1; the block ends with symbol `used + 1` (F8). A run still open at the end is written before it. The first sixteen list positions are kept in a vector register while a block is coded; this computes what a position-by-position search and shift would.
 4. **Tables** (`BZip2TableChooser`, `BZip2HuffmanBuilder`). Symbols are split in groups of 50 (the last may be shorter), one selector per
 group, ceil(symbols / 50) in all (F4). The number of tables is 2 for fewer than 200 symbols, 3 below 600, 4 below 1 200, 5 below 2 400, else 6.
 The groups start dealt to the tables in runs of consecutive groups (group *g* of *G* to table *g × k / G*, integer division), each table's
 lengths are built from its groups' symbol counts, and six passes follow: each group goes to the table with the least total code length for
-its symbols (ties to the lower number), then each table is rebuilt from the groups it received. Tables that no group uses are removed and the
+its symbols (ties to the lower number), then each table is rebuilt from the groups it received. A pass in which no group changes table ends the passes early (the next ones would repeat it); a table's lengths are rebuilt only when a group moved into or out of it. Tables that no group uses are removed and the
 remaining tables keep their order; if only one is left it is written twice. Lengths: Huffman's construction with every count raised to at
 least 1, leaves ordered by (count, symbol), a merge taking the leaf on equal weights; if a length passes `MaxCodeLength`, all counts
 become `(count + 1) / 2` and the tree is rebuilt. Codes are canonical (`BZip2HuffmanTable`).
@@ -55,8 +59,9 @@ destination needs. `Flush` hands out what is already coded and does not end the 
 
 ## Memory
 
-At level 9: the block (900 000 bytes), the last column (900 000), the sorter (two `int` and one `long` per block byte, 14.4 MB), the
-symbols (1.8 MB) and the output of one block (about 1 MB) — about 20 MB, allocated on first use and kept for later blocks.
+At level 9: the block (900 000 bytes), the last column (900 000), the sorter (two `int` and two `ulong` per block byte, 21.6 MB, plus a copy
+of the block with 15 bytes of its own beginning appended), the symbols (1.8 MB) and the output of one block (about 1 MB) — about 27 MB,
+allocated on first use and kept for later blocks.
 
 ## Checked against
 
@@ -68,5 +73,7 @@ ooffice at levels 1, 5 and 9.
 
 ## Speed
 
-On one core of a desktop x64 machine our compression of dickens takes about 1.0 s per 10 MB at any level (a quick, unscrubbed reading, not a
-bar run); the sort dominates. Highly repetitive input (a period of five bytes over 3 MB) takes 1.4 s because the doubling needs many rounds.
+Measured on one core of a desktop x64 machine under load (a quick comparison, not a bar run), in memory against `bzip2` 1.0.8 on silesia.tar:
+about 18 MB/s at level 9 and 21 to 23 MB/s at level 1, where the tool reaches 17 to 20 and about 21; the sizes did not change (the bytes are
+the same as before the sort was rewritten). The sort takes about four fifths of the time. Highly repetitive input is the slow case: a period
+of five bytes over 3 MB needs many doubling rounds.

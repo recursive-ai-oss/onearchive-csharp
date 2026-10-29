@@ -114,6 +114,118 @@ public class BZip2ComponentTests
         Assert.Throws<ArgumentException>(() => enc.Encode(4));
     }
 
+    // The block loop must give the symbols that one Encode call per byte gives, for every alphabet size (list lengths below, at and above
+    // the sixteen positions held in a vector register, and a full 256) and for runs of every length.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(15)]
+    [InlineData(16)]
+    [InlineData(17)]
+    [InlineData(31)]
+    [InlineData(33)]
+    [InlineData(100)]
+    [InlineData(255)]
+    [InlineData(256)]
+    public void MoveToFrontBlockLoopMatchesOneAtATime(int alphabet)
+    {
+        var rng = new Random(alphabet);
+        byte[] used = new byte[alphabet];
+        for (int i = 0; i < alphabet; i++)
+        {
+            used[i] = (byte)(i * 256 / alphabet);
+        }
+
+        foreach (int skew in new[] { 1, 3, 40 })
+        {
+            byte[] input = new byte[20_000];
+            for (int i = 0; i < input.Length; i++)
+            {
+                // Mostly near the front of the list, sometimes far away, sometimes long repeats.
+                int pick = rng.Next(skew) == 0 ? rng.Next(alphabet) : rng.Next(Math.Min(alphabet, 3));
+                input[i] = used[pick];
+                if (rng.Next(50) == 0)
+                {
+                    int again = rng.Next(1, 300);
+                    for (int k = 0; k < again && i + 1 < input.Length; k++)
+                    {
+                        input[++i] = input[i - 1];
+                    }
+                }
+            }
+
+            var slow = new BZip2MoveToFront();
+            slow.Reset(used);
+            var expected = new List<ushort>();
+            int run = 0;
+            foreach (byte b in input)
+            {
+                int position = slow.Encode(b);
+                if (position == 0)
+                {
+                    run++;
+                    continue;
+                }
+
+                FlushRun(expected, ref run);
+                expected.Add((ushort)(position + 1));
+            }
+
+            FlushRun(expected, ref run);
+
+            var fast = new BZip2MoveToFront();
+            fast.Reset(used);
+            ushort[] actual = new ushort[input.Length + 1];
+            int count = fast.EncodeSymbols(input, actual);
+            Assert.Equal(expected, actual.AsSpan(0, count).ToArray());
+
+            // Both lists end up in the same order: decoding the same further input with them agrees.
+            for (int i = 0; i < alphabet; i++)
+            {
+                Assert.Equal(slow.Encode(used[i]), fast.Encode(used[i]));
+            }
+        }
+
+        static void FlushRun(List<ushort> symbols, ref int run)
+        {
+            while (run > 0)
+            {
+                if ((run & 1) != 0)
+                {
+                    symbols.Add(0);
+                    run = (run - 1) >> 1;
+                }
+                else
+                {
+                    symbols.Add(1);
+                    run = (run - 2) >> 1;
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void MoveToFrontEncodeKeepsTheListWhenTheValueIsMissing()
+    {
+        var mtf = new BZip2MoveToFront();
+        byte[] used = [1, 2, 3, 4, 5];
+        mtf.Reset(used);
+        Assert.Throws<ArgumentException>(() => mtf.Encode(9));
+        var other = new BZip2MoveToFront();
+        other.Reset(used);
+        foreach (byte b in used)
+        {
+            Assert.Equal(other.Encode(b), mtf.Encode(b));
+        }
+
+        var big = new BZip2MoveToFront();
+        big.Reset(40);
+        Assert.Throws<ArgumentException>(() => big.Encode(200));
+        Assert.Equal(39, big.Encode(39));
+        Assert.Equal(0, big.Encode(39));
+        Assert.Equal(1, big.Encode(0));
+    }
+
     [Fact]
     public void HuffmanTableAssignsCanonicalCodes()
     {
