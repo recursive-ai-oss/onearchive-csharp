@@ -1021,12 +1021,14 @@ public sealed class ZstdBlockWriter
                 bitCount += (int)nb;
                 llState = Raw.Get(llNext, (llState >> (int)nb) + t.FindState);
 
-                // At most 26 bits of states and 7 left over make 33; when the extras of all three codes fit in the remaining 31 bits
+                // At most 26 bits of states and 7 left over make 33; when the extras of all three codes fit in the remaining 30 bits
                 // (nearly every sequence of an ordinary block) they join the states in one flush, which shortens the chain of
-                // dependent bit-count updates. Larger ones (rare) go in two halves with a flush between.
+                // dependent bit-count updates. Larger ones (rare) go in two halves with a flush between. The limit is 30, not 31:
+                // 33 + 31 would fill the 64-bit container exactly, and shifting it down by the 64 bits just written is a shift by
+                // zero in C#, which would leave the written bits in the container to be written again.
                 uint extra = sc.LlMlExtra;
                 int extraBits = sc.LlMlBits;
-                if ((uint)(extraBits + sc.Of) <= 31)
+                if ((uint)(extraBits + sc.Of) <= 30)
                 {
                     container |= (ulong)extra << bitCount;
                     bitCount += extraBits;
