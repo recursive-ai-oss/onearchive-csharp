@@ -49,7 +49,7 @@ row() {
   local g="$1" k="$2" trainlist="$3" testlist="$4" traindir="$5" d params kk dd
   local n; n=$(wc -l < "$testlist" | tr -d ' ')
   for d in $sizes; do
-    local ours_line; ours_line=$("$dotnet" "$dll" "$work/ours.dict" --size "$d" --dir "$traindir" --files "$train_files" ${TRAIN_EXTRA:-})
+    local ours_line; ours_line=$("$dotnet" "$dll" "$work/ours.dict" --size "$d" --dir "$traindir" --files "$train_files" --report ${TRAIN_EXTRA:-})
     kk=$(echo "$ours_line" | sed 's/.*k=\([0-9]*\).*/\1/'); dd=$(echo "$ours_line" | sed 's/.*d=\([0-9]*\).*/\1/')
     "$zstd" --train -q --maxdict="$d" -o "$work/ref.dict" $(cat "$trainlist") > /dev/null 2>&1 || { echo "train failed $g $k $d" >&2; continue; }
     "$zstd" --train-fastcover=k="$kk",d="$dd" -q --maxdict="$d" -o "$work/reffast.dict" $(cat "$trainlist") > /dev/null 2>&1 || cp "$work/ref.dict" "$work/reffast.dict"

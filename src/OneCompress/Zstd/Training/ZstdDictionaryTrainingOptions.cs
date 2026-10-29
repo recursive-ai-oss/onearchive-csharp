@@ -30,6 +30,21 @@ public enum ZstdSegmentScore
     SquareRoot = 1,
 }
 
+/// <summary>How <see cref="ZstdDictionaryTrainingOptions.Optimize"/> walks the candidate parameters.</summary>
+[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
+public enum ZstdTrainingSearch
+{
+    /// <summary>
+    /// Tries a handful of the candidates: the segment sizes are searched on a coarse grid, then around the best of it, with the first
+    /// d-mer size (the largest up to 8), and the other d-mer sizes and scores are tried at the best segment size. The cost of a
+    /// dictionary against segment size is smooth, so this finds a neighbour of the best pair at a fraction of the cost.
+    /// </summary>
+    Guided = 0,
+
+    /// <summary>Tries every combination of the candidates.</summary>
+    Exhaustive = 1,
+}
+
 /// <summary>
 /// Options for training a Zstandard dictionary (<see cref="ZstdDictionary.Train"/>). The same samples and options always give the same
 /// dictionary bytes, on every platform and with any <see cref="MaxDegreeOfParallelism"/>.
@@ -58,6 +73,9 @@ public sealed class ZstdDictionaryTrainingOptions
     /// <summary>Gets the d-mer size d in bytes (the unit whose frequency is counted), 2 to 16, used when <see cref="Optimize"/> is false. Default 8.</summary>
     public int DmerSize { get; init; } = 8;
 
+    /// <summary>Gets how the search walks the candidates. Default <see cref="ZstdTrainingSearch.Guided"/>.</summary>
+    public ZstdTrainingSearch SearchMode { get; init; } = ZstdTrainingSearch.Guided;
+
     /// <summary>Gets the segment sizes the search tries. Default 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048.</summary>
     public IReadOnlyList<int> SegmentSizeCandidates { get; init; } = [32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048];
 
@@ -81,7 +99,7 @@ public sealed class ZstdDictionaryTrainingOptions
     /// <summary>Gets the most held-out samples used to score a candidate; more are thinned evenly. Default 2000.</summary>
     public int MaxScoringSamples { get; init; } = 2000;
 
-    /// <summary>Gets the hash table size for <see cref="ZstdTrainingAlgorithm.FastCover"/> as a power of two, 8 to 28. Default 20.</summary>
+    /// <summary>Gets the largest hash table size for <see cref="ZstdTrainingAlgorithm.FastCover"/> as a power of two, 8 to 24. Smaller sample sets use a smaller table (eight to sixteen slots per byte of samples), since a table much larger than the data only costs time. Default 20.</summary>
     public int HashBits { get; init; } = 20;
 
     /// <summary>Gets the sampling step for <see cref="ZstdTrainingAlgorithm.FastCover"/>, 1 to 10: only every n-th d-mer position counts. Default 1.</summary>

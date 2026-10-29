@@ -188,6 +188,17 @@ public class ZstdTrainingTests
     }
 
     [Fact]
+    public void HashBitsBelowTheUsualMinimumAreAccepted()
+    {
+        // A hash table smaller than 2^12 slots is a valid choice for the sampled variant.
+        foreach (int bits in new[] { 8, 10, 11 })
+        {
+            byte[] bytes = Train(Samples(300), new ZstdDictionaryTrainingOptions { DictionarySize = 2048, HashBits = bits, Optimize = true, DmerSizeCandidates = [8], SegmentSizeCandidates = [64, 256] });
+            ZstdDictionary.Parse(bytes);
+        }
+    }
+
+    [Fact]
     public void CancellationIsHonoured()
     {
         using var cts = new CancellationTokenSource();
