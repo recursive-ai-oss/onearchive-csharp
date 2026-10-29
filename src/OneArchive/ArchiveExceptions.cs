@@ -92,6 +92,17 @@ public class ArchiveUnsupportedException : CompressionException
         Feature = feature;
     }
 
+    /// <summary>Creates an unsupported-feature error with a message of the caller's own wording, for derived types.</summary>
+    /// <param name="format">The archive format's name.</param>
+    /// <param name="feature">What is not supported.</param>
+    /// <param name="message">The complete message.</param>
+    protected ArchiveUnsupportedException(string format, string feature, string message)
+        : base(message)
+    {
+        Format = format;
+        Feature = feature;
+    }
+
     /// <summary>Creates an unsupported-feature error that wraps the exception that revealed it.</summary>
     /// <param name="format">The archive format's name.</param>
     /// <param name="feature">What is not supported.</param>

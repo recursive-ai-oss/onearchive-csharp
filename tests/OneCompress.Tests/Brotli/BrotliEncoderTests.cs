@@ -194,6 +194,62 @@ public class BrotliEncoderTests
     }
 
     [Fact]
+    public void LongInputsCrossBufferShiftsWithoutChangingTheOutput()
+    {
+        // A 64 KiB window and 9 MB of input make the encoder drop the oldest bytes of its buffer more than once; the bytes it writes must
+        // not depend on when that happens, which a different way of cutting the input moves.
+        byte[] data = BZip2TestData.Text(11, 9_000_000);
+        foreach (int q in new[] { 0, 1, 2, 5, 9 })
+        {
+            byte[] whole = Compress(data, q, 16);
+            Assert.True(BR.Decompress(whole).AsSpan().SequenceEqual(data), $"q{q}: round trip differs");
+
+            var encoder = new BrotliEncoder(new BrotliOptions { Quality = q, WindowBits = 16 });
+            var output = new MemoryStream();
+            byte[] buffer = new byte[1 << 16];
+            int pos = 0;
+            while (true)
+            {
+                int n = Math.Min(data.Length - pos, 1_000_003);
+                bool last = pos + n == data.Length;
+                OperationStatus status = encoder.Compress(data.AsSpan(pos, n), buffer, out int consumed, out int written, last);
+                output.Write(buffer, 0, written);
+                pos += consumed;
+                if (status == OperationStatus.Done)
+                {
+                    break;
+                }
+            }
+
+            Assert.True(whole.AsSpan().SequenceEqual(output.ToArray()), $"q{q}: cutting the input changed the output");
+        }
+    }
+
+    [Fact]
+    public void DictionarySearchWithAMinimumCoverageFindsTheSameWordsAsOneWithout()
+    {
+        // The parse tells the search how many bytes a word must cover to be able to win; the words it skips are exactly those below that.
+        byte[] text = BZip2TestData.Text(3, 60_000);
+        BrotliDictionaryIndex index = BrotliDictionaryIndex.Instance;
+        var all = new BrotliDictionaryIndex.Hit[512];
+        var some = new BrotliDictionaryIndex.Hit[512];
+        byte[] scratch = new byte[BrotliTransforms.MaxTransformedLength];
+        foreach (bool transforms in new[] { false, true })
+        {
+            foreach (int minimum in new[] { 5, 7, 9, 12 })
+            {
+                for (int pos = 0; pos + 40 < text.Length; pos += 7)
+                {
+                    int nAll = index.Search(text, pos, text.Length - pos, transforms, all, scratch);
+                    int nSome = index.Search(text, pos, text.Length - pos, transforms, some, scratch, minimum);
+                    var expected = all.AsSpan(0, nAll).ToArray().Where(h => h.Covered >= minimum).ToArray();
+                    Assert.Equal(expected, some.AsSpan(0, nSome).ToArray());
+                }
+            }
+        }
+    }
+
+    [Fact]
     public void StaticDictionaryHelpsSmallText()
     {
         byte[] data = System.Text.Encoding.ASCII.GetBytes("The quick brown fox jumps over the lazy dog while thinking about international government information.");

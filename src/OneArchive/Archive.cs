@@ -4,6 +4,7 @@ using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cpio;
 using RecursiveAI.OneArchive.Cab;
 using RecursiveAI.OneArchive.Iso;
+using RecursiveAI.OneArchive.Rar;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Zip;
@@ -32,14 +33,16 @@ public sealed class Archive : IDisposable, IAsyncDisposable
     private readonly long _origin;
     private readonly ArchiveOpenOptions _options;
     private readonly string? _singleName;
+    private readonly string? _sourceName;
     private readonly DateTimeOffset? _singleTime;
     private ArchiveReader? _pending;
     private ArchiveReader? _indexReader;
     private List<ArchiveEntry>? _entries;
     private bool _disposed;
 
-    private Archive(Stream source, bool leaveOpen, long origin, ArchiveOpenOptions options, ArchiveFormat format, ArchiveCompression compression, ArchiveReader first, string? singleName, DateTimeOffset? singleTime)
+    private Archive(Stream source, bool leaveOpen, long origin, ArchiveOpenOptions options, ArchiveFormat format, ArchiveCompression compression, ArchiveReader first, string? singleName, DateTimeOffset? singleTime, string? sourceName)
     {
+        _sourceName = sourceName;
         _singleName = singleName;
         _singleTime = singleTime;
         _source = source;
@@ -235,6 +238,11 @@ public sealed class Archive : IDisposable, IAsyncDisposable
             format = nameFormat;
         }
 
+        if (format == ArchiveFormat.Rar && compression == ArchiveCompression.None)
+        {
+            RarReader.ThrowIfRar4(prefix.AsSpan(0, got));
+        }
+
         string? singleName = null;
         DateTimeOffset? singleTime = null;
         if (format == ArchiveFormat.Unknown && compression != ArchiveCompression.None)
@@ -254,8 +262,8 @@ public sealed class Archive : IDisposable, IAsyncDisposable
             throw new CompressionFormatException("archive", 0, "a recognised archive format (zip, 7z, tar, or a compressed single file) in the data or in the file name's extension");
         }
 
-        ArchiveReader reader = CreateReader(format, top, ownsTop: top != raw, options, meter, singleName, singleTime);
-        return new Archive(source, leaveOpen, origin, options, format, compression, reader, singleName, singleTime);
+        ArchiveReader reader = CreateReader(format, top, ownsTop: top != raw, options, meter, singleName, singleTime, name);
+        return new Archive(source, leaveOpen, origin, options, format, compression, reader, singleName, singleTime, name);
     }
 
     // The entry name of a single compressed file: the gzip header's FNAME if it has one (the decompressor has already read
@@ -296,7 +304,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
         return (name, time);
     }
 
-    private static ArchiveReader CreateReader(ArchiveFormat format, Stream stream, bool ownsTop, ArchiveOpenOptions options, ExpansionMeter? meter, string? singleName, DateTimeOffset? singleTime)
+    private static ArchiveReader CreateReader(ArchiveFormat format, Stream stream, bool ownsTop, ArchiveOpenOptions options, ExpansionMeter? meter, string? singleName, DateTimeOffset? singleTime, string? sourceName)
     {
         switch (format)
         {
@@ -339,6 +347,17 @@ public sealed class Archive : IDisposable, IAsyncDisposable
                 }
 
                 return new CabReader(stream, cab, leaveOpen: !ownsTop);
+            case ArchiveFormat.Rar:
+                RarReaderOptions rar = options.Rar is { } rr
+                    ? new RarReaderOptions { Limits = options.Limits, VerifyChecksum = rr.VerifyChecksum, Volumes = rr.Volumes, MaxSfxSize = rr.MaxSfxSize }
+                    : new RarReaderOptions { Limits = options.Limits };
+                if (rar.Volumes is null && sourceName is not null && File.Exists(sourceName) && meter is null)
+                {
+                    rar = new RarReaderOptions { Limits = rar.Limits, VerifyChecksum = rar.VerifyChecksum, MaxSfxSize = rar.MaxSfxSize, Volumes = RarVolumes.ForFile(sourceName) };
+                }
+
+                return new RarReader(stream, rar, leaveOpen: !ownsTop);
+
             case ArchiveFormat.Iso:
                 IsoReaderOptions iso = options.Iso is { } io
                     ? new IsoReaderOptions { Limits = options.Limits, Tree = io.Tree, UseRockRidge = io.UseRockRidge, MaxDirectorySize = io.MaxDirectorySize, MaxSystemUseSize = io.MaxSystemUseSize, MaxContinuationBytes = io.MaxContinuationBytes }
@@ -424,7 +443,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
             owns = true;
         }
 
-        return CreateReader(Format, top, owns, _options, meter, _singleName, _singleTime);
+        return CreateReader(Format, top, owns, _options, meter, _singleName, _singleTime, _sourceName);
     }
 
     // ---- reading ----

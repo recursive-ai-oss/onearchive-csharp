@@ -163,7 +163,10 @@ internal sealed partial class BrotliEncoderCore
     // Frees room in a full buffer: grows it up to the size needed for a window and a block, then drops the oldest bytes.
     private bool MakeRoom()
     {
-        long wanted = (long)_window + _plan.BlockSize + Margin;
+        // Dropping the oldest bytes moves everything that is kept, so the buffer holds room for at least 4 MiB of new data: with small blocks
+        // the move then happens once per 4 MiB instead of once per block. Which bytes are in the buffer never changes what is found, because a
+        // candidate beyond the window is refused either way.
+        long wanted = (long)_window + (_plan.BinaryTree ? _plan.BlockSize : Math.Max(_plan.BlockSize, 4 << 20)) + Margin;
         if (_buffer.Length < wanted)
         {
             int size = (int)Math.Min(wanted, Math.Max(64 * 1024, (long)_buffer.Length * 2));

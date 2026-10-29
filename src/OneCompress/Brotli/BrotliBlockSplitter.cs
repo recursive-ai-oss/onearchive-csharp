@@ -33,7 +33,7 @@ internal static class BrotliBlockSplitter
     // About what a block switch costs: a block type code, a block count code and its extra bits.
     private const long SwitchCost = 14L << 16;
 
-    internal static BrotliBlockSplit Split(ReadOnlySpan<ushort> symbols, int alphabetSize, int minSegment, int maxSegments)
+    internal static BrotliBlockSplit Split(ReadOnlySpan<ushort> symbols, int alphabetSize, int minSegment, int maxSegments, int pairwiseLimit)
     {
         int n = symbols.Length;
         if (n < 2 * minSegment)
@@ -62,7 +62,7 @@ internal static class BrotliBlockSplitter
         }
 
         int[] assignment = new int[m];
-        int types = BrotliClusterer.Cluster(histograms, alphabetSize, 256, 12L << 16, assignment, out int[][] typeHistograms);
+        int types = BrotliClusterer.Cluster(histograms, alphabetSize, 256, 12L << 16, assignment, out int[][] typeHistograms, pairwiseLimit);
         if (types == 1)
         {
             return BrotliBlockSplit.Single(n);
