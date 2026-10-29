@@ -166,10 +166,30 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         }
     }
 
-    // Number of bytes, at most max, that are equal going backward from a[ai - 1] and b[bi - 1]; max is at most ai and bi. Compares a
-    // word at a time so the length does not cost a mispredicted branch per byte.
+    // Number of bytes, at most max, that are equal going backward from a[ai - 1] and b[bi - 1]; max is at most ai and bi. The first eight
+    // bytes are compared in one step, and the count read off the first difference, so that the usual short extension (zero to three
+    // bytes) does not cost a mispredicted branch per byte.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int CountBackward(ReadOnlySpan<byte> a, int ai, ReadOnlySpan<byte> b, int bi, int max)
+    {
+        if (ai >= 8 && bi >= 8)
+        {
+            // Bounds: ai >= 8 and bi >= 8, so both eight-byte reads end at or before a[ai] and b[bi].
+            ulong x = Raw.ReadUInt64(a, ai - 8) ^ Raw.ReadUInt64(b, bi - 8);
+            int n8 = BitOperations.LeadingZeroCount(x) >> 3;
+            if (n8 < 8 || max <= 8)
+            {
+                return Math.Min(n8, max);
+            }
+
+            return 8 + CountBackwardLong(a, ai - 8, b, bi - 8, max - 8);
+        }
+
+        return CountBackwardLong(a, ai, b, bi, max);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int CountBackwardLong(ReadOnlySpan<byte> a, int ai, ReadOnlySpan<byte> b, int bi, int max)
     {
         // Bounds: n + 8 <= max <= ai and bi, so both eight-byte reads end at or before a[ai] and b[bi].
         int n = 0;
@@ -432,85 +452,37 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         ZstdSequenceStore store)
     {
         // As FindDoubleNoDictionary: the table is a span walked with native-width positions, and the repeat offsets live in memory.
-        // Bounds: ip + 1 <= end - 8, so both eight-byte reads are in the window; table indexes are a 64-bit product shifted down to
-        // the table's log, below its length; a candidate is a position stored earlier, at most end - 8.
+        // The search itself is FindMatch. Bounds: the table indexes below are a 64-bit product shifted down to the table's log, below
+        // its length, and the positions indexed are at most end - 8, so their eight-byte reads are in the window.
         Span<uint> table = _primary;
         int hashShift = 64 - _primaryLog;
         // (v << cut) * P is v * (P << cut): the hash of the low bytes is one multiplication.
         ulong multiplier = HashPrime << (64 - (8 * _minMatch));
         long windowSize = _windowSize;
-        nint reach = (nint)Math.Min(windowSize, int.MaxValue);
-        int baseStep = _stride;
         ZstdRepeatOffsets state = reps;
         nint limit = end - 8;
         nint ip = Math.Max(blockStart, 1);
         nint anchor = blockStart;
-        int step = baseStep;
-        nint nextStep = ip + (1 << SearchStrengthShift);
         while (ip + 1 <= limit)
         {
-            // Two neighbouring positions are looked up per round, then the search jumps ahead by the step, which grows the
-            // longer the search goes without a match.
-            nint ip1 = ip + 1;
-            nint ip2 = ip + step;
-            ulong v0 = Raw.ReadUInt64(window, ip);
-            ulong v1 = Raw.ReadUInt64(window, ip1);
-            nuint h0 = (nuint)((v0 * multiplier) >> hashShift);
-            nuint h1 = (nuint)((v1 * multiplier) >> hashShift);
-            nint candidate0 = (nint)Raw.Get(table, h0);
-            nint candidate1 = (nint)Raw.Get(table, h1);
-            Raw.Set(table, h0, (uint)ip);
-            Raw.Set(table, h1, (uint)ip1);
+            nint matchStart = FindMatch(window, ip, end, state.Offset1, out uint offset);
+            if (matchStart < 0)
+            {
+                break;
+            }
 
-            nint matchStart;
-            int matchLength;
-            uint offset;
-            uint rep = state.Offset1;
-            if (ip2 + 4 <= end && (nuint)ip2 >= rep && rep <= windowSize && Raw.ReadUInt32(window, ip2) == Raw.ReadUInt32(window, ip2 - (nint)rep))
-            {
-                matchStart = ip2;
-                offset = rep;
-                matchLength = 4 + Count(window, ip2 - (nint)rep + 4, ip2 + 4, end);
-            }
-            else if (ip - candidate0 <= reach && Raw.ReadUInt32(window, candidate0) == (uint)v0)
-            {
-                matchStart = ip;
-                offset = (uint)(ip - candidate0);
-                matchLength = 4 + Count(window, candidate0 + 4, ip + 4, end);
-            }
-            else if (ip1 - candidate1 <= reach && Raw.ReadUInt32(window, candidate1) == (uint)v1)
-            {
-                matchStart = ip1;
-                offset = (uint)(ip1 - candidate1);
-                matchLength = 4 + Count(window, candidate1 + 4, ip1 + 4, end);
-            }
-            else
-            {
-                ip = ip2;
-                if (ip >= nextStep)
-                {
-                    step++;
-                    nextStep += 1 << SearchStrengthShift;
-                }
-
-                continue;
-            }
+            int matchLength = 4 + Count(window, matchStart - (nint)offset + 4, matchStart + 4, end);
 
             // Extend backward over bytes that also match (only for matches inside the window).
             nint source = matchStart - (nint)offset;
             nint back = Math.Min(matchStart - anchor, source);
-            if (back > 0)
-            {
-                int extra = CountBackward(window, (int)matchStart, window, (int)source, (int)back);
-                matchStart -= extra;
-                matchLength += extra;
-            }
+            int extra = CountBackward(window, (int)matchStart, window, (int)source, (int)back);
+            matchStart -= extra;
+            matchLength += extra;
 
             EmitLocal(window, store, (int)anchor, (int)matchStart, matchLength, offset, ref state);
             ip = matchStart + matchLength;
             anchor = ip;
-            step = baseStep;
-            nextStep = ip + (1 << SearchStrengthShift);
             if (ip > limit)
             {
                 break;
@@ -546,12 +518,143 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
                 Raw.Set(table, (nuint)((Raw.ReadUInt64(window, ip) * multiplier) >> hashShift), (uint)ip);
                 ip += length;
                 anchor = ip;
-                nextStep = ip + (1 << SearchStrengthShift);
             }
         }
 
         store.AppendLiterals(window[(int)anchor..end]);
         store.SetTrackedEnd(state.Offset1, state.Offset2, state.Offset3);
+    }
+
+    // The fast strategy's search, apart from the code that emits matches so that its few values stay in registers. Starting at
+    // `ip` with the base step, it hashes two neighbouring positions per round, writes both into the table, and tests in this order
+    // the repeat offset at ip + step, the candidate of ip and the candidate of ip + 1. Returns the position of the first match
+    // (its offset in `offset`; the caller measures its length), or -1 when the block has no more positions to try. The step grows by
+    // one every SearchStrengthShift-sized stretch without a match.
+    //
+    // The rounds run while ip + step <= end - 8, which keeps every read inside the window with no further test: the eight bytes at
+    // ip + step are read once, tested against the repeat offset and carried into the next round as the bytes at its ip. The few
+    // rounds closer to the end go to FindMatchNearEnd, which tests each read. A candidate is read before its distance is checked: the
+    // candidate is a position stored earlier, so the read is inside the window, and a candidate whose bytes differ is the usual case.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private nint FindMatch(ReadOnlySpan<byte> window, nint ip, int end, uint repeatOffset, out uint offset)
+    {
+        // Bounds: see above; table indexes are a 64-bit product shifted down to the table's log, below its length.
+        Span<uint> table = _primary;
+        int hashShift = 64 - _primaryLog;
+        ulong multiplier = HashPrime << (64 - (8 * _minMatch));
+        nint reach = (nint)Math.Min(_windowSize, int.MaxValue);
+        // A repeat offset beyond the window is never used; one that can't be reached from any position tests as never matching.
+        nuint rep = repeatOffset <= _windowSize ? repeatOffset : uint.MaxValue;
+        nint limit = end - 8;
+        int step = _stride;
+        nint nextStep = ip + (1 << SearchStrengthShift);
+        while (true)
+        {
+            nint roundsEnd = limit - step + 1;
+            if (ip >= roundsEnd)
+            {
+                break;
+            }
+
+            nint phaseEnd = Math.Min(nextStep, roundsEnd);
+            ulong v0 = Raw.ReadUInt64(window, ip);
+            do
+            {
+                nint ip1 = ip + 1;
+                nint ip2 = ip + step;
+                ulong v1 = Raw.ReadUInt64(window, ip1);
+                nuint h0 = (nuint)((v0 * multiplier) >> hashShift);
+                nuint h1 = (nuint)((v1 * multiplier) >> hashShift);
+                nint candidate0 = (nint)Raw.Get(table, h0);
+                nint candidate1 = (nint)Raw.Get(table, h1);
+                Raw.Set(table, h0, (uint)ip);
+                Raw.Set(table, h1, (uint)ip1);
+                ulong v2 = Raw.ReadUInt64(window, ip2);
+
+                if ((nuint)ip2 >= rep && (uint)v2 == Raw.ReadUInt32(window, ip2 - (nint)rep))
+                {
+                    offset = (uint)rep;
+                    return ip2;
+                }
+
+                if (Raw.ReadUInt32(window, candidate0) == (uint)v0 && ip - candidate0 <= reach)
+                {
+                    offset = (uint)(ip - candidate0);
+                    return ip;
+                }
+
+                if (Raw.ReadUInt32(window, candidate1) == (uint)v1 && ip1 - candidate1 <= reach)
+                {
+                    offset = (uint)(ip1 - candidate1);
+                    return ip1;
+                }
+
+                ip = ip2;
+                v0 = v2;
+            }
+            while (ip < phaseEnd);
+
+            if (ip >= nextStep)
+            {
+                step++;
+                nextStep += 1 << SearchStrengthShift;
+            }
+        }
+
+        return FindMatchNearEnd(window, ip, end, repeatOffset, step, nextStep, out offset);
+    }
+
+    // The rounds of FindMatch that are too close to the end of the block for its unchecked reads: the same search with each read tested.
+    private nint FindMatchNearEnd(ReadOnlySpan<byte> window, nint ip, int end, uint repeatOffset, int step, nint nextStep, out uint offset)
+    {
+        // Bounds: ip + 1 <= end - 8, so both eight-byte reads are in the window; table indexes as in FindMatch.
+        Span<uint> table = _primary;
+        int hashShift = 64 - _primaryLog;
+        ulong multiplier = HashPrime << (64 - (8 * _minMatch));
+        long windowSize = _windowSize;
+        nint reach = (nint)Math.Min(windowSize, int.MaxValue);
+        nint limit = end - 8;
+        while (ip + 1 <= limit)
+        {
+            nint ip1 = ip + 1;
+            nint ip2 = ip + step;
+            ulong v0 = Raw.ReadUInt64(window, ip);
+            ulong v1 = Raw.ReadUInt64(window, ip1);
+            nuint h0 = (nuint)((v0 * multiplier) >> hashShift);
+            nuint h1 = (nuint)((v1 * multiplier) >> hashShift);
+            nint candidate0 = (nint)Raw.Get(table, h0);
+            nint candidate1 = (nint)Raw.Get(table, h1);
+            Raw.Set(table, h0, (uint)ip);
+            Raw.Set(table, h1, (uint)ip1);
+
+            if (ip2 + 4 <= end && (nuint)ip2 >= repeatOffset && repeatOffset <= windowSize && Raw.ReadUInt32(window, ip2) == Raw.ReadUInt32(window, ip2 - (nint)repeatOffset))
+            {
+                offset = repeatOffset;
+                return ip2;
+            }
+
+            if (ip - candidate0 <= reach && Raw.ReadUInt32(window, candidate0) == (uint)v0)
+            {
+                offset = (uint)(ip - candidate0);
+                return ip;
+            }
+
+            if (ip1 - candidate1 <= reach && Raw.ReadUInt32(window, candidate1) == (uint)v1)
+            {
+                offset = (uint)(ip1 - candidate1);
+                return ip1;
+            }
+
+            ip = ip2;
+            if (ip >= nextStep)
+            {
+                step++;
+                nextStep += 1 << SearchStrengthShift;
+            }
+        }
+
+        offset = 0;
+        return -1;
     }
 
     // With a dictionary attached the search looks at one position at a time: the repeat offset, the table of the data so far,
@@ -849,6 +952,8 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         // The repeat offsets live in memory (the emit helper updates them through a reference), so the search loop keeps its
         // registers for the positions and tables.
         ZstdRepeatOffsets state = reps;
+        // The first repeat offset as the search tests it: one beyond the window is never used, and uint.MaxValue is never reachable.
+        nuint rep = state.Offset1 <= windowSize ? state.Offset1 : uint.MaxValue;
         nint limit = end - 8;
         nint ip = Math.Max(blockStart, 1);
         nint anchor = blockStart;
@@ -866,19 +971,19 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
             int matchLength;
             uint offset;
             nint ip1 = ip + 1;
-            if ((nuint)ip1 >= state.Offset1 && state.Offset1 <= windowSize && Raw.ReadUInt32(window, ip1) == Raw.ReadUInt32(window, ip1 - (nint)state.Offset1))
+            if ((nuint)ip1 >= rep && Raw.ReadUInt32(window, ip1) == Raw.ReadUInt32(window, ip1 - (nint)rep))
             {
                 matchStart = ip1;
-                offset = state.Offset1;
-                matchLength = 4 + Count(window, ip1 - (nint)state.Offset1 + 4, ip1 + 4, end);
+                offset = (uint)rep;
+                matchLength = 4 + Count(window, ip1 - (nint)rep + 4, ip1 + 4, end);
             }
-            else if (ip - candidateLong <= reach && Raw.ReadUInt64(window, candidateLong) == value)
+            else if (Raw.ReadUInt64(window, candidateLong) == value && ip - candidateLong <= reach)
             {
                 matchStart = ip;
                 offset = (uint)(ip - candidateLong);
                 matchLength = 8 + Count(window, candidateLong + 8, ip + 8, end);
             }
-            else if (ip - candidateShort <= reach && Raw.ReadUInt32(window, candidateShort) == (uint)value)
+            else if (Raw.ReadUInt32(window, candidateShort) == (uint)value && ip - candidateShort <= reach)
             {
                 // A short match: see whether the next position has a long one, which is worth more.
                 matchStart = ip;
@@ -890,7 +995,7 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
                     nuint hl1 = (nuint)((ahead * HashPrime) >> longShift);
                     nint candidateLong1 = (nint)Raw.Get(longTable, hl1);
                     Raw.Set(longTable, hl1, (uint)ip1);
-                    if (ip1 - candidateLong1 <= reach && Raw.ReadUInt64(window, candidateLong1) == ahead)
+                    if (Raw.ReadUInt64(window, candidateLong1) == ahead && ip1 - candidateLong1 <= reach)
                     {
                         matchStart = ip1;
                         offset = (uint)(ip1 - candidateLong1);
@@ -906,14 +1011,12 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
 
             nint source = matchStart - (nint)offset;
             nint back = Math.Min(matchStart - anchor, source);
-            if (back > 0)
-            {
-                int extra = CountBackward(window, (int)matchStart, window, (int)source, (int)back);
-                matchStart -= extra;
-                matchLength += extra;
-            }
+            int extra = CountBackward(window, (int)matchStart, window, (int)source, (int)back);
+            matchStart -= extra;
+            matchLength += extra;
 
             EmitLocal(window, store, (int)anchor, (int)matchStart, matchLength, offset, ref state);
+            rep = state.Offset1 <= windowSize ? state.Offset1 : uint.MaxValue;
             ip = matchStart + matchLength;
             anchor = ip;
             if (ip > limit)
@@ -951,6 +1054,7 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
                 }
 
                 EmitLocal(window, store, (int)ip, (int)ip, length, second, ref state);
+                rep = state.Offset1 <= windowSize ? state.Offset1 : uint.MaxValue;
                 ulong v = Raw.ReadUInt64(window, ip);
                 Raw.Set(longTable, (nuint)((v * HashPrime) >> longShift), (uint)ip);
                 Raw.Set(shortTable, (nuint)((v * shortMultiplier) >> shortShift), (uint)ip);
