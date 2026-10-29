@@ -331,4 +331,24 @@ internal static class Raw
         return 0;
 #endif
     }
+
+    /// <summary>
+    /// Starts loading <c>span[index]</c> into the cache, as <see cref="Warm{T}"/> does for a table. The caller guarantees
+    /// <c>0 &lt;= index &lt; span.Length</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe uint WarmAt(ReadOnlySpan<byte> span, int index)
+    {
+#if CHECKED
+        _ = span[index];
+        return 0;
+#else
+        if (Sse.IsSupported)
+        {
+            Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetReference(span), index)));
+        }
+
+        return 0;
+#endif
+    }
 }
