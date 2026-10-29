@@ -16,6 +16,9 @@
   <Folder Name="/smoke/aot-trim/">
     <Project Path="smoke/aot-trim/AotTrim.csproj" />
   </Folder>
+  <Folder Name="/smoke/aot-trim-slim/">
+    <Project Path="smoke/aot-trim-slim/AotTrimSlim.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/OneArchive/OneArchive.csproj" />
     <Project Path="src/OneCompress/OneCompress.csproj" />

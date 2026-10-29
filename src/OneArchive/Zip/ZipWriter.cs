@@ -1,11 +1,9 @@
-using RecursiveAI.OneCompress.Deflate;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using RecursiveAI.OneCompress.Checksums;
-using RecursiveAI.OneCompress.Deflate64;
-using RecursiveAI.OneCompress.Zstd;
+using RecursiveAI.OneArchive.Internal;
 
 namespace RecursiveAI.OneArchive.Zip;
 
@@ -269,21 +267,8 @@ public sealed class ZipWriter : ArchiveWriter
 
     private static Stream OpenCompress(ZipMethod method, Stream sink, int? level, long size)
     {
-        // The CRC-32 in the zip header covers the data, so a zstd frame carries no checksum of its own.
-        if (method == ZipMethod.Deflate64)
-        {
-            return new Deflate64Stream(sink, new Deflate64Options { Level = Math.Min(level ?? Deflate64Options.DefaultLevel, 9) }, leaveOpen: true);
-        }
-
-        if (method == ZipMethod.BZip2)
-        {
-            return new RecursiveAI.OneCompress.BZip2.BZip2Stream(sink, new RecursiveAI.OneCompress.BZip2.BZip2Options { Level = Math.Clamp(level ?? RecursiveAI.OneCompress.BZip2.BZip2Options.DefaultLevel, 1, 9) }, leaveOpen: true);
-        }
-
-        Stream stream = method == ZipMethod.Zstd
-            ? new ZstdStream(sink, new ZstdCompressionOptions { Level = level ?? 3, Checksum = false, ContentSize = size }, leaveOpen: true)
-            : new DeflateEncoderStream(sink, DeflateFormat.Raw, new DeflateOptions { Level = level ?? DeflateOptions.DefaultLevel }, leaveOpen: true);
-        return stream;
+        CodecId id = method switch { ZipMethod.Deflate64 => CodecId.Deflate64, ZipMethod.BZip2 => CodecId.BZip2, ZipMethod.Zstd => CodecId.Zstd, _ => CodecId.Deflate };
+        return CodecRegistry.Require(id, ZipFormat.Name, $"writing the {method} method").OpenZipCompress(sink, level, size);
     }
 
     private async ValueTask WriteBytesAsync(ReadOnlyMemory<byte> data, bool async, CancellationToken ct)

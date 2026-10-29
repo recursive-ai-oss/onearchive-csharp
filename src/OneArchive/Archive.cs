@@ -6,7 +6,6 @@ using RecursiveAI.OneArchive.Cab;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Zip;
-using RecursiveAI.OneCompress.Deflate;
 using RecursiveAI.OneCompress;
 
 namespace RecursiveAI.OneArchive;
@@ -264,17 +263,17 @@ public sealed class Archive : IDisposable, IAsyncDisposable
     {
         string? name = null;
         DateTimeOffset? time = null;
-        if (compression == ArchiveCompression.Gzip && plain is ProducedStream { Inner: DeflateCodecStream gz })
+        if (compression == ArchiveCompression.Gzip && plain is ProducedStream { Inner: { } gz }
+            && CodecRegistry.Require(CodecId.Deflate, "gzip", "gzip headers").TryGetGZipHeader(gz, out string? stored, out uint modified))
         {
-            GZipHeader header = gz.CurrentGZipHeader;
-            if (header.GetName() is { Length: > 0 } stored)
+            if (stored is { Length: > 0 })
             {
                 name = stored;
             }
 
-            if (header.ModificationTime != 0)
+            if (modified != 0)
             {
-                time = DateTimeOffset.FromUnixTimeSeconds(header.ModificationTime);
+                time = DateTimeOffset.FromUnixTimeSeconds(modified);
             }
         }
 
