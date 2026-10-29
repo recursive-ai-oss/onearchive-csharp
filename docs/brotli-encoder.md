@@ -55,10 +55,10 @@ Large-window brotli (window above 24) is not part of RFC 7932 and is not produce
 |---|---|---|---|---|---|---|---|---|
 | 0 | 128 KiB | 2^15 heads | 4 | 1 | | greedy, one probe | none | no |
 | 1 | 128 KiB | 2^17 heads | 4 | 1 | | greedy, one probe | none | no |
-| 2 | 128 KiB | 2^16 x 4 | 4 | 4 | | greedy | none | no |
-| 3 | 256 KiB | 2^17 x 8 | 4 | 8 | | lazy 1 | literal contexts | no |
-| 4 | 1 MiB | 2^17 x 8 | 6 | 8 | | lazy 1 | + block splitting | no |
-| 5 | 4 MiB | 2^18 x 16 | 6 | 12 | 2^16 x 4, 4 deep | lazy 1 | + context mode search | identity |
+| 2 | 128 KiB | 2^16 x 4 | 4 | 2 | | greedy | none | no |
+| 3 | 256 KiB | 2^15 x 8 | 6 | 4 | | lazy 1 | literal contexts | no |
+| 4 | 1 MiB | 2^15 x 8 | 6 | 8 | | lazy 1 | + block splitting | no |
+| 5 | 4 MiB | 2^16 x 16 | 6 | 8 | | lazy 1 | + context mode search | no |
 | 6 | 4 MiB | 2^18 x 16 | 6 | 16 | 2^16 x 8, 8 deep | lazy 1 | + distance parameter search | identity |
 | 7 | 4 MiB | 2^18 x 32 | 6 | 24 | 2^16 x 16, 16 deep | lazy 2 | same, finer literal splitting | identity |
 | 8 | 4 MiB | 2^18 x 32 | 6 | 32 | 2^17 x 16, 16 deep | lazy 2 | same | identity |
@@ -67,8 +67,9 @@ Large-window brotli (window above 24) is not part of RFC 7932 and is not produce
 | 11 | 1 MiB | 2^20 binary tree | 4 | 128 | | shortest path, 3 passes | same | all transforms |
 
 "Table" is the number of hash values times the slots each owns ("x 16"); "Depth" is the number of entries of a bucket (or tree nodes at q10
-and q11) visited per position. Qualities 0 and 1 skip ahead on incompressible data: after a miss the position advances by
-`1 + (bytes since the last copy >> 6)`. The nice length (a match this long ends the search) is 64, and 128 at qualities 10 and 11. The
+and q11) visited per position. Qualities 0 to 5 skip ahead on incompressible data: after a miss the position advances by
+`1 + (bytes since the last copy >> S)`, with S = 6 at qualities 0 and 1 and 5 at qualities 2 to 5 (the positions skipped over are still
+entered in the table at qualities 2 to 5). Qualities 6 to 11 do not skip. The nice length (a match this long ends the search) is 64, and 128 at qualities 10 and 11. The
 table is the single source; `BrotliQualityPlan.For` must match it.
 
 ## Match finding
@@ -83,7 +84,7 @@ table is the single source; `BrotliQualityPlan.For` must match it.
   of them; a candidate must agree with the position on the hashed bytes and on the byte just past the best length so far; the search ends
   at the nice length. Every position that is not skipped is entered before the next one is searched, so a lazy probe sees the
   positions the main probe entered.
-- **Long table** (q5 to q9): a second bucketed table keyed by a hash of the first twelve bytes
+- **Long table** (q6 to q9): a second bucketed table keyed by a hash of the first twelve bytes
   (`(word0 * 0x9E3779B185EBCA87) xor (word1 * 0xC2B2AE3D27D4EB4F) >> (64 - bits)`, where word0 is the first eight bytes and word1 the next four).
   It is searched first, newest first and at most its own depth, so that long matches in repetitive input are found even when many newer
   positions share the shorter hash. Positions enter it together with the main table, only when twelve bytes are inside the block.
@@ -95,14 +96,15 @@ table is the single source; `BrotliQualityPlan.For` must match it.
   decided by bytes that are not there yet. A candidate's length is checked by comparing bytes before it is used.
 - The four last distances are always tried first (any length from 3 in the greedy and lazy parses, from 2 in the shortest-path
   parse), then the finder's candidates. Distances beyond the window or the data so far are never used.
-- **Static dictionary** (q5 and up, only when the best match found is shorter than 12): words are indexed by a hash (18 bits) of
+- **Static dictionary** (q6 and up, only when the best match found is shorter than 12): words are indexed by a hash (18 bits) of
   their first four bytes, the lowest word ids first. A hit is accepted only after the whole transformed word has been compared
-  with the input. q5 to q9 try the identity transform, q10 and q11 all 121. A dictionary copy uses the distance
+  with the input. q6 to q9 try the identity transform, q10 and q11 all 121. A dictionary copy uses the distance
   `maxDistance + 1 + word id` where `maxDistance = min(window, bytes so far)` (RFC 7932 section 8) and does not enter the
   last-distance ring. A word is looked for only if it could beat the match already found: its copy costs at least
   `224 + 16 * (extra bits of maxDistance + 1)` in the score below, so words covering fewer bytes than `(best score + that cost) / 90`
   (rounded up) are skipped; this changes no choice, it only saves work. The all-transforms search of q8 and q9 in earlier
-  versions gained under 0.3% in size on text and XML at 6 to 10 times the time, so those qualities use the identity transform only.
+  versions gained under 0.3% in size on text and XML at 6 to 10 times the time, so those qualities use the identity transform only. At q5 the identity search gained under 0.1% on text, XML and mixed data and cost
+  a fifth of the time, so q5 does not search the dictionary.
 
 ## Greedy and lazy parse (q0 to q9)
 
@@ -171,7 +173,9 @@ Done by the meta-block writer, in this order (each choice by estimated size, int
 
 - Hashes are the fixed multiplicative hash above. No `HashCode`, no `Dictionary` order, no timing.
 - Every cost is an integer; logarithms come from a table built by integer digit-by-digit squaring (1/65536 bit).
-- SIMD is not used in the encoder; the only vectorised helper is the common-prefix length, which computes the same function.
+- SIMD is not used in the encoder; the only vectorised helper is the common-prefix length, which computes the same function. Cache
+  prefetch hints in the bucketed match finder load table lines early and change no result. The meta-block writer packs a command's
+  codes into a bit accumulator held in locals; that only changes how the bits are put out, never which bits.
 - Block size depends on the quality alone, so one thread or many (the encoder is single-threaded) gives the same bytes.
 
 ## Measured

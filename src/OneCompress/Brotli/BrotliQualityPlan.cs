@@ -79,6 +79,13 @@ internal sealed class BrotliQualityPlan
     /// <summary>The longest candidate list per position the shortest-path parse keeps.</summary>
     internal int MaxSegments = 128;
 
+    /// <summary>
+    /// After a position with no match, the parse advances by <c>1 + (bytes since the last copy &gt;&gt; SkipShift)</c>, so stretches that do not
+    /// compress are crossed faster the longer they last. 31 turns it off.
+    /// </summary>
+    internal int SkipShift = 31;
+
+
     internal static BrotliQualityPlan For(int quality)
     {
         var p = new BrotliQualityPlan { Quality = quality, BlockSize = 1 << 22 };
@@ -88,33 +95,38 @@ internal sealed class BrotliQualityPlan
                 p.BlockSize = 1 << 17;
                 p.HashBits = 15;
                 p.ChainDepth = 1;
+                p.SkipShift = 6;
                 break;
             case 1:
                 p.BlockSize = 1 << 17;
                 p.HashBits = 17;
                 p.ChainDepth = 1;
+                p.SkipShift = 6;
                 break;
             case 2:
                 p.BlockSize = 1 << 17;
                 p.HashBits = 16;
                 p.BucketBits = 2;
-                p.ChainDepth = 4;
+                p.ChainDepth = 2;
+                p.SkipShift = 5;
                 break;
             case 3:
                 p.BlockSize = 1 << 18;
-                p.HashBits = 17;
-                p.ChainDepth = 8;
+                p.HashBits = 15;
+                p.ChainDepth = 4;
                 p.BucketBits = 3;
-                p.HashLength = 4;
+                p.HashLength = 6;
+                p.SkipShift = 5;
                 p.Lazy = 1;
                 p.LiteralContexts = true;
                 break;
             case 4:
                 p.BlockSize = 1 << 20;
-                p.HashBits = 17;
+                p.HashBits = 15;
                 p.ChainDepth = 8;
                 p.BucketBits = 3;
                 p.HashLength = 6;
+                p.SkipShift = 5;
                 p.Lazy = 1;
                 p.LiteralContexts = true;
                 p.SplitBlocks = true;
@@ -123,18 +135,15 @@ internal sealed class BrotliQualityPlan
                 p.SplitPairwiseLimit = 64;
                 break;
             case 5:
-                p.HashBits = 18;
-                p.ChainDepth = 12;
+                p.HashBits = 16;
+                p.ChainDepth = 8;
                 p.BucketBits = 4;
                 p.HashLength = 6;
-                p.LongHashBits = 16;
-                p.LongBucketBits = 2;
-                p.LongDepth = 4;
+                p.SkipShift = 5;
                 p.Lazy = 1;
                 p.LiteralContexts = true;
                 p.SplitBlocks = true;
                 p.SearchContextMode = true;
-                p.Dictionary = true;
                 p.LiteralSegmentMin = 1024;
                 p.LiteralSegmentMax = 128;
                 p.SplitPairwiseLimit = 64;

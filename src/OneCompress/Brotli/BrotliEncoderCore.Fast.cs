@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Brotli;
@@ -26,42 +25,43 @@ internal sealed partial class BrotliEncoderCore
         int last = end - 4; // the last position with four bytes inside the block
         while (pos <= last)
         {
-            uint word = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(pos));
+            uint word = BrotliEncRaw.Load32(buffer, pos);
             int slot = (int)((word * 0x1E35A7BDu) >> shift);
-            int candidate = head[slot];
-            head[slot] = pos;
+            ref int cell = ref BrotliEncRaw.Slot(head, slot);
+            int candidate = cell;
+            cell = pos;
             int maxDistance = (int)Math.Min(window, streamBase + pos);
             int length = 0;
             int distance = 0;
             int score = 0;
-            if (r0 <= maxDistance && BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(pos - r0)) == word)
+            if (r0 <= maxDistance && BrotliEncRaw.Load32(buffer, pos - r0) == word)
             {
                 distance = r0;
-                length = CommonLengthFrom(pos - distance, pos, 4, end - pos);
+                length = BrotliEncRaw.CommonLength(buffer, pos - distance, pos, 4, end - pos);
                 score = (length * LiteralCost) - CommandCost;
             }
-            else if (r1 <= maxDistance && BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(pos - r1)) == word)
+            else if (r1 <= maxDistance && BrotliEncRaw.Load32(buffer, pos - r1) == word)
             {
                 distance = r1;
-                length = CommonLengthFrom(pos - distance, pos, 4, end - pos);
+                length = BrotliEncRaw.CommonLength(buffer, pos - distance, pos, 4, end - pos);
                 score = (length * LiteralCost) - RingDistanceCost;
             }
-            else if (r2 <= maxDistance && BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(pos - r2)) == word)
+            else if (r2 <= maxDistance && BrotliEncRaw.Load32(buffer, pos - r2) == word)
             {
                 distance = r2;
-                length = CommonLengthFrom(pos - distance, pos, 4, end - pos);
+                length = BrotliEncRaw.CommonLength(buffer, pos - distance, pos, 4, end - pos);
                 score = (length * LiteralCost) - RingDistanceCost;
             }
-            else if (r3 <= maxDistance && BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(pos - r3)) == word)
+            else if (r3 <= maxDistance && BrotliEncRaw.Load32(buffer, pos - r3) == word)
             {
                 distance = r3;
-                length = CommonLengthFrom(pos - distance, pos, 4, end - pos);
+                length = BrotliEncRaw.CommonLength(buffer, pos - distance, pos, 4, end - pos);
                 score = (length * LiteralCost) - RingDistanceCost;
             }
 
-            if (candidate >= 0 && pos - candidate <= maxDistance && BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(candidate)) == word)
+            if (candidate >= 0 && pos - candidate <= maxDistance && BrotliEncRaw.Load32(buffer, candidate) == word)
             {
-                int l2 = CommonLengthFrom(candidate, pos, 4, end - pos);
+                int l2 = BrotliEncRaw.CommonLength(buffer, candidate, pos, 4, end - pos);
                 int d2 = pos - candidate;
                 int s2 = (l2 * LiteralCost) - DistanceCost - (16 * DistanceBits(d2));
                 if (s2 > score)
@@ -75,7 +75,7 @@ internal sealed partial class BrotliEncoderCore
             if (score <= 0)
             {
                 // Incompressible stretches are crossed faster the longer they have gone without a copy.
-                pos += 1 + ((pos - insertStart) >> 6);
+                pos += 1 + ((pos - insertStart) >> _plan.SkipShift);
                 continue;
             }
 
@@ -93,16 +93,16 @@ internal sealed partial class BrotliEncoderCore
             {
                 for (int p = pos + 1; p < Math.Min(next, last + 1); p++)
                 {
-                    head[(int)((BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(p)) * 0x1E35A7BDu) >> shift)] = p;
+                    BrotliEncRaw.Slot(head, (int)((BrotliEncRaw.Load32(buffer, p) * 0x1E35A7BDu) >> shift)) = p;
                 }
             }
             else if (next <= last)
             {
-                head[(int)((BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(pos + 1)) * 0x1E35A7BDu) >> shift)] = pos + 1;
+                BrotliEncRaw.Slot(head, (int)((BrotliEncRaw.Load32(buffer, pos + 1) * 0x1E35A7BDu) >> shift)) = pos + 1;
                 int a = next - 2;
-                head[(int)((BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(a)) * 0x1E35A7BDu) >> shift)] = a;
+                BrotliEncRaw.Slot(head, (int)((BrotliEncRaw.Load32(buffer, a) * 0x1E35A7BDu) >> shift)) = a;
                 a++;
-                head[(int)((BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(a)) * 0x1E35A7BDu) >> shift)] = a;
+                BrotliEncRaw.Slot(head, (int)((BrotliEncRaw.Load32(buffer, a) * 0x1E35A7BDu) >> shift)) = a;
             }
 
             pos = next;

@@ -19,6 +19,29 @@ internal static class BrotliEncodeTables
     // an implicit distance (0 and 1) are handled separately.
     private static readonly sbyte[] s_cell = BuildCells();
 
+    // For lengths below 1024, one word per length: the code, the number of extra bits above it (5 bits each) and the extra bits' value
+    // from bit 10, so that a command's codes and extra bits cost two loads.
+    private static readonly uint[] s_insertInfo = BuildInfo(BrotliCodes.InsertBase, BrotliCodes.InsertExtra, 1024);
+    private static readonly uint[] s_copyInfo = BuildInfo(BrotliCodes.CopyBase, BrotliCodes.CopyExtra, 1024);
+
+    /// <summary>Code, extra bit count and extra bits of an insert length below 1024: <c>code | count &lt;&lt; 5 | value &lt;&lt; 10</c>.</summary>
+    internal static uint InsertInfo(int length) => s_insertInfo[length];
+
+    /// <summary>Code, extra bit count and extra bits of a copy length from 2 to 1023: <c>code | count &lt;&lt; 5 | value &lt;&lt; 10</c>.</summary>
+    internal static uint CopyInfo(int length) => s_copyInfo[length];
+
+    private static uint[] BuildInfo(int[] bases, ReadOnlySpan<byte> extra, int size)
+    {
+        var table = new uint[size];
+        for (int v = 0; v < size; v++)
+        {
+            int code = v < bases[0] ? 0 : CodeOf(bases, v);
+            table[v] = (uint)code | ((uint)extra[code] << 5) | ((uint)Math.Max(0, v - bases[code]) << 10);
+        }
+
+        return table;
+    }
+
     /// <summary>The insert length code of an insert length (RFC 7932 section 5).</summary>
     internal static int InsertCode(int length) => length < 1024 ? s_insertCodeSmall[length] : CodeOf(BrotliCodes.InsertBase, length);
 

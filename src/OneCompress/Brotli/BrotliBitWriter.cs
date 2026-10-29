@@ -13,7 +13,7 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// <see cref="BrotliHuffmanCode"/>, which hands this writer the code bits already in stream order.
 /// </remarks>
 [Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
-public sealed class BrotliBitWriter
+public sealed partial class BrotliBitWriter
 {
     private byte[] _buffer = new byte[4096];
     private int _read;

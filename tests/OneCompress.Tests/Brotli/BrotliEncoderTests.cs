@@ -37,6 +37,26 @@ public class BrotliEncoderTests
     }
 
     [Fact]
+    public void LongLiteralRunsFollowedByLongCopiesRoundTrip()
+    {
+        // A literal run of tens of thousands of bytes needs 24 extra bits for its length, and a copy of a few thousand needs ten or more
+        // for its own, so the pair is wider than 32 bits: the writers that pack both into one word must split it.
+        var random = new Random(7);
+        var noise = new byte[40_000];
+        random.NextBytes(noise);
+        var data = new byte[noise.Length + 3000 + noise.Length + 5000];
+        noise.CopyTo(data, 0);
+        noise.AsSpan(100, 3000).CopyTo(data.AsSpan(noise.Length));
+        random.NextBytes(data.AsSpan(noise.Length + 3000, noise.Length));
+        noise.AsSpan(5000, 5000).CopyTo(data.AsSpan(noise.Length + 3000 + noise.Length));
+        for (int q = 0; q <= 6; q++)
+        {
+            byte[] packed = Compress(data, q, 22);
+            Assert.True(data.AsSpan().SequenceEqual(BR.Decompress(packed)), $"q{q}: round trip differs");
+        }
+    }
+
+    [Fact]
     public void EmptyInputIsAValidStream()
     {
         byte[] packed = Compress([], 5, 22);
