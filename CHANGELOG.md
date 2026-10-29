@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- PPMd (`ONECOMPRESS010`, preview): variants H and I as `PpmdH`/`PpmdI`, encoders, decoders and `PpmdStream`, byte-identical to 7-Zip's output; zip method 98 and the 7z PPMD coder, read and write. New limit `ArchiveLimits.MaxPpmdMemorySize` (256 MiB). See `docs/ppmd.md`.
+
 ## [0.3.0-preview.1] - 2026-10-28
 
 Everything new here is preview and carries `[Experimental]`. The LZMA family meets the size target and is below the reference speed in some rows; the README has the measurements from both machines.

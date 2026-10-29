@@ -225,7 +225,7 @@ internal static class SevenZipFolderDecoder
     private static bool IsSupported(SevenZipCoder c) =>
         c.NumInStreams == 1 && c.NumOutStreams == 1 &&
         (c.MethodId is SevenZipFormat.MethodCopy or SevenZipFormat.MethodDeflate or SevenZipFormat.MethodDeflate64 or SevenZipFormat.MethodBZip2 or SevenZipFormat.MethodZstd
-            or SevenZipFormat.MethodLzma or SevenZipFormat.MethodLzma2 or SevenZipFormat.MethodDelta or SevenZipFormat.MethodAes ||
+            or SevenZipFormat.MethodLzma or SevenZipFormat.MethodLzma2 or SevenZipFormat.MethodDelta or SevenZipFormat.MethodAes or SevenZipFormat.MethodPpmd ||
          IsBranchFilter(c.MethodId));
 
     // Methods.txt: the branch filters have a short ID (04..0B) and, for the older ones, a long 03 03 xx xx ID.
@@ -279,6 +279,8 @@ internal static class SevenZipFolderDecoder
                 return Codec(CodecId.BZip2, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
             case SevenZipFormat.MethodZstd:
                 return Codec(CodecId.Zstd, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
+            case SevenZipFormat.MethodPpmd:
+                return Codec(CodecId.Ppmd, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
             case SevenZipFormat.MethodDelta:
                 return Codec(CodecId.Filters, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
             case SevenZipFormat.MethodLzma:

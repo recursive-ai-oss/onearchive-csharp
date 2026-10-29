@@ -401,6 +401,7 @@ public sealed class SevenZipWriter : ArchiveWriter
             SevenZipMethod.Deflate => CodecId.Deflate,
             SevenZipMethod.Deflate64 => CodecId.Deflate64,
             SevenZipMethod.Zstd => CodecId.Zstd,
+            SevenZipMethod.Ppmd => CodecId.Ppmd,
             _ => null,
         };
         Stream top = id is { } known
@@ -833,6 +834,12 @@ public sealed class SevenZipWriter : ArchiveWriter
             case SevenZipMethod.Zstd:
                 w.Byte(0x03);
                 w.Bytes([0xF7, 0x11, 0x01]);
+                break;
+            case SevenZipMethod.Ppmd:
+                w.Byte(0x23);
+                w.Bytes([0x03, 0x04, 0x01]);
+                w.Number(5);
+                w.Bytes(f.CompressorProperties);
                 break;
             default:
                 w.Byte(0x01);

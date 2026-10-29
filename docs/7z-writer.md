@@ -96,7 +96,7 @@ goes through the CRC, the filter and the compressor straight to the output, so m
 
 ## Not written
 
-PPMd, BCJ2 and BZip2 coders, archive properties, additional streams, start-position and
+BCJ2 and BZip2 coders (PPMd is written, see `ppmd.md`), archive properties, additional streams, start-position and
 comment properties.
 
 ## Encryption

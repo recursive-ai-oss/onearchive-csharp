@@ -37,5 +37,19 @@ technologies described in the Open Specifications and may distribute portions of
 your documentation as necessary to properly document the implementation". Microsoft has patents that may cover implementations of these
 technologies, and the notice grants no licence under them.
 
+## PPMd (public domain)
+
+The PPMd variant H and I codecs (`src/OneCompress/Ppmd`) are ported from public-domain sources, as the project's owner decided for
+these files only. Each ported file names its originals in its header. The authors placed the code in the public domain, so no licence
+conditions apply; the notices are kept here as provenance.
+
+- **Dmitry Shkarin**, PPMd var.H (2001) and var.I (2002), the algorithms and the model. Ppmd.h, Ppmd7.c and Ppmd8.c each say: "This code is based on PPMd var.H (2001): Dmitry Shkarin : Public domain" (Ppmd8.c: "var.I (2002)").
+- **Dmitry Subbotin**, the carry-less range coder (1999) used by variant I: "Carryless rangecoder (1999): Dmitry Subbotin : Public domain".
+- **Igor Pavlov**, the C versions in the LZMA SDK / 7-Zip 26.05, "Public domain" in each file header:
+  `C/Ppmd.h`, `C/Ppmd7.c`, `C/Ppmd7Dec.c`, `C/Ppmd7Enc.c` from
+  <https://github.com/ip7z/7zip/releases/download/26.05/lzma2605.7z> (SHA-256 `668fda469b7f584f246008cf28359c66ef98d65fafb3b22a52672eebe6970c28`), and
+  `C/Ppmd8.c`, `C/Ppmd8Dec.c`, `C/Ppmd8Enc.c` from
+  <https://github.com/ip7z/7zip/releases/download/26.05/7z2605-src.tar.xz> (SHA-256 `0b6080b8c3e7a579161d2d495224c0e51c467576cb4c7048b0ab485ef44cc22e`).
+
 The tests and benchmarks also use test corpora, comparison packages and reference tools; they are fetched or referenced, never
 shipped, and are listed here as they are added.

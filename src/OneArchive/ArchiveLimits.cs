@@ -28,6 +28,9 @@ public sealed class ArchiveLimits
     /// <summary>The default for <see cref="MaxWindowSize"/>: 8 MiB.</summary>
     public const long DefaultMaxWindowSize = 8L << 20;
 
+    /// <summary>The default for <see cref="MaxPpmdMemorySize"/>: 256 MiB.</summary>
+    public const long DefaultMaxPpmdMemorySize = 256L << 20;
+
     /// <summary>
     /// The number of produced bytes below which the expansion ratio is not checked: 32 MiB. A tiny archive that
     /// legitimately expands a lot is not a threat until it has expanded a lot.
@@ -65,4 +68,11 @@ public sealed class ArchiveLimits
     /// Default 8 MiB (every Zstandard level up to 19).
     /// </summary>
     public long MaxWindowSize { get; init; } = DefaultMaxWindowSize;
+
+    /// <summary>
+    /// Gets the largest PPMd model an archive may declare, which bounds the decoder's memory: the decoder allocates all of it before it reads data.
+    /// An entry that declares more raises <see cref="RecursiveAI.OneCompress.CompressionLimitException"/> and nothing is allocated.
+    /// Default 256 MiB, the most a zip method 98 header can state and above 7-Zip's highest 7z level (64 MiB).
+    /// </summary>
+    public long MaxPpmdMemorySize { get; init; } = DefaultMaxPpmdMemorySize;
 }

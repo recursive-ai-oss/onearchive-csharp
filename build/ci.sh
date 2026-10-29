@@ -54,7 +54,7 @@ step_aot() {
   # Positive control first: a name the app does use must be findable, or the absence checks prove nothing.
   grep -qa ZstdStream "$exe" || { echo "slim check: ZstdStream not found in the binary"; return 1; }
   for name in BrotliStream BrotliDecoder BrotliEncoder timedownlifeleft LzmaDecoder LzmaEncoder Lzma2Decoder XzDecoder XzStream \
-      BZip2Stream BZip2Decoder Deflate64Decoder DeflateDecoder LzxDecoder LzipStream Lz4Stream; do
+      BZip2Stream BZip2Decoder Deflate64Decoder DeflateDecoder LzxDecoder LzipStream Lz4Stream PpmdStream PpmdHDecoder PpmdIModel; do
     if grep -qa "$name" "$exe"; then echo "slim check: $name is in the .tar.zst-only binary"; return 1; fi
   done
 }

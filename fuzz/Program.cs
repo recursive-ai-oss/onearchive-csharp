@@ -18,6 +18,13 @@ if (args.Length == 2 && args[0] == "seeds-encrypted")
     return 0;
 }
 
+// `fuzz seeds-ppmd DIR` writes the decoder seeds of the ppmd-decode target.
+if (args.Length == 2 && args[0] == "seeds-ppmd")
+{
+    PpmdTargets.WriteSeeds(args[1]);
+    return 0;
+}
+
 // `fuzz seeds-cab DIR` writes the seed cabinets and LZX streams of the cab-read and lzx-decode targets.
 if (args.Length == 2 && args[0] == "seeds-cab")
 {

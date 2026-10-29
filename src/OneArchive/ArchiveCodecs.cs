@@ -61,6 +61,9 @@ public static class ArchiveCodecs
     /// <summary>Registers the 7z branch converters (x86, ARM, ...) and the delta filter.</summary>
     public static void AddFilters() => CodecRegistry.Register(CodecId.Filters, new FiltersArchiveCodec());
 
+    /// <summary>Registers PPMd: zip method 98 (variant I) and the 7z PPMD coder (variant H).</summary>
+    public static void AddPpmd() => CodecRegistry.Register(CodecId.Ppmd, new PpmdArchiveCodec());
+
     /// <summary>Registers every codec. This is what the default does on first use.</summary>
     public static void AddAll()
     {
@@ -75,5 +78,6 @@ public static class ArchiveCodecs
         AddBrotli();
         AddLzx();
         AddFilters();
+        AddPpmd();
     }
 }

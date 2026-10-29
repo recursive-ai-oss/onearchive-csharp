@@ -35,7 +35,7 @@ for dll in RecursiveAI.OneCompress.dll RecursiveAI.OneArchive.dll; do
   [ -f "$build/$dll" ] && sharpfuzz "$build/$dll" >/dev/null
 done
 
-if [ ! -d "$work/seeds" ]; then "$here/make-seeds.sh" "$work/seeds" >/dev/null; fi
+if [ ! -d "$work/seeds" ]; then "$here/make-seeds.sh" "$work/seeds" >/dev/null; "$here/seeds-ppmd.sh" "$work/seeds" "$build/OneArchive.Fuzz.dll" >/dev/null; fi
 
 if [ $# -eq 0 ]; then set -- $(dotnet "$artifacts/bin/Fuzz/checked/OneArchive.Fuzz.dll" list | grep -v '^noop$'); fi
 targets=("$@")

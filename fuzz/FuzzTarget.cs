@@ -38,6 +38,8 @@ internal static class FuzzTargets
         DeflateTargets.GZip,
         BZip2Targets.Decode,
         BZip2EncoderTargets.RoundTrip,
+        PpmdTargets.Decode,
+        PpmdTargets.RoundTrip,
         BrotliTargets.Decode,
         BrotliEncoderTargets.RoundTrip,
         LzxCabTargets.Lzx,

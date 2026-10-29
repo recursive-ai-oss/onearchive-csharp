@@ -227,8 +227,9 @@ internal sealed class ZipEntryStream : Stream
             case ZipMethod.Zstd:
             case ZipMethod.Lzma:
             case ZipMethod.Xz:
+            case ZipMethod.Ppmd:
                 _decoder = CodecRegistry.Require(CodecOf(method), ZipFormat.Name, $"compression method {(int)method} ({ZipFormat.MethodName((int)method)})")
-                    .CreateZipDecoder(size, input.Offset, limits);
+                    .CreateZipDecoder(size, _compRemaining, input.Offset, limits);
                 break;
             default:
                 throw new ArchiveUnsupportedException(ZipFormat.Name, $"compression method {(int)method} ({ZipFormat.MethodName((int)method)})");
@@ -242,6 +243,7 @@ internal sealed class ZipEntryStream : Stream
         ZipMethod.BZip2 => CodecId.BZip2,
         ZipMethod.Zstd => CodecId.Zstd,
         ZipMethod.Lzma => CodecId.Lzma,
+        ZipMethod.Ppmd => CodecId.Ppmd,
         _ => CodecId.Xz,
     };
 

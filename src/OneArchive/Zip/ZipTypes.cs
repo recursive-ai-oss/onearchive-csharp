@@ -28,7 +28,7 @@ public enum ZipMethod : ushort
     /// <summary>xz. Read only.</summary>
     Xz = 95,
 
-    /// <summary>PPMd. Listed, not yet supported.</summary>
+    /// <summary>PPMd variant I revision 1 (APPNOTE 5.10): a two-byte parameter header, then the range-coded data.</summary>
     Ppmd = 98,
 
     /// <summary>WinZip AES encryption wrapper (the real method is inside the AES extra field). Read and written with a password.</summary>
@@ -193,6 +193,13 @@ public sealed class ZipWriterOptions
 {
     /// <summary>Gets the method for file entries with content. Default <see cref="ZipMethod.Deflate"/>. Store, Deflate, Deflate64 and Zstd can be written. Directories, links and empty files are stored.</summary>
     public ZipMethod Method { get; init; } = ZipMethod.Deflate;
+
+    /// <summary>
+    /// Gets the PPMd parameters for <see cref="ZipMethod.Ppmd"/> entries: order, model memory (a whole number of MiB from 1 to 256) and restore method.
+    /// Default <see langword="null"/>: the parameters of 7-Zip's level (<see cref="Level"/>, default 5). As 7-Zip does, a small entry gets a smaller model than asked for
+    /// (the smallest power of two that is at least 16 times the entry's size, rounded up to whole MiB), which does not change the compressed bytes' meaning but keeps small entries cheap. Documented in <c>docs/ppmd.md</c>.
+    /// </summary>
+    public RecursiveAI.OneCompress.Ppmd.PpmdIOptions? Ppmd { get; init; }
 
     /// <summary>Gets the compression level in the numbering of the reference tool. Default <see langword="null"/>: Deflate 6, Deflate64 6, Zstandard 3. Deflate64 has levels 0 to 9; higher values mean 9.</summary>
     public int? Level { get; init; }
