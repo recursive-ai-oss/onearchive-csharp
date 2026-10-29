@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- Microsoft compound file writer (`CompoundFileWriter`, `CompoundFileWriterOptions`): versions 3 and 4, FAT, DIFAT, mini stream, red-black directory trees, CLSIDs, state bits and times, reachable as `Archive.Create("x.cfb")` (`docs/cfb.md`).
+
 ## [0.5.1-preview.1] - 2026-10-29
 
 Everything is still preview and carries `[Experimental]`. The README has the new measurements from both machines.
