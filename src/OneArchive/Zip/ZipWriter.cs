@@ -224,9 +224,9 @@ public sealed class ZipWriter : ArchiveWriter
                 defaultMode = (UnixFileMode)0b110_100_100;
                 p.Size = entry.Size;
                 p.Method = entry.Size == 0 ? ZipMethod.Store : _options.Method;
-                if (p.Method is not (ZipMethod.Store or ZipMethod.Deflate or ZipMethod.Deflate64 or ZipMethod.BZip2 or ZipMethod.Zstd))
+                if (p.Method is not (ZipMethod.Store or ZipMethod.Deflate or ZipMethod.Deflate64 or ZipMethod.BZip2 or ZipMethod.Zstd or ZipMethod.Ppmd))
                 {
-                    throw new ArchiveUnsupportedException(ZipFormat.Name, $"writing the {p.Method} method (store, deflate, deflate64, bzip2 and zstd can be written)");
+                    throw new ArchiveUnsupportedException(ZipFormat.Name, $"writing the {p.Method} method (store, deflate, deflate64, bzip2, zstd and ppmd can be written)");
                 }
 
                 break;
@@ -265,10 +265,10 @@ public sealed class ZipWriter : ArchiveWriter
         return true;
     }
 
-    private static Stream OpenCompress(ZipMethod method, Stream sink, int? level, long size)
+    private Stream OpenCompress(ZipMethod method, Stream sink, int? level, long size)
     {
-        CodecId id = method switch { ZipMethod.Deflate64 => CodecId.Deflate64, ZipMethod.BZip2 => CodecId.BZip2, ZipMethod.Zstd => CodecId.Zstd, _ => CodecId.Deflate };
-        return CodecRegistry.Require(id, ZipFormat.Name, $"writing the {method} method").OpenZipCompress(sink, level, size);
+        CodecId id = method switch { ZipMethod.Deflate64 => CodecId.Deflate64, ZipMethod.BZip2 => CodecId.BZip2, ZipMethod.Zstd => CodecId.Zstd, ZipMethod.Ppmd => CodecId.Ppmd, _ => CodecId.Deflate };
+        return CodecRegistry.Require(id, ZipFormat.Name, $"writing the {method} method").OpenZipCompress(sink, level, size, method == ZipMethod.Ppmd ? _options.Ppmd : null);
     }
 
     private async ValueTask WriteBytesAsync(ReadOnlyMemory<byte> data, bool async, CancellationToken ct)
@@ -426,7 +426,7 @@ public sealed class ZipWriter : ArchiveWriter
             throw new ArgumentException("The entry's extra fields are longer than 65535 bytes.", nameof(entry));
         }
 
-        ushort needed = p.Method switch { ZipMethod.Zstd => 63, ZipMethod.Deflate => 20, ZipMethod.Deflate64 => 21, ZipMethod.BZip2 => 46, _ => 10 };
+        ushort needed = p.Method switch { ZipMethod.Zstd or ZipMethod.Ppmd => 63, ZipMethod.Deflate => 20, ZipMethod.Deflate64 => 21, ZipMethod.BZip2 => 46, _ => 10 };
         if (p.Kind == ArchiveEntryKind.Directory || p.Descriptor)
         {
             needed = Math.Max(needed, (ushort)20);

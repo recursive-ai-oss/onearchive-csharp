@@ -123,7 +123,7 @@ internal sealed class PpmdDecoderCore
 
         if (sym != -1)
         {
-            throw new CompressionFormatException(_format, _inputOffset + pos, $"the end marker after {_produced} decoded bytes");
+            return OperationStatus.InvalidData;
         }
 
         _markerRead = true;

@@ -17,6 +17,7 @@ internal enum CodecId
     Brotli,
     Lzx,
     Filters,
+    Ppmd,
 }
 
 /// <summary>A zip entry's decoder: the step function, and whether more frames may follow the first one's end.</summary>
@@ -61,8 +62,14 @@ internal abstract class ArchiveCodec
     /// <summary>A zip entry decoder. <paramref name="size"/> is the declared size (-1 if unknown).</summary>
     public virtual ZipBlockDecoder CreateZipDecoder(long size, long dataOffset, ArchiveLimits limits) => throw NoRole("reading zip entries");
 
+    /// <summary>A zip entry decoder that also knows the entry's compressed size (-1 if unknown); the default ignores it.</summary>
+    public virtual ZipBlockDecoder CreateZipDecoder(long size, long compressedSize, long dataOffset, ArchiveLimits limits) => CreateZipDecoder(size, dataOffset, limits);
+
     /// <summary>A zip entry encoder over a sink it leaves open.</summary>
     public virtual Stream OpenZipCompress(Stream sink, int? level, long size) => throw NoRole("writing zip entries");
+
+    /// <summary>A zip entry encoder that takes the writer's method options (the object the writer's options hold for this method, or null).</summary>
+    public virtual Stream OpenZipCompress(Stream sink, int? level, long size, object? methodOptions) => OpenZipCompress(sink, level, size);
 
     /// <summary>A 7z coder's decoder (<paramref name="coder"/> names the method and holds its properties).</summary>
     public virtual Stream OpenSevenZipDecoder(SevenZipCoder coder, Stream input, ArchiveLimits limits, SevenZipReaderOptions options, long unpackSize, long errorOffset) =>
@@ -124,6 +131,7 @@ internal static class CodecRegistry
         CodecId.Lzip => nameof(ArchiveCodecs.AddLzip),
         CodecId.Brotli => nameof(ArchiveCodecs.AddBrotli),
         CodecId.Lzx => nameof(ArchiveCodecs.AddLzx),
+        CodecId.Ppmd => nameof(ArchiveCodecs.AddPpmd),
         _ => nameof(ArchiveCodecs.AddFilters),
     };
 }

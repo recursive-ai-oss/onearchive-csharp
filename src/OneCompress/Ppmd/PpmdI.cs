@@ -173,8 +173,10 @@ public sealed class PpmdIDecoder
     /// </summary>
     /// <param name="source">The input after the data.</param>
     /// <param name="bytesConsumed">The number of input bytes the marker used.</param>
-    /// <returns><see cref="OperationStatus.Done"/> when the marker was read, or <see cref="OperationStatus.NeedMoreData"/>: call again with more bytes after the same ones.</returns>
-    /// <exception cref="CompressionFormatException">Something other than the marker follows the data.</exception>
+    /// <returns>
+    /// <see cref="OperationStatus.Done"/> when the marker was read; <see cref="OperationStatus.NeedMoreData"/>: call again with more bytes after the same ones;
+    /// or <see cref="OperationStatus.InvalidData"/> when what follows is not the marker (the stream was written without one), in which case nothing is consumed.
+    /// </returns>
     /// <exception cref="InvalidOperationException">The data has not been decoded to its end yet.</exception>
     public OperationStatus ReadEndMarker(ReadOnlySpan<byte> source, out int bytesConsumed) => _core.ReadEndMarker(source, out bytesConsumed);
 

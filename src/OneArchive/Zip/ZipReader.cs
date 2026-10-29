@@ -688,7 +688,7 @@ public sealed class ZipReader : ArchiveReader
                 : ZipFormat.Bad(offset, $"{problem} (entry '{Printable(name)}')");
         }
 
-        if (info.ActualMethod is not ((ushort)ZipMethod.Store or (ushort)ZipMethod.Deflate or (ushort)ZipMethod.Deflate64 or (ushort)ZipMethod.BZip2 or (ushort)ZipMethod.Zstd or (ushort)ZipMethod.Lzma or (ushort)ZipMethod.Xz))
+        if (info.ActualMethod is not ((ushort)ZipMethod.Store or (ushort)ZipMethod.Deflate or (ushort)ZipMethod.Deflate64 or (ushort)ZipMethod.BZip2 or (ushort)ZipMethod.Zstd or (ushort)ZipMethod.Lzma or (ushort)ZipMethod.Xz or (ushort)ZipMethod.Ppmd))
         {
             throw new ArchiveUnsupportedException(ZipFormat.Name, $"compression method {info.ActualMethod} ({ZipFormat.MethodName(info.ActualMethod)}) of entry '{Printable(name)}'");
         }

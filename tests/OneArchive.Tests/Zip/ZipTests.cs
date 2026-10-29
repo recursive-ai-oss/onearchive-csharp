@@ -294,6 +294,8 @@ public class ZipTests
     [InlineData(ZipMethod.BZip2, false)]
     [InlineData(ZipMethod.Zstd, true)]
     [InlineData(ZipMethod.Zstd, false)]
+    [InlineData(ZipMethod.Ppmd, true)]
+    [InlineData(ZipMethod.Ppmd, false)]
     public void WriterOutputReadsBackSeekableAndForwardOnly(ZipMethod method, bool seekableOutput)
     {
         byte[] zip = Write(Standard, new ZipWriterOptions { Method = method }, seekableOutput);
@@ -432,21 +434,21 @@ public class ZipTests
     public void UnsupportedMethodIsListedAndRefusedWhenOpened()
     {
         var raw = new RawZip();
-        var e = RawZip.Stored("ppmd.bin", [9, 9, 9]);
-        e.Method = 98;
+        var e = RawZip.Stored("wavpack.bin", [9, 9, 9]);
+        e.Method = 97;
         raw.Add(e);
         raw.Add(RawZip.Stored("ok", [1]));
         byte[] zip = raw.Finish();
         using var reader = new ZipReader(new MemoryStream(zip));
         ZipEntry first = reader.GetNextEntry()!;
-        Assert.Equal(ZipMethod.Ppmd, first.Method);
+        Assert.Equal((ZipMethod)97, first.Method);
         var ex = Assert.Throws<ArchiveUnsupportedException>(() => reader.OpenEntryStream());
-        Assert.Contains("98", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("97", ex.Message, StringComparison.Ordinal);
         Assert.Equal("ok", reader.GetNextEntry()!.Name);
 
         // Forward-only: the unsupported entry has a known length, so it is skipped.
         using var forward = new ZipReader(new ForwardOnly(new MemoryStream(zip)));
-        Assert.Equal("ppmd.bin", forward.GetNextEntry()!.Name);
+        Assert.Equal("wavpack.bin", forward.GetNextEntry()!.Name);
         Assert.Equal("ok", forward.GetNextEntry()!.Name);
     }
 

@@ -104,7 +104,7 @@ public class SevenZipWriterTests
     public static TheoryData<string> Variants() => new()
     {
         "", "copy", "lzma", "lzma-nonsolid", "deflate", "deflate64", "deflate64-nonsolid", "zstd", "plain-header", "level1", "level9", "nonsolid", "delta", "x86", "arm64", "riscv",
-        "filecount", "blocksize", "ppc", "sparc", "ia64", "arm", "armt", "level0",
+        "filecount", "blocksize", "ppc", "sparc", "ia64", "arm", "armt", "level0", "ppmd", "ppmd-nonsolid", "ppmd-explicit",
     };
 
     internal static SevenZipWriterOptions OptionsFor(string v) => v switch
@@ -116,6 +116,9 @@ public class SevenZipWriterTests
         "deflate64" => new() { Method = SevenZipMethod.Deflate64 },
         "deflate64-nonsolid" => new() { Method = SevenZipMethod.Deflate64, Solid = false, Level = 9 },
         "zstd" => new() { Method = SevenZipMethod.Zstd },
+        "ppmd" => new() { Method = SevenZipMethod.Ppmd },
+        "ppmd-nonsolid" => new() { Method = SevenZipMethod.Ppmd, Solid = false, Level = 9 },
+        "ppmd-explicit" => new() { Method = SevenZipMethod.Ppmd, Ppmd = new RecursiveAI.OneCompress.Ppmd.PpmdHOptions { Order = 12, MemorySize = 3 << 20 } },
         "plain-header" => new() { EncodeHeader = false },
         "level1" => new() { Level = 1 },
         "level9" => new() { Level = 9 },

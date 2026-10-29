@@ -499,13 +499,13 @@ public class SevenZipReaderTests
     public void UnsupportedMethodNamesTheId()
     {
         byte[] data = "abc"u8.ToArray();
-        // PPMd (03 04 01), whose decoder is not available: listing works, opening the content is refused.
-        byte[] streams = Cat(0x06, 0UL, 1UL, 0x09, 3UL, 0x00, 0x07, 0x0B, 1UL, 0, 1UL, Cat(0x03, 0x03, 0x04, 0x01), 0x0C, 3UL, 0x00, 0x00);
+        // A method with no decoder here (RAR1, 04 03 01): listing works, opening the content is refused.
+        byte[] streams = Cat(0x06, 0UL, 1UL, 0x09, 3UL, 0x00, 0x07, 0x0B, 1UL, 0, 1UL, Cat(0x03, 0x04, 0x03, 0x01), 0x0C, 3UL, 0x00, 0x00);
         byte[] h = Header(streams, 1, Names("a"));
         using var r = new SevenZipReader(new MemoryStream(Build(data, h)));
         r.GetNextEntry();
         var ex = Assert.Throws<ArchiveUnsupportedException>(() => r.OpenEntryStream().ReadByte());
-        Assert.Contains("0x30401", ex.Message);
+        Assert.Contains("0x40301", ex.Message);
     }
 
     [Fact]

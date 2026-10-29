@@ -24,6 +24,9 @@ public enum SevenZipMethod
 
     /// <summary>Raw Deflate64 (method ID 04 01 09), at <see cref="SevenZipWriterOptions.Level"/> as given (0-9).</summary>
     Deflate64 = 5,
+
+    /// <summary>PPMd variant H (method ID 03 04 01) with the order and model memory of 7-Zip's level, or <see cref="SevenZipWriterOptions.Ppmd"/>.</summary>
+    Ppmd = 6,
 }
 
 /// <summary>The filter placed in front of the compression method.</summary>
@@ -76,6 +79,12 @@ public sealed class SevenZipWriterOptions
 
     /// <summary>Gets the method. Default <see cref="SevenZipMethod.Lzma2"/>. Level 0 always means <see cref="SevenZipMethod.Copy"/>.</summary>
     public SevenZipMethod Method { get; init; } = SevenZipMethod.Lzma2;
+
+    /// <summary>
+    /// Gets the PPMd parameters for <see cref="SevenZipMethod.Ppmd"/>. Default <see langword="null"/>: the order and memory of 7-Zip's level. As 7-Zip does, a folder of known size gets
+    /// a smaller model than asked for (the smallest power of two that is at least 16 times its size, from 64 KiB). Documented in <c>docs/ppmd.md</c>.
+    /// </summary>
+    public RecursiveAI.OneCompress.Ppmd.PpmdHOptions? Ppmd { get; init; }
 
     /// <summary>Gets the compression level, 0 to 9, with the meaning of 7-Zip's <c>-mx</c>. Default 5.</summary>
     public int Level { get; init; } = 5;
