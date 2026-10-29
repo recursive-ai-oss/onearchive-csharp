@@ -28,7 +28,8 @@ a byte array with bounds-checked access; no unchecked accessors are used.
 - **End marker.** 7z data has none; the size is known from the folder. 7-Zip's zip writer appends an end marker (a symbol coded as
   escape at the root with no successor), and `PpmdIOptions.WriteEndMarker` defaults to true; `PpmdHOptions.WriteEndMarker` to false.
   A reader with a known size stops at the size and does not require the marker.
-- **Levels** (the numbering of 7-Zip's `-mx`), measured from its output:
+- **Levels** (the numbering of 7-Zip's `-mx`), pinned by `testdata/ppmd/levels` (a script and a note: 7-Zip 26.05 run on a 212 MB input, where no
+  size reduction applies):
 
   | Level | 7z: order, memory | zip: order, memory (MiB), restore |
   |---|---|---|
@@ -39,8 +40,8 @@ a byte array with bounds-checked access; no unchecked accessors are used.
   | 5 | 6, 16 MiB | 8, 16, restart |
   | 6 | 8, 32 MiB | 9, 32, restart |
   | 7 | 16, 64 MiB | 10, 64, cut-off |
-  | 8 | 24, 64 MiB | 11, 64, cut-off |
-  | 9 | 32, 64 MiB | 12, 64, cut-off |
+  | 8 | 24, 128 MiB | 11, 128, cut-off |
+  | 9 | 32, 256 MiB | 12, 256, cut-off |
 
   Levels above 9 behave as 9. The default level is 5.
 - **Small inputs.** When the size is known, the model memory is reduced to the smallest power of two 2^k (k from 16 to 31) that is at

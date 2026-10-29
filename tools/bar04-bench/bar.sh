@@ -90,7 +90,7 @@ ppmd_packed() { "$sz" l -slt -bd "$1" | sed -n 's/^Packed Size = //p' | head -1;
 # The coder's order and memory as 7-Zip reports them ("PPMD:o6:mem24", memory 2^24 bytes). 7-Zip shrinks the model for small inputs, so
 # decode uses the stream's own parameters and the encode row fails when they differ from the level's table (docs/ppmd.md).
 ppmd_props() { "$sz" l -slt -bd "$1" | sed -n 's/^Method = PPMD:o\([0-9]*\):mem\([0-9]*\)$/\1 \2/p' | head -1; }
-ppmd_expect() { case "$1" in 1) echo "4 20" ;; 2) echo "4 21" ;; 3) echo "5 22" ;; 4) echo "5 23" ;; 5) echo "6 24" ;; 6) echo "8 25" ;; 7) echo "16 26" ;; 8) echo "24 26" ;; *) echo "32 26" ;; esac; }
+ppmd_expect() { case "$1" in 1) echo "4 20" ;; 2) echo "4 21" ;; 3) echo "5 22" ;; 4) echo "5 23" ;; 5) echo "6 24" ;; 6) echo "8 25" ;; 7) echo "16 26" ;; 8) echo "24 27" ;; *) echo "32 28" ;; esac; }
 ppmd_decargs() { local p; p="${2:-$(ppmd_expect "$1")}"; set -- $p; echo "--order $1 --memlog $(($2 - 20))"; }
 ppmd_raw() { tail -c +33 "$1" | head -c "$(ppmd_packed "$1")" > "$2"; }
 
