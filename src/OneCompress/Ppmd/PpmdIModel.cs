@@ -176,13 +176,7 @@ public sealed partial class PpmdIModel : IPpmdModel
         PpmdRaw.SetU16(mem, dst + 4, hi);
     }
 
-    private static void Swap6(Span<byte> mem, int a, int b)
-    {
-        for (int i = 0; i < StateSize; i++)
-        {
-            (PpmdRaw.At(mem, a + i), PpmdRaw.At(mem, b + i)) = (PpmdRaw.At(mem, b + i), PpmdRaw.At(mem, a + i));
-        }
-    }
+    private static void Swap6(Span<byte> mem, int a, int b) => PpmdRaw.Swap6(mem, a, b);
 
     private static int U2B(int nu) => nu * UnitSize;
 

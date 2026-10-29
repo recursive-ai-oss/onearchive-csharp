@@ -86,6 +86,153 @@ internal static class PpmdRaw
     }
 
     /// <summary>
+    /// Adds up the frequencies of the symbols in <paramref name="count"/> consecutive 6-byte states starting at <paramref name="first"/> that are
+    /// not masked (<c>mask[symbol]</c> is 0xFF for a symbol still possible, 0 for one already ruled out). The states are one symbol list the
+    /// model's allocator handed out, so the whole range lies inside the array. The loop keeps everything in registers: it is the hottest
+    /// loop after an escape from a context with many symbols.
+    /// </summary>
+    public static uint SumUnmasked(Span<byte> m, byte[] mask, int first, int count)
+    {
+#if CHECKED
+        uint total = 0;
+        for (int i = 0; i < count; i++, first += 6)
+        {
+            total += (uint)(m[first + 1] & mask[m[first]]);
+        }
+
+        return total;
+#else
+        ref byte p = ref Unsafe.Add(ref MemoryMarshal.GetReference(m), (nint)(uint)first);
+        ref byte mk = ref MemoryMarshal.GetArrayDataReference(mask);
+        uint a = 0;
+        uint b = 0;
+        for (; count >= 4; count -= 4, p = ref Unsafe.Add(ref p, 24))
+        {
+            a += (uint)(Unsafe.Add(ref p, 1) & Unsafe.Add(ref mk, (nint)p));
+            b += (uint)(Unsafe.Add(ref p, 7) & Unsafe.Add(ref mk, (nint)Unsafe.Add(ref p, 6)));
+            a += (uint)(Unsafe.Add(ref p, 13) & Unsafe.Add(ref mk, (nint)Unsafe.Add(ref p, 12)));
+            b += (uint)(Unsafe.Add(ref p, 19) & Unsafe.Add(ref mk, (nint)Unsafe.Add(ref p, 18)));
+        }
+
+        for (; count > 0; count--, p = ref Unsafe.Add(ref p, 6))
+        {
+            a += (uint)(Unsafe.Add(ref p, 1) & Unsafe.Add(ref mk, (nint)p));
+        }
+
+        return a + b;
+#endif
+    }
+
+    /// <summary>
+    /// Walks the 6-byte states from <paramref name="first"/> subtracting each unmasked frequency from <paramref name="count"/> until it goes
+    /// negative (as a signed value) and returns the index of the state that did it. The caller has checked that <paramref name="count"/> is
+    /// below the sum <see cref="SumUnmasked"/> gives for the list, so the walk ends inside the list.
+    /// </summary>
+    public static int SeekUnmasked(Span<byte> m, byte[] mask, int first, ref uint count)
+    {
+        uint c = count;
+#if CHECKED
+        int s = first;
+        for (;;)
+        {
+            c -= (uint)(m[s + 1] & mask[m[s]]);
+            if ((int)c < 0)
+            {
+                break;
+            }
+
+            s += 6;
+        }
+
+        count = c;
+        return s;
+#else
+        ref byte start = ref Unsafe.Add(ref MemoryMarshal.GetReference(m), (nint)(uint)first);
+        ref byte p = ref start;
+        ref byte mk = ref MemoryMarshal.GetArrayDataReference(mask);
+        for (;;)
+        {
+            c -= (uint)(Unsafe.Add(ref p, 1) & Unsafe.Add(ref mk, (nint)p));
+            if ((int)c < 0)
+            {
+                break;
+            }
+
+            p = ref Unsafe.Add(ref p, 6);
+        }
+
+        count = c;
+        return first + (int)Unsafe.ByteOffset(ref start, ref p);
+#endif
+    }
+
+    /// <summary>
+    /// Looks for <paramref name="symbol"/> among <paramref name="count"/> consecutive 6-byte states from <paramref name="first"/>, adding the
+    /// unmasked frequencies of the states before it to <paramref name="sum"/>. Returns the number of states passed (the match's position), or
+    /// <paramref name="count"/> when the symbol is not there. Same bounds as <see cref="SumUnmasked"/>.
+    /// </summary>
+    public static int FindSymbolUnmasked(Span<byte> m, byte[] mask, int first, int count, int symbol, out uint sum)
+    {
+        uint total = 0;
+        int i = 0;
+#if CHECKED
+        for (; i < count && m[first] != symbol; i++, first += 6)
+        {
+            total += (uint)(m[first + 1] & mask[m[first]]);
+        }
+#else
+        ref byte p = ref Unsafe.Add(ref MemoryMarshal.GetReference(m), (nint)(uint)first);
+        ref byte mk = ref MemoryMarshal.GetArrayDataReference(mask);
+        for (; i < count && p != symbol; i++, p = ref Unsafe.Add(ref p, 6))
+        {
+            total += (uint)(Unsafe.Add(ref p, 1) & Unsafe.Add(ref mk, (nint)p));
+        }
+#endif
+        sum = total;
+        return i;
+    }
+
+    /// <summary>Clears <c>mask[symbol]</c> for the symbol of each of <paramref name="count"/> consecutive 6-byte states starting at <paramref name="first"/> (same bounds as <see cref="SumUnmasked"/>).</summary>
+    public static void MaskStates(Span<byte> m, byte[] mask, int first, int count)
+    {
+#if CHECKED
+        for (int i = 0; i < count; i++, first += 6)
+        {
+            mask[m[first]] = 0;
+        }
+#else
+        ref byte p = ref Unsafe.Add(ref MemoryMarshal.GetReference(m), (nint)(uint)first);
+        ref byte mk = ref MemoryMarshal.GetArrayDataReference(mask);
+        for (; count >= 4; count -= 4, p = ref Unsafe.Add(ref p, 24))
+        {
+            Unsafe.Add(ref mk, (nint)p) = 0;
+            Unsafe.Add(ref mk, (nint)Unsafe.Add(ref p, 6)) = 0;
+            Unsafe.Add(ref mk, (nint)Unsafe.Add(ref p, 12)) = 0;
+            Unsafe.Add(ref mk, (nint)Unsafe.Add(ref p, 18)) = 0;
+        }
+
+        for (; count > 0; count--, p = ref Unsafe.Add(ref p, 6))
+        {
+            Unsafe.Add(ref mk, (nint)p) = 0;
+        }
+#endif
+    }
+
+    /// <summary>Swaps the 6-byte states at <paramref name="a"/> and <paramref name="b"/>; both are states of one symbol list, so both lie inside the array.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Swap6(Span<byte> m, int a, int b)
+    {
+        int aLo = U32(m, a);
+        int aHi = U16(m, a + 4);
+        int bLo = U32(m, b);
+        int bHi = U16(m, b + 4);
+        SetU32(m, a, bLo);
+        SetU16(m, a + 4, bHi);
+        SetU32(m, b, aLo);
+        SetU16(m, b + 4, aHi);
+    }
+
+    /// <summary>
     /// Hints that the model memory at <paramref name="index"/> (the context a likely symbol leads to) is about to be read: the memory is far
     /// larger than the caches and the next symbol starts with a read of that context. It changes no result; it does nothing under
     /// <c>Checked</c> or on CPUs without a prefetch instruction, and an index outside the array is ignored (a hint never faults).

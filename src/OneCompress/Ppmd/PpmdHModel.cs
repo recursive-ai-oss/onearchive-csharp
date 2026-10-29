@@ -162,13 +162,7 @@ public sealed partial class PpmdHModel : IPpmdModel
         PpmdRaw.SetU16(mem, dst + 4, hi);
     }
 
-    private static void Swap6(Span<byte> mem, int a, int b)
-    {
-        for (int i = 0; i < StateSize; i++)
-        {
-            (PpmdRaw.At(mem, a + i), PpmdRaw.At(mem, b + i)) = (PpmdRaw.At(mem, b + i), PpmdRaw.At(mem, a + i));
-        }
-    }
+    private static void Swap6(Span<byte> mem, int a, int b) => PpmdRaw.Swap6(mem, a, b);
 
     private static int U2B(int nu) => nu * UnitSize;
 
@@ -967,6 +961,7 @@ public sealed partial class PpmdHModel : IPpmdModel
     private static int HiBitsFlag4(int sym) => ((sym + 0xC0) >> (8 - 4)) & (1 << 4);
 
     // Index of the binary-context probability for the current one-symbol context; also sets the high-bits flag.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private int BinSummIndex()
     {
         Span<byte> mem = _m;

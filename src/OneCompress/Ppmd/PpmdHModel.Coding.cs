@@ -123,12 +123,7 @@ public sealed partial class PpmdHModel
     private void SetRangeMaskAll()
     {
         Span<byte> mem = _m;
-        int s = PpmdRaw.U32(mem, _minContext + 4);
-        int n = PpmdRaw.U16(mem, _minContext);
-        for (int i = 0; i < n; i++, s += StateSize)
-        {
-            PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)) = 0;
-        }
+        PpmdRaw.MaskStates(mem, _mask, PpmdRaw.U32(mem, _minContext + 4), PpmdRaw.U16(mem, _minContext));
     }
 
     int IPpmdModel.EncodeBlock(ReadOnlySpan<byte> source, int maxPending)
@@ -283,35 +278,26 @@ public sealed partial class PpmdHModel
             int see = MakeEscFreq(numMasked, out uint escFreq);
             int s = PpmdRaw.U32(mem, mc + 4);
             int n = PpmdRaw.U16(mem, mc);
-            uint sum = 0;
-            for (int i = 0; i < n; i++, s += StateSize)
+            int found = PpmdRaw.FindSymbolUnmasked(mem, _mask, s, n, symbol, out uint sum);
+            if (found < n)
             {
-                if (PpmdRaw.At(mem, s) == symbol)
+                s += found * StateSize;
+                uint low = sum;
+                uint freq = PpmdRaw.At(mem, s + 1);
+                SeeUpdate(see);
+                _foundState = s;
+                uint total = sum + escFreq + PpmdRaw.SumUnmasked(mem, _mask, s, n - found);
+
+                if (total == 0 || _range / total == 0)
                 {
-                    uint low = sum;
-                    uint freq = PpmdRaw.At(mem, s + 1);
-                    SeeUpdate(see);
-                    _foundState = s;
-                    uint total = sum + escFreq;
-                    for (int j = i; j < n; j++)
-                    {
-                        total += (uint)(PpmdRaw.At(mem, s + 1) & PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)));
-                        s += StateSize;
-                    }
-
-                    if (total == 0 || _range / total == 0)
-                    {
-                        throw CapacityError();
-                    }
-
-                    _range /= total;
-                    Encode(low, freq);
-                    EncNorm2();
-                    Update2();
-                    return;
+                    throw CapacityError();
                 }
 
-                sum += (uint)(PpmdRaw.At(mem, s + 1) & PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)));
+                _range /= total;
+                Encode(low, freq);
+                EncNorm2();
+                Update2();
+                return;
             }
 
             {
@@ -617,11 +603,7 @@ public sealed partial class PpmdHModel
 
             int s = PpmdRaw.U32(mem, mc + 4);
             int num = PpmdRaw.U16(mem, mc);
-            uint hiCnt = 0;
-            for (int i = 0, t = s; i < num; i++, t += StateSize)
-            {
-                hiCnt += (uint)(PpmdRaw.At(mem, t + 1) & PpmdRaw.Slot(_mask, PpmdRaw.At(mem, t)));
-            }
+            uint hiCnt = PpmdRaw.SumUnmasked(mem, _mask, s, num);
 
             _minContext = mc;
             int see = MakeEscFreq(numMasked, out uint freqSum);
@@ -637,17 +619,7 @@ public sealed partial class PpmdHModel
             if (count < hiCnt)
             {
                 hiCnt = count;
-                for (;;)
-                {
-                    count -= (uint)(PpmdRaw.At(mem, s + 1) & PpmdRaw.Slot(_mask, PpmdRaw.At(mem, s)));
-                    s += StateSize;
-                    if ((int)count < 0)
-                    {
-                        break;
-                    }
-                }
-
-                s -= StateSize;
+                s = PpmdRaw.SeekUnmasked(mem, _mask, s, ref count);
                 uint f = PpmdRaw.At(mem, s + 1);
                 Decode(hiCnt - count - f, f);
                 DecNorm2(input, ref pos);
