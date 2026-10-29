@@ -22,12 +22,15 @@ if [ -z "${BENCH_DLL:-}" ]; then
 fi
 rm -rf "$out/$label.trace" "$out/$label.asm"
 marker="$out/$label.start"; : > "$marker"
+# The JIT listing comes from a separate short run that exits normally: the listing file is buffered, so a run cut off by the
+# recording limit leaves it truncated. Tiered compilation is off in both runs, so the code is the same.
+DOTNET_TieredCompilation=0 DOTNET_JitDisasm="$filter" DOTNET_JitDisasmWithCodeBytes=1 DOTNET_JitStdOutFile="$out/$label.asm" \
+  "$dotnet" "$BENCH_DLL" "$@" --once > "$out/$label.bench.log" 2>&1 || true
 # xctrace --launch does not pass the caller's environment on, so the settings go through --env.
-# The bench's own output goes to $label.bench.log (empty when the time limit ends the run before the bench prints).
 # Pass a --seconds longer than SECONDS_LIMIT so the recording covers compression only, not the bench's decode pass.
 xctrace record --template 'Time Profiler' --output "$out/$label.trace" --time-limit "${SECONDS_LIMIT:-14}s" --no-prompt \
-  --env DOTNET_PerfMapEnabled=1 --env DOTNET_TieredCompilation=0 --env "DOTNET_JitDisasm=$filter" --env DOTNET_JitDisasmWithCodeBytes=1 \
-  --env "DOTNET_JitStdOutFile=$out/$label.asm" --target-stdout "$out/$label.bench.log" --launch -- "$dotnet" "$BENCH_DLL" "$@" > "$out/$label.record.log" 2>&1 || true
+  --env DOTNET_PerfMapEnabled=1 --env DOTNET_TieredCompilation=0 \
+  --launch -- "$dotnet" "$BENCH_DLL" "$@" > "$out/$label.record.log" 2>&1 || true
 # The perf map is named after the launched process; take the largest map written since the start (the launcher writes tiny ones).
 map=""; size=0
 for f in /tmp/perf-*.map; do
