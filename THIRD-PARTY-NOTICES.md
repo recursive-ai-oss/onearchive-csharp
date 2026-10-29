@@ -39,8 +39,8 @@ technologies, and the notice grants no licence under them.
 
 ## PPMd (public domain)
 
-The PPMd variant H and I codecs (`src/OneCompress/Ppmd`) are ported from public-domain sources, as the project's owner decided for
-these files only. Each ported file names its originals in its header. The authors placed the code in the public domain, so no licence
+The PPMd variant H and I codecs (`src/OneCompress/Ppmd`) are ported from public-domain sources, as a deliberate exception to the
+project's otherwise clean-room approach, for these files only. Each ported file names its originals in its header. The authors placed the code in the public domain, so no licence
 conditions apply; the notices are kept here as provenance.
 
 - **Dmitry Shkarin**, PPMd var.H (2001) and var.I (2002), the algorithms and the model. Ppmd.h, Ppmd7.c and Ppmd8.c each say: "This code is based on PPMd var.H (2001): Dmitry Shkarin : Public domain" (Ppmd8.c: "var.I (2002)").
