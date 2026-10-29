@@ -1,12 +1,9 @@
+using RecursiveAI.OneArchive.Internal;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 using RecursiveAI.OneCompress.Checksums;
-using RecursiveAI.OneCompress.Deflate;
-using RecursiveAI.OneCompress.Filters;
-using RecursiveAI.OneCompress.Lzma;
-using RecursiveAI.OneCompress.Zstd;
 
 namespace RecursiveAI.OneArchive.SevenZip;
 
@@ -383,31 +380,6 @@ public sealed class SevenZipWriter : ArchiveWriter
         return SevenZipFilter.None;
     }
 
-    private LzmaOptions LzmaFor()
-    {
-        if (_options.Lzma is { } o)
-        {
-            return o;
-        }
-
-        int level = _options.Level;
-        uint dict = _options.DictionarySize != 0 ? _options.DictionarySize : DictionaryForLevel(level);
-        // Levels 1 and 2 use the hash-chain preset 3: measured on text, the lower presets lose 6-18% against 7-Zip at -mx=1.
-        return new LzmaOptions { Preset = Math.Max(level, 3), DictionarySize = Math.Max(dict, LzmaProperties.MinimumDictionarySize) };
-    }
-
-    // Dictionary sizes by level: levels 1, 3 and 5 follow 7-Zip 26.00's LZMA2 choices, measured by listing archives it wrote;
-    // the levels between interpolate, and the top levels stop at 64 MiB to bound memory.
-    private static uint DictionaryForLevel(int level) => level switch
-    {
-        1 => 1u << 18,
-        2 => 1u << 20,
-        3 => 1u << 22,
-        4 => 1u << 24,
-        5 or 6 => 1u << 25,
-        _ => 1u << 26,
-    };
-
     private FolderRecord OpenFolder(SevenZipFilter filter, long knownLength)
     {
         var sink = new CountingSink(_out);
@@ -423,53 +395,23 @@ public sealed class SevenZipWriter : ArchiveWriter
             codecSink = folder.Aes;
         }
 
-        Stream top;
-        switch (_method)
+        CodecId? id = _method switch
         {
-            case SevenZipMethod.Lzma2:
-                top = new DeferredCompressorStream(length =>
-                {
-                    var enc = new Lzma2Encoder(LzmaFor(), knownLength >= 0 ? knownLength : length);
-                    folder.CompressorProperties = [enc.DictionaryProperty];
-                    return new EncodeStepStream(codecSink, enc.Compress, 0);
-                }, DeferThreshold(knownLength));
-                break;
-
-            case SevenZipMethod.Lzma:
-                top = new DeferredCompressorStream(length =>
-                {
-                    var enc = new LzmaEncoder(LzmaFor(), knownLength >= 0 ? knownLength : length);
-                    LzmaProperties p = enc.Properties;
-                    byte[] props = new byte[5];
-                    props[0] = p.PropertiesByte;
-                    BinaryPrimitives.WriteUInt32LittleEndian(props.AsSpan(1), p.DictionarySize);
-                    folder.CompressorProperties = props;
-                    return new EncodeStepStream(codecSink, enc.Compress, 13);
-                }, DeferThreshold(knownLength));
-                break;
-
-            case SevenZipMethod.Deflate:
-                top = new DeflateEncoderStream(codecSink, DeflateFormat.Raw, new DeflateOptions { Level = _options.Level }, leaveOpen: true);
-                break;
-
-            case SevenZipMethod.Deflate64:
-                top = new RecursiveAI.OneCompress.Deflate64.Deflate64Stream(codecSink, new RecursiveAI.OneCompress.Deflate64.Deflate64Options { Level = _options.Level }, leaveOpen: true);
-                break;
-
-            case SevenZipMethod.Zstd:
-                top = new ZstdStream(codecSink, new ZstdCompressionOptions { Level = ZstdLevels[_options.Level] }, leaveOpen: true);
-                break;
-
-            default:
-                top = codecSink;
-                break;
-        }
+            SevenZipMethod.Lzma2 or SevenZipMethod.Lzma => CodecId.Lzma,
+            SevenZipMethod.Deflate => CodecId.Deflate,
+            SevenZipMethod.Deflate64 => CodecId.Deflate64,
+            SevenZipMethod.Zstd => CodecId.Zstd,
+            _ => null,
+        };
+        Stream top = id is { } known
+            ? CodecRegistry.Require(known, SevenZipFormat.Name, $"writing the {_method} method")
+                .OpenSevenZipCompress(_method, codecSink, _options, knownLength, props => folder.CompressorProperties = props, DeferThreshold(knownLength))
+            : codecSink;
 
         if (filter != SevenZipFilter.None)
         {
-            top = filter == SevenZipFilter.Delta
-                ? new FilterEncodeStream(top, null, new DeltaFilter(_options.DeltaDistance, encode: true))
-                : new FilterEncodeStream(top, new BranchFilter(Architecture(filter), 0, encode: true), null);
+            top = CodecRegistry.Require(CodecId.Filters, SevenZipFormat.Name, $"writing the {filter} filter")
+                .OpenSevenZipFilter(top, filter, _options.DeltaDistance);
         }
 
         folder.Top = top;
@@ -480,20 +422,6 @@ public sealed class SevenZipWriter : ArchiveWriter
     // a folder that ends inside them gets tables sized to its content instead of to a dictionary of up to 64 MiB, which in a
     // 32-bit WebAssembly heap is the difference between finishing and running out of memory.
     private static int DeferThreshold(long knownLength) => knownLength >= 0 ? 0 : 16 << 20;
-
-    private static ReadOnlySpan<int> ZstdLevels => [0, 1, 2, 3, 5, 7, 9, 12, 16, 19];
-
-    private static BranchArchitecture Architecture(SevenZipFilter f) => f switch
-    {
-        SevenZipFilter.X86 => BranchArchitecture.X86,
-        SevenZipFilter.PowerPc => BranchArchitecture.PowerPc,
-        SevenZipFilter.Ia64 => BranchArchitecture.Ia64,
-        SevenZipFilter.Arm => BranchArchitecture.Arm,
-        SevenZipFilter.ArmThumb => BranchArchitecture.ArmThumb,
-        SevenZipFilter.Sparc => BranchArchitecture.Sparc,
-        SevenZipFilter.Arm64 => BranchArchitecture.Arm64,
-        _ => BranchArchitecture.RiscV,
-    };
 
     private async ValueTask CloseFolderAsync(bool async, CancellationToken ct)
     {
@@ -550,7 +478,7 @@ public sealed class SevenZipWriter : ArchiveWriter
                 long dataEnd = _out.Position - _origin - StartHeaderSize;
                 if (_options.EncodeHeader || (_encrypt && _options.EncryptHeader))
                 {
-                    byte[] packed = LzmaRaw(header, out byte[] props);
+                    byte[] packed = CodecRegistry.Require(CodecId.Lzma, SevenZipFormat.Name, "compressing the header (set EncodeHeader to false to leave it plain)").SevenZipCompressHeader(header, out byte[] props);
                     long packPos = dataEnd;
                     long packedSize = packed.Length;
                     byte[] aesProps = [];
@@ -642,22 +570,6 @@ public sealed class SevenZipWriter : ArchiveWriter
         }
 
         return iv;
-    }
-
-    private static byte[] LzmaRaw(byte[] data, out byte[] props)
-    {
-        var enc = new LzmaEncoder(new LzmaOptions { Preset = 5, DictionarySize = Math.Max(LzmaProperties.MinimumDictionarySize, (uint)Math.Min(data.Length, 1 << 24)) }, data.Length);
-        LzmaProperties p = enc.Properties;
-        props = new byte[5];
-        props[0] = p.PropertiesByte;
-        BinaryPrimitives.WriteUInt32LittleEndian(props.AsSpan(1), p.DictionarySize);
-        using var ms = new MemoryStream();
-        using (var s = new EncodeStepStream(ms, enc.Compress, 13))
-        {
-            s.Write(data);
-        }
-
-        return ms.ToArray();
     }
 
     private static byte[] BuildEncodedHeaderRecord(long packPos, long packSize, long unpackSize, uint crc, byte[] props, byte[] aesProps, long aesUnpack)

@@ -2,8 +2,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneCompress;
-using RecursiveAI.OneCompress.Deflate;
-using RecursiveAI.OneCompress.Lzx;
 
 namespace RecursiveAI.OneArchive.Cab;
 
@@ -51,11 +49,7 @@ internal sealed class CabFolderCursor(Stream file, long origin, long fileLength,
 
     private readonly byte[] _out = new byte[CabReader.MaxBlockUncompressed];
     private byte[]? _compressed;
-    private byte[]? _history;
-    private int _historyLength;
-    private DeflateDecoder? _inflate;
-    private int _inflateHistory = -1;
-    private LzxDecoder? _lzx;
+    private CabBlockDecoder? _decoder;
     private int _block;
     private long _nextOffset = folder.DataOffset;
     private int _outPos;
@@ -114,8 +108,7 @@ internal sealed class CabFolderCursor(Stream file, long origin, long fileLength,
 
     public void Dispose()
     {
-        _lzx = null;
-        _inflate = null;
+        _decoder = null;
     }
 
     private void Restart()
@@ -124,10 +117,7 @@ internal sealed class CabFolderCursor(Stream file, long origin, long fileLength,
         _nextOffset = folder.DataOffset;
         _outPos = _outLength = 0;
         Position = 0;
-        _historyLength = 0;
-        _lzx?.Reset();
-        _inflate = null;
-        _inflateHistory = -1;
+        _decoder = null;
     }
 
     private static CompressionFormatException Bad(long offset, string expected, bool truncated = false) => new(CabReader.Name, offset, expected, truncated);
@@ -194,7 +184,8 @@ internal sealed class CabFolderCursor(Stream file, long origin, long fileLength,
                 data.AsSpan(0, compressedLength).CopyTo(output);
                 break;
             case CabCompression.MsZip:
-                DecodeMsZip(data.AsSpan(0, compressedLength), output, dataAt);
+                _decoder ??= CodecRegistry.Require(CodecId.Deflate, CabReader.Name, "MSZIP folders").CreateCabDecoder(folder.WindowBits);
+                _decoder.Decode(data.AsSpan(0, compressedLength), output, dataAt);
                 break;
             case CabCompression.Lzx:
                 if (!last && uncompressedLength != CabReader.MaxBlockUncompressed)
@@ -202,7 +193,8 @@ internal sealed class CabFolderCursor(Stream file, long origin, long fileLength,
                     throw Bad(at + 6, $"32768 uncompressed bytes in every LZX block but the last (found {uncompressedLength} in block {_block} of {folder.BlockCount})");
                 }
 
-                DecodeLzx(data.AsSpan(0, compressedLength), output, dataAt);
+                _decoder ??= CodecRegistry.Require(CodecId.Lzx, CabReader.Name, "LZX folders").CreateCabDecoder(folder.WindowBits);
+                _decoder.Decode(data.AsSpan(0, compressedLength), output, dataAt);
                 break;
             default:
                 throw new ArchiveUnsupportedException(CabReader.Name, $"compression type 0x{folder.RawCompressionType:X4} (folder {folder.Index})");
@@ -229,76 +221,6 @@ internal sealed class CabFolderCursor(Stream file, long origin, long fileLength,
             }
 
             done += n;
-        }
-    }
-
-    // [MS-CAB] 2.4 and the MSZIP description: each block is "CK" and a deflate stream whose matches may reach into the previous 32 KiB of output.
-    private void DecodeMsZip(ReadOnlySpan<byte> data, Span<byte> output, long dataAt)
-    {
-        if (data.Length < 2 || data[0] != (byte)'C' || data[1] != (byte)'K')
-        {
-            throw Bad(dataAt, "the MSZIP block signature 'CK'");
-        }
-
-        _history ??= new byte[HistorySize];
-        if (_inflate is null || _inflateHistory != _historyLength)
-        {
-            _inflate = new DeflateDecoder(DeflateFormat.Raw, new DeflateDecompressionOptions
-            {
-                Dictionary = _history.AsMemory(0, _historyLength),
-                MaxOutputSize = CabReader.MaxBlockUncompressed,
-            });
-            _inflateHistory = _historyLength;
-        }
-        else
-        {
-            _inflate.Reset();
-        }
-
-        try
-        {
-            OperationStatus status = _inflate.Decompress(data[2..], output, out int consumed, out int written);
-            if (status != OperationStatus.Done || written != output.Length)
-            {
-                string what = status == OperationStatus.DestinationTooSmall
-                    ? $"a deflate block that ends after {output.Length} bytes"
-                    : $"{output.Length} bytes from the deflate block (found {written})";
-                throw Bad(dataAt + 2 + consumed, what, status == OperationStatus.NeedMoreData);
-            }
-        }
-        catch (CompressionFormatException ex) when (ex.Format != CabReader.Name)
-        {
-            _inflate = null;
-            throw Bad(dataAt + 2 + ex.Offset, "valid MSZIP data: " + ex.Expected, ex.IsTruncated);
-        }
-
-        // The next block's history is the last 32 KiB of output so far.
-        if (output.Length >= HistorySize)
-        {
-            output[^HistorySize..].CopyTo(_history);
-            _historyLength = HistorySize;
-        }
-        else
-        {
-            int keep = Math.Min(_historyLength, HistorySize - output.Length);
-            _history.AsSpan(_historyLength - keep, keep).CopyTo(_history);
-            output.CopyTo(_history.AsSpan(keep));
-            _historyLength = keep + output.Length;
-        }
-    }
-
-    // [MS-PATCH] 2 as cabinets use it: one 32768-byte frame per data block.
-    private void DecodeLzx(ReadOnlySpan<byte> data, Span<byte> output, long dataAt)
-    {
-        _lzx ??= new LzxDecoder(folder.WindowBits);
-        long before = _lzx.TotalConsumed;
-        try
-        {
-            _lzx.DecodeFrame(data, output, out _);
-        }
-        catch (CompressionFormatException ex) when (ex.Format != CabReader.Name)
-        {
-            throw Bad(dataAt + Math.Max(0, ex.Offset - before), "valid LZX data: " + ex.Expected, ex.IsTruncated);
         }
     }
 }

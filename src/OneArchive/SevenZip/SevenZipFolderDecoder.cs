@@ -1,8 +1,4 @@
 using RecursiveAI.OneCompress;
-using RecursiveAI.OneCompress.Deflate;
-using RecursiveAI.OneCompress.Filters;
-using RecursiveAI.OneCompress.Lzma;
-using RecursiveAI.OneCompress.Zstd;
 using RecursiveAI.OneArchive.Internal;
 
 namespace RecursiveAI.OneArchive.SevenZip;
@@ -230,23 +226,13 @@ internal static class SevenZipFolderDecoder
         c.NumInStreams == 1 && c.NumOutStreams == 1 &&
         (c.MethodId is SevenZipFormat.MethodCopy or SevenZipFormat.MethodDeflate or SevenZipFormat.MethodDeflate64 or SevenZipFormat.MethodBZip2 or SevenZipFormat.MethodZstd
             or SevenZipFormat.MethodLzma or SevenZipFormat.MethodLzma2 or SevenZipFormat.MethodDelta or SevenZipFormat.MethodAes ||
-         BranchOf(c.MethodId) is not null);
+         IsBranchFilter(c.MethodId));
 
     // Methods.txt: the branch filters have a short ID (04..0B) and, for the older ones, a long 03 03 xx xx ID.
-    private static BranchArchitecture? BranchOf(ulong id) => id switch
-    {
-        0x04 or 0x03030103 => BranchArchitecture.X86,
-        0x05 or 0x03030205 => BranchArchitecture.PowerPc,
-        0x06 or 0x03030401 => BranchArchitecture.Ia64,
-        0x07 or 0x03030501 => BranchArchitecture.Arm,
-        0x08 or 0x03030701 => BranchArchitecture.ArmThumb,
-        0x09 or 0x03030805 => BranchArchitecture.Sparc,
-        0x0A => BranchArchitecture.Arm64,
-        0x0B => BranchArchitecture.RiscV,
-        _ => null,
-    };
+    private static bool IsBranchFilter(ulong id) =>
+        id is >= 0x04 and <= 0x0B or 0x03030103 or 0x03030205 or 0x03030401 or 0x03030501 or 0x03030701 or 0x03030805;
 
-    private static CompressionFormatException BadProps(long errorOffset, SevenZipCoder c, string expected) =>
+    internal static CompressionFormatException BadProps(long errorOffset, SevenZipCoder c, string expected) =>
         new(SevenZipFormat.Name, errorOffset, $"{expected} in the properties of the {SevenZipFormat.MethodName(c.MethodId)} coder");
 
     // Methods.txt: 00 Copy, 04 01 08 Deflate, 04 02 02 BZip2, 03 01 01 LZMA, 21 LZMA2, 03 Delta, the branch filters, and
@@ -255,25 +241,9 @@ internal static class SevenZipFolderDecoder
     private static Stream Decode(SevenZipCoder c, Stream[] inputs, ArchiveLimits limits, SevenZipReaderOptions options, SevenZipKeyCache keys, long unpackSize, long errorOffset)
     {
         Stream input = inputs[0];
-        ReadOnlySpan<byte> props = c.Properties.Span;
-        var lzmaOptions = new LzmaDecompressionOptions { MaxDictionarySize = options.MaxDictionarySize, MaxOutputSize = long.MaxValue };
-        if (BranchOf(c.MethodId) is { } arch)
+        if (IsBranchFilter(c.MethodId))
         {
-            // An optional 4-byte start offset (the address the first byte is assumed to have).
-            if (props.Length != 0 && props.Length != 4)
-            {
-                throw BadProps(errorOffset, c, "no property or a 4-byte start offset");
-            }
-
-            uint start = props.Length == 4 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(props) : 0;
-            try
-            {
-                return new SevenZipBranchStream(input, new BranchFilter(arch, start));
-            }
-            catch (ArgumentException)
-            {
-                throw BadProps(errorOffset, c, "a start offset the filter accepts");
-            }
+            return Codec(CodecId.Filters, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
         }
 
         switch (c.MethodId)
@@ -282,6 +252,7 @@ internal static class SevenZipFolderDecoder
                 return input;
             case SevenZipFormat.MethodAes:
                 {
+                    ReadOnlySpan<byte> props = c.Properties.Span;
                     if (!SevenZipAes.TryParse(props, out SevenZipAes.Parameters aes, out string? problem))
                     {
                         throw BadProps(errorOffset, c, problem!);
@@ -301,54 +272,23 @@ internal static class SevenZipFolderDecoder
                 }
 
             case SevenZipFormat.MethodDeflate:
-                return new DeflateCodecStream(input, DeflateFormat.Raw, new DeflateDecompressionOptions { MaxOutputSize = long.MaxValue });
+                return Codec(CodecId.Deflate, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
             case SevenZipFormat.MethodDeflate64:
-                return new RecursiveAI.OneCompress.Deflate64.Deflate64Stream(input, new RecursiveAI.OneCompress.Deflate64.Deflate64DecompressionOptions { MaxOutputSize = long.MaxValue });
+                return Codec(CodecId.Deflate64, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
             case SevenZipFormat.MethodBZip2:
-                return new RecursiveAI.OneCompress.BZip2.BZip2Stream(input, new RecursiveAI.OneCompress.BZip2.BZip2DecompressionOptions { MaxOutputSize = long.MaxValue });
+                return Codec(CodecId.BZip2, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
             case SevenZipFormat.MethodZstd:
-                return new ZstdStream(input, new ZstdDecompressionOptions { MaxWindowSize = limits.MaxWindowSize, MaxOutputSize = long.MaxValue });
+                return Codec(CodecId.Zstd, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
             case SevenZipFormat.MethodDelta:
-                if (props.Length != 1)
-                {
-                    throw BadProps(errorOffset, c, "one byte (the distance minus one)");
-                }
-
-                return new SevenZipDeltaStream(input, new DeltaFilter(props[0] + 1));
+                return Codec(CodecId.Filters, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
             case SevenZipFormat.MethodLzma:
-                {
-                    if (props.Length != 5 || !LzmaProperties.TryParsePropertiesByte(props[0], out int lc, out int lp, out int pb))
-                    {
-                        throw BadProps(errorOffset, c, "five bytes (lc/lp/pb and the dictionary size)");
-                    }
-
-                    uint dict = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(props[1..]);
-                    LzmaDecoder d;
-                    try
-                    {
-                        d = LzmaDecoder.CreateRaw(new LzmaProperties(lc, lp, pb, Math.Max(dict, LzmaProperties.MinimumDictionarySize)), unpackSize, lzmaOptions);
-                    }
-                    catch (ArgumentException)
-                    {
-                        throw BadProps(errorOffset, c, "valid lc, lp, pb and dictionary size");
-                    }
-
-                    return new SevenZipDecoderStream(input, d.Decompress, d.ThrowIfIncomplete, errorOffset);
-                }
-
             case SevenZipFormat.MethodLzma2:
-                {
-                    if (props.Length != 1 || props[0] > 40)
-                    {
-                        throw BadProps(errorOffset, c, "one byte of at most 40 (the dictionary size)");
-                    }
-
-                    var d = new Lzma2Decoder(props[0], lzmaOptions);
-                    return new SevenZipDecoderStream(input, d.Decompress, d.ThrowIfIncomplete, errorOffset);
-                }
-
+                return Codec(CodecId.Lzma, c).OpenSevenZipDecoder(c, input, limits, options, unpackSize, errorOffset);
             default:
                 throw SevenZipFormat.UnsupportedMethod(c.MethodId);
         }
     }
+
+    private static ArchiveCodec Codec(CodecId id, SevenZipCoder c) =>
+        CodecRegistry.Require(id, SevenZipFormat.Name, $"the {SevenZipFormat.MethodName(c.MethodId)} method");
 }

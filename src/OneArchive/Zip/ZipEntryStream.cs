@@ -3,9 +3,6 @@ using System.Buffers.Binary;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneCompress;
 using RecursiveAI.OneCompress.Checksums;
-using RecursiveAI.OneCompress.Deflate;
-using RecursiveAI.OneCompress.Deflate64;
-using RecursiveAI.OneCompress.Zstd;
 
 namespace RecursiveAI.OneArchive.Zip;
 
@@ -166,12 +163,7 @@ internal sealed class ZipEntryStream : Stream
     private readonly bool _descriptorZip64;
     private readonly ExpansionMeter _meter;
     private readonly ZipReader _owner;
-    private readonly DeflateDecoder? _deflate;
-    private readonly Deflate64Decoder? _deflate64;
-    private readonly ZstdDecoder? _zstd;
-    private readonly ZipLzmaDecoder? _lzma;
-    private readonly RecursiveAI.OneCompress.Xz.XzDecoder? _xz;
-    private readonly RecursiveAI.OneCompress.BZip2.BZip2Decoder? _bzip2;
+    private readonly ZipBlockDecoder? _decoder;     // null for stored entries
     private long _compRemaining;             // -1 when the compressed size is unknown (the decoder finds the end)
     private long _consumed;
     private long _produced;
@@ -230,27 +222,28 @@ internal sealed class ZipEntryStream : Stream
             case ZipMethod.Store:
                 break;
             case ZipMethod.Deflate:
-                _deflate = new DeflateDecoder(DeflateFormat.Raw, new DeflateDecompressionOptions { MaxOutputSize = long.MaxValue });
-                break;
             case ZipMethod.Deflate64:
-                _deflate64 = new Deflate64Decoder(new Deflate64DecompressionOptions { MaxOutputSize = long.MaxValue });
-                break;
             case ZipMethod.BZip2:
-                _bzip2 = new RecursiveAI.OneCompress.BZip2.BZip2Decoder(new RecursiveAI.OneCompress.BZip2.BZip2DecompressionOptions { MaxOutputSize = long.MaxValue });
-                break;
             case ZipMethod.Zstd:
-                _zstd = new ZstdDecoder(new ZstdDecompressionOptions { MaxWindowSize = limits.MaxWindowSize, MaxOutputSize = long.MaxValue });
-                break;
             case ZipMethod.Lzma:
-                _lzma = new ZipLzmaDecoder(size, input.Offset, new RecursiveAI.OneCompress.Lzma.LzmaDecompressionOptions { MaxDictionarySize = limits.MaxWindowSize, MaxOutputSize = long.MaxValue });
-                break;
             case ZipMethod.Xz:
-                _xz = new RecursiveAI.OneCompress.Xz.XzDecoder(new RecursiveAI.OneCompress.Xz.XzDecompressionOptions { MaxDictionarySize = limits.MaxWindowSize, MaxOutputSize = long.MaxValue });
+                _decoder = CodecRegistry.Require(CodecOf(method), ZipFormat.Name, $"compression method {(int)method} ({ZipFormat.MethodName((int)method)})")
+                    .CreateZipDecoder(size, input.Offset, limits);
                 break;
             default:
                 throw new ArchiveUnsupportedException(ZipFormat.Name, $"compression method {(int)method} ({ZipFormat.MethodName((int)method)})");
         }
     }
+
+    private static CodecId CodecOf(ZipMethod method) => method switch
+    {
+        ZipMethod.Deflate => CodecId.Deflate,
+        ZipMethod.Deflate64 => CodecId.Deflate64,
+        ZipMethod.BZip2 => CodecId.BZip2,
+        ZipMethod.Zstd => CodecId.Zstd,
+        ZipMethod.Lzma => CodecId.Lzma,
+        _ => CodecId.Xz,
+    };
 
     public bool Completed => _done;
 
@@ -407,30 +400,7 @@ internal sealed class ZipEntryStream : Stream
 
             System.Buffers.OperationStatus status;
             int consumed, written;
-            if (_deflate is not null)
-            {
-                status = _deflate.Decompress(src, dest.Span[..cap], out consumed, out written);
-            }
-            else if (_deflate64 is not null)
-            {
-                status = _deflate64.Decompress(src, dest.Span[..cap], out consumed, out written);
-            }
-            else if (_bzip2 is not null)
-            {
-                status = _bzip2.Decompress(src, dest.Span[..cap], out consumed, out written);
-            }
-            else if (_lzma is not null)
-            {
-                status = _lzma.Decompress(src, dest.Span[..cap], out consumed, out written);
-            }
-            else if (_xz is not null)
-            {
-                status = _xz.Decompress(src, dest.Span[..cap], out consumed, out written);
-            }
-            else
-            {
-                status = _zstd!.Decompress(src, dest.Span[..cap], out consumed, out written);
-            }
+            status = _decoder!.Decode(src, dest.Span[..cap], out consumed, out written);
 
             if (_crypt is null)
             {
@@ -448,7 +418,7 @@ internal sealed class ZipEntryStream : Stream
             {
                 if (_compRemaining > 0)
                 {
-                    if (_zstd is null)
+                    if (!_decoder!.MultiFrame)
                     {
                         throw ZipFormat.Bad(_input.Offset, "the entry's compressed data to end with the compressed stream");
                     }

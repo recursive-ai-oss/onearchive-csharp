@@ -516,5 +516,29 @@ foreach (int preset in new[] { 1, 6 })
     }
 }
 
+// The archive happy path with no configuration: every format and codec works without registering anything.
+foreach (var (format, compression) in new[]
+{
+    (ArchiveFormat.Zip, ArchiveCompression.None), (ArchiveFormat.SevenZip, ArchiveCompression.None), (ArchiveFormat.Tar, ArchiveCompression.Zstd),
+    (ArchiveFormat.Tar, ArchiveCompression.Xz), (ArchiveFormat.Tar, ArchiveCompression.Brotli), (ArchiveFormat.Tar, ArchiveCompression.Bzip2),
+    (ArchiveFormat.Tar, ArchiveCompression.Gzip), (ArchiveFormat.Tar, ArchiveCompression.Lz4), (ArchiveFormat.Tar, ArchiveCompression.Lzip),
+})
+{
+    var packedArchive = new MemoryStream();
+    Archive.Create(packedArchive, new ArchiveCreateOptions { Format = format, Compression = compression, LeaveOpen = true })
+        .Add(new ArchiveEntry { Name = "dir/t.txt", Size = lzmaInput.Length }, lzmaInput)
+        .Save();
+    packedArchive.Position = 0;
+    using Archive opened = Archive.Open(packedArchive, new ArchiveOpenOptions { Format = format, Compression = compression, LeaveOpen = true });
+    using Stream entryStream = opened.OpenEntry(opened.Entries[0]);
+    var back = new MemoryStream();
+    entryStream.CopyTo(back);
+    if (!back.ToArray().AsSpan().SequenceEqual(lzmaInput))
+    {
+        Console.Error.WriteLine($"archive round trip failed: {format} {compression}");
+        return 1;
+    }
+}
+
 Console.WriteLine("ok: " + archive);
 return 0;

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- An app that reads and writes only .tar.zst through Archive. Published with NativeAOT and trimming; must produce no
+       warnings, and the binary must not contain the other codecs (build/ci.sh checks that). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>AotTrimSlimSmoke</AssemblyName>
+    <RootNamespace>RecursiveAI.Smoke</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <PublishAot>true</PublishAot>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The opt-in: Archive no longer registers every codec on first use; the app registers what it needs. -->
+    <RuntimeHostConfigurationOption Include="RecursiveAI.OneArchive.AllCodecs" Value="false" Trim="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OneCompress/OneCompress.csproj" />
+    <ProjectReference Include="../../src/OneArchive/OneArchive.csproj" />
+  </ItemGroup>
+
+</Project>

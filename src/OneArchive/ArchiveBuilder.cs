@@ -1,4 +1,3 @@
-using RecursiveAI.OneCompress.Deflate;
 using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Ar;
@@ -400,7 +399,7 @@ public sealed class ArchiveBuilder
         }
     }
 
-    private DeflateEncoderStream OpenGzip(Stream sink, ArchiveEntry? entry, bool leaveOpen)
+    private Stream OpenGzip(Stream sink, ArchiveEntry? entry, bool leaveOpen)
     {
         // FNAME is the file's base name in ISO 8859-1 (RFC 1952 2.3.1); a name that does not fit is left out rather than mangled.
         string? name = entry?.Name is { } n ? n[(n.LastIndexOf('/') + 1)..] : null;
@@ -410,12 +409,8 @@ public sealed class ArchiveBuilder
         }
 
         long unix = entry?.ModifiedTime?.ToUnixTimeSeconds() ?? 0;
-        return new DeflateEncoderStream(sink, DeflateFormat.GZip, new DeflateOptions
-        {
-            Level = _options.CompressionLevel ?? DeflateOptions.DefaultLevel,
-            GZipFileName = name,
-            GZipModificationTime = unix is > 0 and <= uint.MaxValue ? (uint)unix : 0,
-        }, leaveOpen);
+        return CodecRegistry.Require(CodecId.Deflate, "gzip", "gzip compression")
+            .OpenGZipCompress(sink, _options.CompressionLevel, name, unix is > 0 and <= uint.MaxValue ? (uint)unix : 0, leaveOpen);
     }
 
     private SevenZipWriterOptions SevenZipOptions()
