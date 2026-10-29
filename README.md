@@ -8,7 +8,7 @@ Two packages:
 - `RecursiveAI.OneCompress` - codecs and checksums.
 - `RecursiveAI.OneArchive` - archive containers and a simple `Archive` API, built on OneCompress.
 
-**Status: 0.4.0-preview.1.** OneCompress has Zstandard (frames, skippable frames, dictionaries and
+**Status: 0.5.0-preview.1.** OneCompress has Zstandard (frames, skippable frames, dictionaries and
 dictionary training, long-distance matching, multithreaded compression in fixed-size jobs, the seekable
 format), LZ4 (block and frame), Deflate, zlib, gzip and Deflate64, LZMA, LZMA2, xz (with the branch and delta
 filters) and lzip, bzip2, Brotli (with its built-in dictionary), the LZX decoder, and CRC32, CRC32C, CRC64,
@@ -39,7 +39,7 @@ Zstandard, LZ4, Deflate, zlib, gzip and the LZMA family (LZMA, LZMA2, xz, lzip) 
 below the reference tools' in some rows. Their compression ratio and byte-identical output are already at the
 target; speed is what is still being tuned. The bzip2 decoder and the lzip decoder meet their targets and stay
 preview with the rest of this release. Brotli (compress is below the tool's speed at qualities 0 and 5, and quality 11 is
-2% larger), PPMd (speed 0.75-0.83 of 7-Zip's on x64, 0.79-0.88 on arm64, same sizes) are preview; the bzip2 encoder meets its target on both machines. Deflate64 and LZX meet the
+2% larger), PPMd (decompression at the target on both machines; compression 0.85-0.91 of 7-Zip's speed, same sizes) are preview; the bzip2 encoder meets its target on both machines. Deflate64 and LZX meet the
 targets on both machines and stay preview with the rest of this release. The archive layer
 is preview while the formats' interop and fuzz coverage grows. BCJ2 is not supported: 7z entries that use it are listed,
 and opening them is a typed "unsupported method" error. RAR 5 is read only: compressed entries raise a typed error.
@@ -79,7 +79,8 @@ x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0
 
 | Rows | x64 | arm64 |
 |---|---|---|
-| Zstandard compress, levels -5 to 15 | 0.56-0.84; size within +0.93% | 0.63-0.78 |
+| Zstandard compress, levels 1-4 | 0.71-0.80; size within +0.94% | 0.76-0.86 |
+| Zstandard compress, levels -5 to 15 (other than 1-4) | 0.56-0.84; size within +0.93% | 0.63-0.87 (level -5 at the target) |
 | Zstandard compress, levels 16-19 | 0.76-0.85 (enwik8 16-18 at the target) | 0.78-0.87 |
 | Zstandard compress, levels 20 and 22 | 0.86-1.07; enwik8 level 22 size +1.17% | 0.90-1.02; enwik8 level 22 size +1.17% |
 | Zstandard decompress | 12 of 16 rows at the target; the rest 0.86-0.87 | 5 of 8 at the target; the rest 0.86-0.87 |
@@ -104,14 +105,14 @@ x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0
 | lzip decompress | 0.99-1.14, at the target | 1.28-1.44, at the target |
 | 7z archive size (LZMA2, against `7zz -mx=1/5/9 -mmt=1`) | -0.89% to +0.91%, at the target | |
 | bzip2 compress, levels 1 and 9 (against `bzip2`, start-up subtracted) | 1.11-1.14, at the target; size -0.02% to +0.01% | 1.09-1.10, at the target; same sizes |
-| Brotli compress, quality 0 and 5 (window 22) | 0.54 and 0.62; size -8.18% and -0.11% | 0.36 and 0.61; size -9.03% and -0.11% |
+| Brotli compress, quality 0 and 5 (window 22) | 0.57 and 0.62; size -7.17% and -0.11% | 0.47 and 0.61; same sizes |
 | Brotli compress, quality 11 | 1.10; size +2.04% | 1.17; size +2.04% |
 | Brotli decompress, quality 5 and 11 (against `brotli` 1.2.1) | 0.83-0.93 (0.83 on one stream written by the tool, quality 5); other streams at the target | 0.92-1.01, at the target |
 | Deflate64 compress, levels 1, 5, 9 (against `7zz` zip Deflate64) | 1.03, 0.92 and 3.03, at the target; size -1.04% to +0.38% | 1.00, 0.92 and 3.22, at the target; same sizes |
 | Deflate64 decompress | 2.26-2.60, at the target | 2.05-2.45, at the target |
 | LZX decompress (against `cabextract` 1.11, on a cabinet from our test encoder) | 1.06, at the target | 1.01, at the target |
-| PPMd compress, 7z PPMD, mx 1, 5 and 9 (against `7zz`) | 0.78, 0.80 and 0.83; size equal | 0.79, 0.81 and 0.87 (mx 9 at the target); size equal |
-| PPMd decompress, mx 1, 5 and 9 | 0.75-0.80 | 0.79, 0.81 and 0.88 (mx 9 at the target) |
+| PPMd compress, 7z PPMD, mx 1, 5 and 9 (against `7zz`) | 0.89, 0.87 and 0.86 (mx 1 and 5 at the target); size equal | 0.85, 0.87 and 0.91 (mx 5 and 9 at the target); size equal |
+| PPMd decompress, mx 1, 5 and 9 | 0.91-0.95, at the target | 0.89-0.93, at the target |
 | Dictionary training | 2.9-73x the tool's time on one thread, 1.4-26x with the default thread count; 5-30x its memory | 3-35x the tool's time, 20-40x its memory; output with our dictionaries within 1% of the tool's overall, up to 2.6% larger on tiny training sets and 1.1-2.1% larger with 64 KiB and larger dictionaries on Silesia |
 
 Peak memory of the LZMA family's in-memory calls is 0.5-2 GB on these corpora, because they hold the whole input and

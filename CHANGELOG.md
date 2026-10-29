@@ -4,14 +4,16 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.5.0-preview.1] - 2026-10-29
+
 Everything is still preview and carries `[Experimental]`. The README has the new measurements from both machines.
 
 ### Changed
 
 - Deflate64: a fast decode loop; decompression now runs at 2.0-2.6 times the speed of 7-Zip's on both machines.
-- PPMd: encoding and decoding are 1.3-1.4 times faster (0.75-0.88 of 7-Zip's speed, depending on machine and order), with identical output.
+- PPMd: encoding and decoding are 1.4-1.6 times faster, with identical output. Decoding now runs at 0.89-0.95 of 7-Zip's speed and encoding at 0.85-0.91.
 - LZMA, LZMA2, xz and lzip: faster decoding (fewer unpredictable branches per symbol), with identical output.
-- Brotli: faster encoding at qualities 0-5. Qualities 0-2 now find matches and emit symbols in one pass, so their compressed bytes differ from 0.4 while staying within 1% of the `brotli` tool's size; qualities 3-11 are unchanged.
+- Brotli: faster encoding at qualities 0-5 (quality 0 is about 1.5 times as fast as in 0.4). Qualities 0-2 now find matches and emit symbols in one pass, so their compressed bytes differ from 0.4 while staying within 1% of the `brotli` tool's size; qualities 3-11 are unchanged.
 - Zstandard: levels 1-4 compress 2-10% faster, with identical output.
 
 ### Fixed
@@ -105,7 +107,8 @@ First preview. Both codecs are preview and their public types carry `[Experiment
 - Input is treated as untrusted: the Zstandard decoder caps the window it will allocate (8 MiB by default), malformed input is a typed error, and every decoder has a fuzz target.
 - NativeAOT, trimming and browser WebAssembly are supported; output is byte-identical on every platform.
 
-[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v0.4.0-preview.1...HEAD
+[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v0.5.0-preview.1...HEAD
+[0.5.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.5.0-preview.1
 [0.4.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.4.0-preview.1
 [0.3.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.3.0-preview.1
 [0.2.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.2.0-preview.1
