@@ -50,13 +50,14 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
     private readonly int _acceleration;
     private readonly int _hashLog;
     private readonly int _stride;
+    private bool _lazy;
     private long _origin = InitialOrigin;
     private int _used;
     private Lz4PreparedDictionary? _dictionary;
 
     /// <summary>Creates a fast compressor.</summary>
     /// <param name="acceleration">1 for the default fast level; larger values skip faster through incompressible data (level <c>1 - acceleration</c>), up to 65537.</param>
-    /// <param name="hashLog">The table holds 2^<paramref name="hashLog"/> positions, from 8 to <see cref="MaxHashLog"/>; a larger table finds more of the older matches at the cost of memory and speed (level 2 uses 16).</param>
+    /// <param name="hashLog">The table holds 2^<paramref name="hashLog"/> positions, from 8 to <see cref="MaxHashLog"/>; a larger table finds more of the older matches at the cost of memory and speed (level 2 uses 18).</param>
     /// <param name="interiorStride">0 indexes only the probed positions and the one two bytes before a match's end; a positive value also indexes every <paramref name="interiorStride"/>th position inside each match (level 2 uses 2).</param>
     /// <exception cref="ArgumentOutOfRangeException">An argument is out of range.</exception>
     public Lz4FastBlockCompressor(int acceleration = 1, int hashLog = DefaultHashLog, int interiorStride = 0)
@@ -71,6 +72,9 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
         _stride = interiorStride;
         _table = new uint[1 << hashLog];
     }
+
+    // Level 2 also tries the match one byte later before it settles on the one just found.
+    internal static Lz4FastBlockCompressor CreateLevel2() => new(1, 18, 2) { _lazy = true };
 
     /// <summary>Gets the acceleration: 1 for level 1, and <c>1 - level</c> for lower levels.</summary>
     public int Acceleration => _acceleration;
@@ -138,26 +142,22 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
     // The probe loop, kept in a method of its own so that its few live values stay in registers. Returns the position of the
     // first probe whose candidate agrees on four bytes (and the candidate's position in cand; negative when it lies in the
     // dictionary), or -1 when the probes reach the end of the block.
-    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     private static nint Search<TMode>(Lz4In src, Lz4Table table, uint[] dictTable, ReadOnlySpan<byte> dict, nint start, nint last, uint org, int shift, int searchBase, out nint cand)
         where TMode : struct, IDictionaryMode
     {
         // Positions are native-width so the address arithmetic needs no sign extension; every table index is a hash shifted
         // down to the table's size, and every source index is at most `last` (plus the eight bytes the hash reads, which the
         // block format's margin leaves inside the window).
-        nint forward = start;
-        int step = 1;
+        nint ip = start;
+        nint step = 1;
         int searchNb = searchBase;
-        nint h = Slot(src.Read64(forward), shift);
         while (true)
         {
-            nint ip = forward;
-            forward += step;
-            step = searchNb++ >> SkipTrigger;
+            nint h = Slot(src.Read64(ip), shift);
             uint entry = table.Get(h);
             table.Put(h, org + (uint)ip);
             nint c = (int)(entry - org);
-            nint hNext = forward <= last ? Slot(src.Read64(forward), shift) : 0;
             if ((nuint)(ip - c - 1) < Lz4Format.MaxOffset && src.Read32(c) == src.Read32(ip))
             {
                 cand = c;
@@ -180,13 +180,13 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
                 }
             }
 
-            if (forward > last)
+            ip += step;
+            step = searchNb++ >> SkipTrigger;
+            if (ip > last)
             {
                 cand = 0;
                 return -1;
             }
-
-            h = hNext;
         }
     }
 
@@ -218,6 +218,7 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
         ReadOnlySpan<byte> dict = TMode.Enabled ? prepared!.Content : default;
         int dictLen = dict.Length;
         int searchBase = _acceleration << SkipTrigger;
+        bool lazy = _lazy;
 
         if (ip <= mfLimit && start == 0)
         {
@@ -271,6 +272,25 @@ public sealed class Lz4FastBlockCompressor : Lz4BlockCompressor
             else
             {
                 length = Lz4Format.MinMatch + DictionaryMatchLength(srcSpan, dict, (int)cand, (int)ip, (int)matchLimit);
+            }
+
+            // Lazy matching: a match that starts one byte later and is longer by more than the literal it costs replaces this one.
+            if (lazy && cand >= 0 && ip + 1 <= mfLimit)
+            {
+                nint hl = Slot(src.Read64(ip + 1), shift);
+                uint el = table.Get(hl);
+                table.Put(hl, org + (uint)(ip + 1));
+                nint c2 = (int)(el - org);
+                if ((nuint)(ip + 1 - c2 - 1) < Lz4Format.MaxOffset && src.Read32(c2) == src.Read32(ip + 1))
+                {
+                    nint length2 = Lz4Format.MinMatch + src.CommonLength(c2 + Lz4Format.MinMatch, ip + 1 + Lz4Format.MinMatch, matchLimit);
+                    if (length2 > length + 1)
+                    {
+                        ip++;
+                        cand = c2;
+                        length = length2;
+                    }
+                }
             }
 
             op = Lz4BlockWriter.Sequence(dst, op, src, srcLength, dstLength, anchor, ip - anchor, ip - cand, length);

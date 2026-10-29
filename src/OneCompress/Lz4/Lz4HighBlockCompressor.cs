@@ -3,13 +3,29 @@ using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Lz4;
 
+/// <summary>Selects, at compile time, whether the high-compression chain entries carry a second link.</summary>
+internal interface IChainMode
+{
+    static abstract bool Wide { get; }
+}
+
+internal readonly struct PlainChain : IChainMode
+{
+    public static bool Wide => false;
+}
+
+internal readonly struct WideChain : IChainMode
+{
+    public static bool Wide => true;
+}
+
 /// <summary>
 /// The high-compression LZ4 match finder (levels 2 to 12): a hash chain over every position, searched to a depth that grows
-/// with the level. Levels 2 to 6 parse lazily: at each position the longest match is found, and a longer one starting one
-/// byte later replaces it (levels 3 to 6 also look two bytes ahead). Levels 7 to 12 choose the sequence of matches that makes the block smallest, by a shortest-path search
-/// over the encoded size of each choice (a literal run grows by a byte, and by one more at 15 and every 255 after;
-/// a match costs a token, two offset bytes and its length bytes) for as far ahead as the level allows. The parameters of
-/// each level are in the encoder's documentation page.
+/// with the level. Levels 2 to 9 parse lazily: at each position the longest match is found, and a longer one starting one
+/// byte later replaces it (levels 3 to 9 also look two bytes ahead). Levels 10 to 12 choose the sequence of matches that makes
+/// the block smallest, by a shortest-path search over the encoded size of each choice (a literal run grows by a byte, and by
+/// one more at 15 and every 255 after; a match costs a token, two offset bytes and its length bytes) for as far ahead as the
+/// level allows. The parameters of each level are in the encoder's documentation page.
 /// </summary>
 /// <remarks>
 /// <para>The chain holds, for each position, the distance to the previous position with the same hash of four bytes; zero ends a
@@ -30,12 +46,16 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     private const int Infinity = int.MaxValue / 2;
 
     private readonly uint[] _head = new uint[1 << HashLog];
-    private readonly ushort[] _chain = new ushort[ChainMask + 1];
+    // Levels below 6 keep one 16-bit link per position; the others keep two (see Link), so the walk can read two candidates
+    // from one entry. Only the table the level uses is allocated.
+    private readonly ushort[] _chain;
+    private readonly uint[] _chainWide;
     private readonly int _level;
     private readonly int _attempts;
     private readonly int _nice;
     private readonly bool _optimal;
     private readonly bool _lookahead;
+    private readonly bool _wide;
     private OptState[]? _opt;
     private int[]? _plan;
     private byte[] _work = [];
@@ -49,7 +69,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     // whose index the tables hold, and the values each insertion overwrote, so the block's own entries can be taken back out.
     private Lz4PreparedDictionary? _parked;
     private uint[] _undoHead = [];
-    private ushort[] _undoChain = [];
+    private uint[] _undoChain = [];
     private bool _recording;
     private int _undoBase;
 
@@ -62,7 +82,10 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         ArgumentOutOfRangeException.ThrowIfGreaterThan(level, 12);
         _level = level;
         (_attempts, _nice, _optimal) = Parameters(level);
-        _lookahead = level is >= 3 and <= 6;
+        _lookahead = level is >= 3 and <= 9;
+        _wide = level >= 6;
+        _chain = _wide ? [] : new ushort[ChainMask + 1];
+        _chainWide = _wide ? new uint[ChainMask + 1] : [];
     }
 
     /// <summary>Gets the level.</summary>
@@ -74,12 +97,12 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     {
         2 => (3, 16, false),
         3 => (7, 256, false),
-        4 => (14, 256, false),
-        5 => (28, 256, false),
-        6 => (56, 256, false),
-        7 => (32, 128, true),
-        8 => (36, 128, true),
-        9 => (40, 128, true),
+        4 => (12, 256, false),
+        5 => (24, 256, false),
+        6 => (44, 256, false),
+        7 => (68, 256, false),
+        8 => (96, 256, false),
+        9 => (128, 256, false),
         10 => (56, 256, true),
         11 => (100, 256, true),
         _ => (128, 256, true),
@@ -146,14 +169,25 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         }
 
         // Only the last 64 KiB of positions still have their own chain slot.
-        ushort[] chain = _chain;
         for (int idx = Math.Max(0, _used - ChainMask - 1); idx < _used; idx++)
         {
             int slot = (int)((org + (uint)idx) & ChainMask);
-            int delta = chain[slot];
-            if (delta > idx)
+            if (_wide)
             {
-                chain[slot] = 0;
+                uint entry = _chainWide[slot];
+                if ((entry & 0xFFFF) > idx)
+                {
+                    _chainWide[slot] = 0;
+                }
+                else if ((entry >> 16) > idx)
+                {
+                    // The second link points before the window; the first one is still good.
+                    _chainWide[slot] = entry & 0xFFFF;
+                }
+            }
+            else if (_chain[slot] > idx)
+            {
+                _chain[slot] = 0;
             }
         }
     }
@@ -249,7 +283,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         if (_undoHead.Length < window.Length)
         {
             _undoHead = new uint[Math.Max(window.Length, 256)];
-            _undoChain = new ushort[_undoHead.Length];
+            _undoChain = new uint[_undoHead.Length];
         }
 
         window.CopyTo(_work.AsSpan(dictLen));
@@ -263,12 +297,19 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         // Undo, newest first: a position's old head value is what the next position with the same hash saw as its predecessor.
         uint org = (uint)_origin;
         uint[] head = _head;
-        ushort[] chain = _chain;
         for (int p = _next - 1; p >= dictLen; p--)
         {
             int h = Hash(Lz4EncRaw.Read32(_work, p));
             head[h] = _undoHead[p - dictLen];
-            chain[(int)((org + (uint)p) & ChainMask)] = _undoChain[p - dictLen];
+            int slot = (int)((org + (uint)p) & ChainMask);
+            if (_wide)
+            {
+                _chainWide[slot] = _undoChain[p - dictLen];
+            }
+            else
+            {
+                _chain[slot] = (ushort)_undoChain[p - dictLen];
+            }
         }
 
         _next = dictLen;
@@ -280,7 +321,6 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
     {
         Lz4PreparedDictionary.HighIndex snapshot = dictionary.HighSnapshot;
         uint[] head = snapshot.Head;
-        ushort[] chain = snapshot.Chain;
         uint org = (uint)_origin;
         uint[] mine = _head;
         for (int i = 0; i < head.Length; i++)
@@ -293,9 +333,21 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
         }
 
         // The origin is a multiple of 64 KiB, so a dictionary position's slot is its index.
-        chain.AsSpan(0, dictionary.Content.Length).CopyTo(_chain);
+        if (_wide)
+        {
+            snapshot.ChainWide.AsSpan(0, dictionary.Content.Length).CopyTo(_chainWide);
+        }
+        else
+        {
+            snapshot.Chain.AsSpan(0, dictionary.Content.Length).CopyTo(_chain);
+        }
+
         _next = dictionary.Content.Length;
     }
+
+    // The same hash as Hash, as a native-width index.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nint HashAt(Lz4In src, nint p) => (nint)((src.Read32(p) * 2654435761u) >> (32 - HashLog));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int Hash(uint fourBytes) => (int)((fourBytes * 2654435761u) >> (32 - HashLog));
@@ -311,7 +363,6 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
 
         uint org = (uint)_origin;
         uint[] head = _head;
-        ushort[] chain = _chain;
         for (int p = _next; p < target; p++)
         {
             int h = Hash(Lz4EncRaw.Read32(src, p));
@@ -319,9 +370,19 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
             int prev = (int)(old - org);
             int delta = p - prev;
             int slot = (int)((org + (uint)p) & ChainMask);
+            bool linked = prev >= 0 && delta <= Lz4Format.MaxOffset;
             _undoHead[p - _undoBase] = old;
-            _undoChain[p - _undoBase] = Lz4EncRaw.Get(chain, slot);
-            Lz4EncRaw.Put(chain, slot, (prev >= 0 && delta <= Lz4Format.MaxOffset) ? (ushort)delta : (ushort)0);
+            if (_wide)
+            {
+                _undoChain[p - _undoBase] = Lz4EncRaw.Get(_chainWide, slot);
+                Lz4EncRaw.Put(_chainWide, slot, linked ? Link(_chainWide, org, (uint)p, (uint)delta) : 0);
+            }
+            else
+            {
+                _undoChain[p - _undoBase] = Lz4EncRaw.Get(_chain, slot);
+                Lz4EncRaw.Put(_chain, slot, linked ? (ushort)delta : (ushort)0);
+            }
+
             Lz4EncRaw.Put(head, h, org + (uint)p);
         }
 
@@ -341,35 +402,201 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
             from = position;
         }
 
-        long found = FindChain(new Lz4In(src), new Lz4Table(_head), new Lz4Table16(_chain), (uint)_origin, from, position, matchLimit, best, attempts, nice, offset);
-        if (position > _next)
+        long found = _wide
+            ? FindChain<WideChain>(new Lz4In(src), new Lz4Table(_head), new Lz4Table16(_chain), new Lz4Table(_chainWide), (uint)_origin, from, position, matchLimit, best, attempts, nice, offset, !_recording)
+            : FindChain<PlainChain>(new Lz4In(src), new Lz4Table(_head), new Lz4Table16(_chain), new Lz4Table(_chainWide), (uint)_origin, from, position, matchLimit, best, attempts, nice, offset, !_recording);
+        int indexed = _recording ? position : position + 1;
+        if (indexed > _next)
         {
-            _next = position;
+            _next = indexed;
         }
 
         offset = (int)found;
         return (int)(found >> 32);
     }
 
-    // The chain walk, in a method of its own so that its few live values stay in registers instead of sharing the parser's.
-    // Returns the length in the high 32 bits and the offset in the low 32 (the offset passed in when nothing longer is found).
-    // Positions are native-width so the address arithmetic needs no sign extensions; every index below is a position inside
-    // the window or a hash/mask bounded by the table sizes.
-    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.NoInlining)]
-    private static long FindChain(Lz4In src, Lz4Table head, Lz4Table16 chain, uint org, nint from, nint ip, nint matchLimit, int best, int attempts, int nice, int offset)
+    // The chain entry of a position whose first link is `delta` bytes back: that link in the low 16 bits and, in the high 16,
+    // the distance to the position the first one links to (zero when either link is missing or further than 64 KiB). The
+    // second link lets a search read two candidates from one entry, so the next entry's load starts a step sooner.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint Link(uint[] chain, uint org, uint position, uint delta)
     {
-        // Index the positions before ip, in order, so that the chains the search follows include every one of them.
+        uint second = Lz4EncRaw.Get(chain, (int)((org + position - delta) & ChainMask)) & 0xFFFF;
+        uint sum = delta + second;
+        return delta | ((second != 0 && sum <= Lz4Format.MaxOffset ? sum : 0) << 16);
+    }
+
+    // Indexes a position: its chain link is the distance to the entry the table held for its hash, or zero when that entry is
+    // further than 64 KiB back, before the window, or empty. The test is arithmetic rather than a branch: whether a link is
+    // that old is as unpredictable as the data. With the wide chain the entry also carries the second link (see Link).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Index<TChain>(Lz4Table head, Lz4Table16 chain, Lz4Table wide, uint org, nint hash, uint previous, nint position)
+        where TChain : struct, IChainMode
+    {
+        uint here = org + (uint)position;
+        uint delta = here - previous;
+        uint valid = (delta - 1) < (uint)Lz4Format.MaxOffset ? 1u : 0u;
+        uint first = delta & (0u - valid);
+        if (TChain.Wide)
+        {
+            uint entry = first;
+            if (first != 0)
+            {
+                uint second = wide.Get((nint)((here - first) & ChainMask)) & 0xFFFF;
+                uint sum = first + second;
+                entry |= (second != 0 && sum <= Lz4Format.MaxOffset ? sum : 0) << 16;
+            }
+
+            wide.Put((nint)(here & ChainMask), entry);
+        }
+        else
+        {
+            chain.Put((nint)(here & ChainMask), (ushort)first);
+        }
+
+        head.Put(hash, here);
+    }
+
+    // Looks at one candidate for the match at ip: when it agrees with ip on the first four bytes and on the four bytes ending
+    // at ip + best (which any match longer than `best` must), measures it, and keeps it if it is longer. Returns true when
+    // the match is long enough that the search should stop.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool Probe(Lz4In src, nint ip, nint cand, nint distance, nint matchLimit, nint nice, uint first, ref nint best, ref nint found, ref uint tail)
+    {
+        if (src.Read32(cand + best - (Lz4Format.MinMatch - 1)) == tail && src.Read32(cand) == first)
+        {
+            nint length = Lz4Format.MinMatch + src.CommonLength(cand + Lz4Format.MinMatch, ip + Lz4Format.MinMatch, matchLimit);
+            if (length > best)
+            {
+                best = length;
+                found = distance;
+                if (best >= nice || ip + best >= matchLimit)
+                {
+                    return true;
+                }
+
+                tail = src.Read32(ip + best - (Lz4Format.MinMatch - 1));
+            }
+        }
+
+        return false;
+    }
+
+    // Walks the chain that starts at `entry` (the table's value for ip's hash before ip was indexed) and returns the longest
+    // match for src[ip..] that is longer than `best`: its length in the high 32 bits and its distance in the low 32 (`found`
+    // when nothing longer exists). Candidates are positions in the window, negative or further than 64 KiB back when the entry
+    // is stale or empty.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long Walk(Lz4In src, Lz4Table16 chain, uint org, nint ip, nint matchLimit, uint entry, nint best, nint found, nint attempts, nint nice)
+    {
+        uint first = src.Read32(ip);
+        nint cand = (int)(entry - org);
+        nint slotBase = (nint)(org & ChainMask);
+        // A candidate longer than `best` agrees with ip on the first four bytes and on the four bytes ending at ip + best.
+        uint tail = src.Read32(ip + best - (Lz4Format.MinMatch - 1));
+        while (attempts-- > 0)
+        {
+            // The candidate must lie 1 to 65535 bytes back; older entries, entries from before the window and empty slots all fail.
+            nint distance = ip - cand;
+            if ((nuint)(distance - 1) >= Lz4Format.MaxOffset)
+            {
+                break;
+            }
+
+            if (Probe(src, ip, cand, distance, matchLimit, nice, first, ref best, ref found, ref tail))
+            {
+                break;
+            }
+
+            nint delta = chain.Get((cand + slotBase) & ChainMask);
+            if (delta == 0)
+            {
+                break;
+            }
+
+            cand -= delta;
+        }
+
+        return (best << 32) | (uint)found;
+    }
+
+    // Walk for the wide chain: one entry yields two candidates, the one it belongs to and, when the entry's first link
+    // exists, the one after it, and the third candidate is reached through the second link without waiting for the second
+    // one's own entry. It visits the same candidates in the same order as Walk.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long WalkWide(Lz4In src, Lz4Table chain, uint org, nint ip, nint matchLimit, uint entry, nint best, nint found, nint attempts, nint nice)
+    {
+        uint first = src.Read32(ip);
+        nint cand = (int)(entry - org);
+        nint slotBase = (nint)(org & ChainMask);
+        uint tail = src.Read32(ip + best - (Lz4Format.MinMatch - 1));
+        while (attempts > 0)
+        {
+            nint distance = ip - cand;
+            if ((nuint)(distance - 1) >= Lz4Format.MaxOffset)
+            {
+                break;
+            }
+
+            uint links = chain.Get((cand + slotBase) & ChainMask);
+            if (Probe(src, ip, cand, distance, matchLimit, nice, first, ref best, ref found, ref tail))
+            {
+                break;
+            }
+
+            nint next = (nint)(links & 0xFFFF);
+            if (next == 0 || --attempts <= 0)
+            {
+                break;
+            }
+
+            nint nextDistance = distance + next;
+            if ((nuint)(nextDistance - 1) >= Lz4Format.MaxOffset || Probe(src, ip, cand - next, nextDistance, matchLimit, nice, first, ref best, ref found, ref tail))
+            {
+                break;
+            }
+
+            nint skip = (nint)(links >> 16);
+            if (skip == 0)
+            {
+                break;
+            }
+
+            attempts--;
+            cand -= skip;
+        }
+
+        return (best << 32) | (uint)found;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long WalkChain<TChain>(Lz4In src, Lz4Table16 chain, Lz4Table wide, uint org, nint ip, nint matchLimit, uint entry, nint best, nint found, nint attempts, nint nice)
+        where TChain : struct, IChainMode =>
+        TChain.Wide
+            ? WalkWide(src, wide, org, ip, matchLimit, entry, best, found, attempts, nice)
+            : Walk(src, chain, org, ip, matchLimit, entry, best, found, attempts, nice);
+
+    // Finds the longest match for src[ip..] that is longer than `best`, in a method of its own so that its few live values stay
+    // in registers instead of sharing the parser's. Positions before ip are indexed first, in order, so that the chains the
+    // search follows include every one of them, and ip itself is indexed with the hash already in hand when `indexSelf` is
+    // set (the search only follows links that lead backwards). Returns the length in the high 32 bits and the offset in the low
+    // 32 (the offset passed in when nothing longer is found). Every index below is a position inside the window or a
+    // hash/mask bounded by the table sizes.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.NoInlining)]
+    private static long FindChain<TChain>(Lz4In src, Lz4Table head, Lz4Table16 chain, Lz4Table wide, uint org, nint from, nint ip, nint matchLimit, int best, int attempts, int nice, int offset, bool indexSelf)
+        where TChain : struct, IChainMode
+    {
         for (nint p = from; p < ip; p++)
         {
-            nint h = Hash(src.Read32(p));
-            uint old = head.Get(h);
-            uint here = org + (uint)p;
-            // A link further back than 64 KiB (or to before the window, or an empty slot) ends the chain. The test is
-            // arithmetic rather than a branch: whether a link is that old is as unpredictable as the data.
-            uint delta = here - old;
-            uint valid = (delta - 1) < (uint)Lz4Format.MaxOffset ? 1u : 0u;
-            chain.Put((nint)(here & ChainMask), (ushort)(delta & (0u - valid)));
-            head.Put(h, org + (uint)p);
+            nint h = HashAt(src, p);
+            Index<TChain>(head, chain, wide, org, h, head.Get(h), p);
+        }
+
+        nint hip = HashAt(src, ip);
+        uint entry = head.Get(hip);
+        if (indexSelf)
+        {
+            Index<TChain>(head, chain, wide, org, hip, entry, ip);
         }
 
         if (ip + best >= matchLimit)
@@ -377,49 +604,49 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
             return ((long)best << 32) | (uint)offset;
         }
 
-        uint first = src.Read32(ip);
         // The next two positions are searched soon, and their head slots are scattered over a table that does not fit the
         // first-level cache; asking for them now hides the wait.
-        head.Prefetch(Hash(src.Read32(ip + 1)));
-        head.Prefetch(Hash(src.Read32(ip + 2)));
-        uint candidate = head.Get(Hash(first));
-        byte tail = src.Get(ip + best);
-        while (attempts-- > 0)
+        head.Prefetch(HashAt(src, ip + 1));
+        head.Prefetch(HashAt(src, ip + 2));
+        return WalkChain<TChain>(src, chain, wide, org, ip, matchLimit, entry, best, offset, attempts, nice);
+    }
+
+    // Searches forward from ip, one position at a time and indexing each, for the first position whose longest match reaches
+    // at least four bytes (Walk with nothing found so far), up to and including the last position a match may start at.
+    // Returns that match (length in the high 32 bits, distance in the low 32) and its position in `position`; a length of
+    // three means none was found (and position is then past the last one). The loop is the parser's hot path on data that
+    // matches poorly, so it makes no call per position.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.NoInlining)]
+    private static long Scan<TChain>(Lz4In src, Lz4Table head, Lz4Table16 chain, Lz4Table wide, uint org, nint from, nint ip, nint matchLimit, int attempts, int nice, out nint position)
+        where TChain : struct, IChainMode
+    {
+        for (nint p = from; p < ip; p++)
         {
-            // The candidate must lie 1 to 65535 bytes back; older entries, entries from before the window and empty slots all fail.
-            nint distance = ip - (int)(candidate - org);
-            if ((nuint)(distance - 1) >= Lz4Format.MaxOffset)
-            {
-                break;
-            }
-
-            nint idx = ip - distance;
-            if (src.Get(idx + best) == tail && src.Read32(idx) == first)
-            {
-                int length = Lz4Format.MinMatch + (int)src.CommonLength(idx + Lz4Format.MinMatch, ip + Lz4Format.MinMatch, matchLimit);
-                if (length > best)
-                {
-                    best = length;
-                    offset = (int)distance;
-                    if (best >= nice || ip + best >= matchLimit)
-                    {
-                        break;
-                    }
-
-                    tail = src.Get(ip + best);
-                }
-            }
-
-            ushort delta = chain.Get((nint)(candidate & ChainMask));
-            if (delta == 0)
-            {
-                break;
-            }
-
-            candidate -= delta;
+            nint h = HashAt(src, p);
+            Index<TChain>(head, chain, wide, org, h, head.Get(h), p);
         }
 
-        return ((long)best << 32) | (uint)offset;
+        // The last position a match may start at is twelve bytes before the end of the block, and four bytes are read two
+        // positions on, so every read stays inside the block.
+        nint last = matchLimit - (Lz4Format.MatchFindLimit - Lz4Format.LastLiterals);
+        while (ip <= last)
+        {
+            nint h0 = HashAt(src, ip);
+            head.Prefetch(HashAt(src, ip + 2));
+            uint entry = head.Get(h0);
+            Index<TChain>(head, chain, wide, org, h0, entry, ip);
+            long result = WalkChain<TChain>(src, chain, wide, org, ip, matchLimit, entry, Lz4Format.MinMatch - 1, 0, attempts, nice);
+            if ((result >> 32) >= Lz4Format.MinMatch)
+            {
+                position = ip;
+                return result;
+            }
+
+            ip++;
+        }
+
+        position = ip;
+        return (long)(Lz4Format.MinMatch - 1) << 32;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -440,12 +667,34 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
 
         while (ip <= mfLimit)
         {
-            int offset = 0;
-            int length = Find(src, ip, matchLimit, Lz4Format.MinMatch - 1, _attempts, _nice, ref offset);
-            if (length < Lz4Format.MinMatch)
+            int offset;
+            int length;
+            if (_recording)
             {
-                ip++;
-                continue;
+                offset = 0;
+                length = Find(src, ip, matchLimit, Lz4Format.MinMatch - 1, _attempts, _nice, ref offset);
+                if (length < Lz4Format.MinMatch)
+                {
+                    ip++;
+                    continue;
+                }
+            }
+            else
+            {
+                nint at;
+                long found = _wide
+                    ? Scan<WideChain>(new Lz4In(src), new Lz4Table(_head), new Lz4Table16(_chain), new Lz4Table(_chainWide), (uint)_origin, _next, ip, matchLimit, _attempts, _nice, out at)
+                    : Scan<PlainChain>(new Lz4In(src), new Lz4Table(_head), new Lz4Table16(_chain), new Lz4Table(_chainWide), (uint)_origin, _next, ip, matchLimit, _attempts, _nice, out at);
+                if ((found >> 32) < Lz4Format.MinMatch)
+                {
+                    _next = (int)at;
+                    break;
+                }
+
+                ip = (int)at;
+                _next = ip + 1;
+                length = (int)(found >> 32);
+                offset = (int)found;
             }
 
             if (_optimal)

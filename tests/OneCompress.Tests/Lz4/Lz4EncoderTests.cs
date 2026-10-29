@@ -251,6 +251,11 @@ public class Lz4EncoderTests
     [InlineData(4, 3000)]
     [InlineData(9, 100)]
     [InlineData(11, 3000)]
+    [InlineData(2, 65536)]
+    [InlineData(2, 3000)]
+    [InlineData(6, 65536)]
+    [InlineData(6, 3000)]
+    [InlineData(8, 100)]
     public void HistoryAndRebaseKeepBlocksDecodable(int level, int keep)
     {
         // Linked blocks by hand: each block sees the bytes before it; the window slides by dropping its front.

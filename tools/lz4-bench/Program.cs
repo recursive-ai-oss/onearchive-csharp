@@ -115,6 +115,39 @@ if (args[0] == "size")
     return 0;
 }
 
+if (args[0] == "enc")
+{
+    // enc <file> <level,level,...> [--seconds s] [--block n]: compressed size, best compression speed and a hash of the output
+    // blocks per level, for comparing two builds of the encoder (equal hashes mean equal bytes).
+    byte[] data = File.ReadAllBytes(args[1]);
+    foreach (string l in args[2].Split(','))
+    {
+        int level = int.Parse(l, CultureInfo.InvariantCulture);
+        Lz4BlockCompressor c = Lz4BlockCompressor.Create(level);
+        byte[] scratch = new byte[Lz4BlockWriter.GetMaxCompressedLength(blockSize)];
+        long total = 0;
+        double t = Best(() =>
+        {
+            total = 0;
+            for (int at = 0; at < data.Length; at += blockSize)
+            {
+                total += c.Compress(data.AsSpan(at, Math.Min(blockSize, data.Length - at)), 0, scratch);
+            }
+        });
+        using var sha = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+        c.Reset();
+        for (int at = 0; at < data.Length; at += blockSize)
+        {
+            int n = c.Compress(data.AsSpan(at, Math.Min(blockSize, data.Length - at)), 0, scratch);
+            sha.AppendData(scratch.AsSpan(0, n));
+        }
+
+        Console.WriteLine($"{level}\t{total}\t{data.Length / t / 1e6:F1}\t{Convert.ToHexString(sha.GetHashAndReset())[..12]}");
+    }
+
+    return 0;
+}
+
 if (args[0] == "big")
 {
     byte[] data = File.ReadAllBytes(args[1]);

@@ -34,9 +34,8 @@ The range is -65536 to 12 (a level outside it is an `ArgumentOutOfRangeException
 |---|---|---|---|
 | 1, 0 | hash table | greedy | acceleration 1 |
 | -N | hash table | greedy | acceleration N + 1 (so `--fast=1` skips like acceleration 2) |
-| 2 | hash table (2^18 entries, every interior position indexed) | greedy | acceleration 1 |
-| 3 to 6 | hash chain | lazy, two-byte lookahead | chain candidates 7, 14, 28, 56; stop at match length 256 |
-| 7 to 9 | hash chain | optimal | chain candidates 32, 36, 40; stop at match length 128 |
+| 2 | hash table (2^18 entries, every second interior position indexed) | lazy, one-byte lookahead | acceleration 1 |
+| 3 to 9 | hash chain | lazy, two-byte lookahead | chain candidates 7, 12, 24, 44, 68, 96, 128; stop at match length 256 |
 | 10 to 12 | hash chain | optimal | chain candidates 56, 100, 128; stop at match length 256 |
 
 The candidate counts were chosen so that, on Silesia's tar and enwik8, the output stays within about 0.9% of the `lz4`
@@ -50,6 +49,10 @@ tool's size at the same level, at the least search work that achieves it.
   bytes back and its first four bytes agree. The first byte of a block is only indexed.
 - While nothing matches, the step between probes starts at 1 and grows by one every 64 failed probes, scaled by the
   acceleration: the step after `n` failures is `(n + acceleration * 64) >> 6` (the first probe step is 1).
+- Level 2 only: lazy matching. After a match is found (and extended backwards), the position one byte later is looked up in
+  the table (and indexed); a candidate there that agrees on four bytes and gives a match more than one byte longer than the
+  one found replaces it, and the byte before it becomes a literal. Level 2 indexes every second position inside each match
+  (`interiorStride` 2).
 - A found match is extended backwards over pending literals (not past the start of the window or the dictionary), then
   forwards up to five bytes before the end of the block. After a match, the position two bytes before its end is indexed
   and the position at its end is tried at once (no step).
@@ -61,16 +64,21 @@ tool's size at the same level, at the least search work that achieves it.
 - Hash chain: `head[hash]` holds the last position with that hash of four bytes (`(bytes * 2654435761) >> 16`, 65536
   slots); `chain[position & 0xFFFF]` holds the distance to the previous position with the same hash (0 ends the chain, and
   a distance of 65536 or more is stored as 0). Every position is inserted, in order, before it is searched, including the
-  positions inside matches.
+  positions inside matches. A position is searched right after it is inserted, from the head entry it replaced.
+- Levels 6 and up store a 32-bit chain entry: the link above in the low 16 bits and, in the high 16 bits, the distance to
+  the position that link points to (0 when either link is missing or the sum exceeds 65535). The search reads two
+  candidates from one entry, so the dependent load for the third candidate starts sooner. The candidates, their order and
+  the output are exactly those of the 16-bit chain; only the speed differs.
 - A search at a position examines at most the level's number of chain candidates, nearest first. A candidate counts when it
-  lies 1 to 65535 bytes back, agrees on the byte at the current best length, agrees on the first four bytes, and extends
-  past the best length so far (ties keep the nearest). The search stops early when the best length reaches the level's stop
+  lies 1 to 65535 bytes back, agrees on the four bytes ending at the current best length, agrees on the first four bytes,
+  and extends past the best length so far (ties keep the nearest). A candidate that fails the four-byte test cannot be
+  longer than the best, so the test changes no result. The search stops early when the best length reaches the level's stop
   length or the end of the block. Matches end at least 5 bytes before the end of the block and start at least 12 bytes before it.
-- **Lazy parse (levels 3 to 6).** At a position with a match, the next position is searched for a match longer than
+- **Lazy parse (levels 3 to 9).** At a position with a match, the next position is searched for a match longer than
   the current one; one found replaces it (the bytes before it become literals) and the check repeats from there. When the
   next position has none, the position after it is searched for a match more than one byte longer than the current one,
   and one found replaces the current match the same way. The chosen match is then extended backwards over pending literals.
-- **Optimal parse (levels 7 to 12).** Starting at a position with a match, the encoder plans the cheapest sequence of
+- **Optimal parse (levels 10 to 12).** Starting at a position with a match, the encoder plans the cheapest sequence of
   literals and matches for the stretch ahead, by dynamic programming over byte positions. Prices are bytes of output:
   a literal costs 1, plus 1 more when the run it extends reaches 15 literals and every 255 after; a match costs 3 (token
   and offset) plus length bytes when the length minus 4 reaches 15 and every 255 after. Every length from 4 up to the longest
@@ -116,7 +124,7 @@ A dictionary (`Lz4Dictionary`, at most the last 64 KiB) is history in front of a
 ## Memory
 
 A fast compressor holds 16 KiB (level 2: 1 MiB); a high-level compressor holds 384 KiB (a 256 KiB head table and 128 KiB of
-chain links), plus 64 KiB of plan state for levels 7 to 12. With a dictionary, a high-level compressor also keeps a copy
+chain links; 512 KiB from level 6 up, where the links are 256 KiB), plus 64 KiB of plan state for levels 10 to 12. With a dictionary, a high-level compressor also keeps a copy
 buffer (the dictionary and the block) and, for blocks up to 64 KiB, undo records of 6 bytes per input byte. A frame encoder
 adds its staging buffer (one block) and, for independent blocks that arrive in pieces or linked blocks, a window (block
 size, plus 64 KiB when linked).
