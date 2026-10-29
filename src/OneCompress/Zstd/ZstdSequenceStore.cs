@@ -104,10 +104,17 @@ public sealed class ZstdSequenceStore
     {
         int ll = (int)literalLength;
         byte[] literals = _literals;
-        if (ll <= 16 && anchor + 16 <= window.Length)
+        if (ll <= 64 && anchor + ll + 16 <= window.Length)
         {
-            // The literal buffer has a 64-byte margin, so a 16-byte copy past the true length is harmless: the next append overwrites it.
-            Raw.Copy16(literals, _literalCount, window, anchor);
+            // Sixteen bytes at a time, past the true length by at most 15: the literal buffer has a 64-byte margin, so the extra bytes
+            // are harmless and the next append overwrites them. Most runs are short, and a call to the general copy costs more than the copy.
+            int copied = 0;
+            do
+            {
+                Raw.Copy16(literals, _literalCount + copied, window, anchor + copied);
+                copied += 16;
+            }
+            while (copied < ll);
         }
         else
         {
