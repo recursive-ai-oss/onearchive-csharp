@@ -381,11 +381,22 @@ public class LzmaHostileInputTests
         foreach ((string name, Func<byte[], int> decodeOnce) in SteadyStateCases())
         {
             byte[] data = LzmaTestData.Vector(name).Compressed;
-            decodeOnce(data);
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            decodeOnce(data);
-            long after = GC.GetAllocatedBytesForCurrentThread();
-            Assert.True(after - before < 512, $"{name} allocated {after - before} bytes");
+
+            // The runtime's tiered compilation allocates a little while it warms up, so wait for three clean calls in
+            // a row; an allocation made by every call never gets there.
+            var allocations = new List<long>();
+            int clean = 0;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (clean < 3 && clock.ElapsedMilliseconds < 20_000)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                decodeOnce(data);
+                long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                allocations.Add(allocated);
+                clean = allocated < 512 ? clean + 1 : 0;
+            }
+
+            Assert.True(clean >= 3, $"{name} kept allocating: {string.Join(",", allocations.TakeLast(10))} bytes per call");
         }
     }
 
