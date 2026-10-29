@@ -53,9 +53,9 @@ Large-window brotli (window above 24) is not part of RFC 7932 and is not produce
 
 | Q | Block | Table | Hash bytes | Depth | Long table | Parse | Contexts, splitting | Dictionary |
 |---|---|---|---|---|---|---|---|---|
-| 0 | 128 KiB | 2^15 heads | 4 | 1 | | greedy, one probe | none | no |
-| 1 | 128 KiB | 2^17 heads | 4 | 1 | | greedy, one probe | none | no |
-| 2 | 128 KiB | 2^16 x 4 | 4 | 2 | | greedy | none | no |
+| 0 | 128 KiB | 2^15 heads | 7 | 1 | | greedy, one probe | none | no |
+| 1 | 128 KiB | 2^17 heads | 7 | 1 | | greedy, one probe | none | no |
+| 2 | 128 KiB | 2^16 x 2 | 6 | 2 | | greedy | none | no |
 | 3 | 256 KiB | 2^15 x 8 | 6 | 4 | | lazy 1 | literal contexts | no |
 | 4 | 1 MiB | 2^15 x 8 | 6 | 8 | | lazy 1 | + block splitting | no |
 | 5 | 4 MiB | 2^16 x 16 | 6 | 8 | | lazy 1 | + context mode search | no |
@@ -76,9 +76,16 @@ table is the single source; `BrotliQualityPlan.For` must match it.
 
 - **Hash of a position**: for 4 bytes, `(little-endian 4 bytes * 0x1E35A7BD mod 2^32) >> (32 - HashBits)`; for 5 to 8 bytes, the little-endian
   64-bit word with all but its first `n` bytes cleared (shifted up so the kept bytes are the high ones), times `0x9E3779B185EBCA87 mod 2^64`,
-  shifted down to `HashBits`. A position is entered only if every byte its hash reads is inside the block; the others are entered with
+  shifted down to `HashBits`. (The tables of q0 to q2 do not shift the kept bytes up: their hash is `((word & (2^(8n) - 1)) * 0x9E3779B185EBCA87 mod 2^64) >> (64 - HashBits)`.) A position is entered only if every byte its hash reads is inside the block; the others are entered with
   the next block, because bytes past the end of the block are not input yet.
-- **Hash head** (q0, q1): one candidate per bucket, the latest position.
+- **Hash head** (q0, q1): one candidate per bucket, the latest position, stored with the four bytes found there (a slot is two
+  ints) so that a candidate that does not agree on them is refused without reading the input at its position. Hashes are of 7 bytes,
+  taken from the 64-bit word at the position, so a table candidate always agrees on seven bytes before its length is measured and
+  copies found through the table are at least that long (`FastHashLength` in the plan). Only positions with eight bytes inside the
+  block are probed or entered; the last seven bytes of a block are literals.
+- **Two-way table** (q2): each hash value (6 bytes, taken the same way) owns two slots, the two latest positions, each with its four
+  bytes; entering a position moves the newer slot to the older and writes the new one. Both are candidates, newest first. This is the
+  bucketed table of q2 to q9 with a bucket size of 2 and a depth of 2, minus the entry counts.
 - **Bucketed table** (q2 to q9): each hash value owns `2^BucketBits` slots holding the latest positions with that hash, the oldest slot
   overwritten first (a count of entries made per bucket says where the next goes). Candidates are visited newest first, at most Depth
   of them; a candidate must agree with the position on the hashed bytes and on the byte just past the best length so far; the search ends
@@ -114,17 +121,32 @@ is taken only if its score is positive; ties go to the one covering more bytes. 
 a match one (or two) positions later scores more by over 90 (180) than this one, for matches covering under 64 bytes; the probe
 for the later positions uses half the depth (and half the long table's depth).
 
-**q0 and q1** use one loop. At each position with four bytes inside the block it reads the table slot, replaces it with the position,
-and scores the four last distances (taking the first that agrees on four bytes) and the table's candidate; the better score wins.
-After a copy, every position inside it is entered if the copy is shorter than 16 bytes (4 at q0), otherwise only its second byte and its last two.
-The four-byte test means the last-distance copies of q0 and q1 are at least four bytes long.
+**q0 and q1** use one loop. At each position with eight bytes inside the block it reads the table slot and replaces it with the
+position. If the slot's four bytes agree with the position's and the distance is within the window and the data so far, the table
+has a candidate. Only then is the last distance tried (a copy of four bytes or more at the last distance, nothing else of the
+ring), and the better score wins; ties go to the last distance. A position with no table candidate is a miss, whether or not the last
+distance would have matched: this is a deliberate loss of about one percent of size for a tenth of the parse time. The copy's length
+is measured from byte four on, and a candidate from the table is taken only if its length is at least `FastHashLength`.
+After a copy, every position inside it is entered if the copy is shorter than 4 bytes, otherwise only its second byte and its last two.
+The command's distance code is the first of the four last distances that equals the distance, otherwise the nearest-neighbour short code
+(RFC 7932 section 4), otherwise none.
 
-**q2 to q9** try the four last distances first (any length from 3), then the bucket candidates, then the dictionary. After a copy
-every position it covers is entered, except at q2 and q3 (below).
+**q2** scores up to six candidates at a position with eight bytes inside the block: the four last distances (any copy of four bytes or
+more that agrees on the word) and the two table slots (copies of at least `FastHashLength`); the best score wins, ties go to the longer
+copy, then to the earlier candidate in that order. A position with none of the six agreeing is a miss. Entry follows "Sparse entry".
+
+**q3 to q9** try the four last distances first (any length from 3), then the bucket candidates, then the dictionary. After a copy
+every position it covers is entered, except at q3 (below).
 
 **Sparse entry (q2 and q3).** After a copy of 32 bytes or more only its last two positions are entered, and positions stepped over by
 the skip-ahead are not entered; the position just before the next probe is. The positions are a small share of what a later search
 finds, and entering them costs a hash and two stores each. The measured price is under 0.2% of size on text.
+
+**Command records (q0 to q2).** The parse computes each command's insert-and-copy symbol, extra bits, distance symbol and distance
+context at the moment it finds the command, and counts the symbols into the histograms the writer builds its prefix codes from. The
+literal histogram is counted by the writer over the input between copies. The writer reads the literals of a run through a lookup
+that reads eight bytes past the start of the run whatever its length and writes zero bits for those past its end, so the buffer keeps
+sixteen bytes beyond the data.
 
 ## Shortest-path parse (q10, q11)
 
@@ -180,7 +202,7 @@ Done by the meta-block writer, in this order (each choice by estimated size, int
 - Hashes are the fixed multiplicative hash above. No `HashCode`, no `Dictionary` order, no timing.
 - Every cost is an integer; logarithms come from a table built by integer digit-by-digit squaring (1/65536 bit).
 - SIMD is not used in the encoder; the only vectorised helper is the common-prefix length, which computes the same function. Cache
-  prefetch hints in the bucketed match finder load table lines early and change no result. The meta-block writer packs a command's
+  prefetch hints in the match finders (the tables of q1 and q2, and the bucketed tables) load table lines early and change no result. The meta-block writer packs a command's
   codes into a bit accumulator held in locals; that only changes how the bits are put out, never which bits.
 - Block size depends on the quality alone, so one thread or many (the encoder is single-threaded) gives the same bytes.
 

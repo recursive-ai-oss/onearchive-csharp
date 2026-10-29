@@ -128,6 +128,7 @@ internal sealed class BrotliQualityPlan
                 p.HashBits = 17;
                 p.ChainDepth = 1;
                 p.SkipShift = 6;
+                p.FullInsertLength = 4;
                 p.FastHashLength = 7;
                 break;
             case 2:

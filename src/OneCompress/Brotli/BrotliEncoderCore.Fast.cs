@@ -24,6 +24,9 @@ internal sealed partial class BrotliEncoderCore
 
     private const int PrefetchAhead = 8;
 
+    // After a position with no copy, the parse advances by 1 + (bytes since the last copy >> FastSkipShift).
+    private const int FastSkipShift = 6;
+
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void ParseFast(int start, int end)
     {
@@ -33,46 +36,49 @@ internal sealed partial class BrotliEncoderCore
         ulong hashMask = ulong.MaxValue >> (8 * (8 - _plan.FastHashLength));
         int minMatch = _plan.FastHashLength;
         int window = _window;
-        long streamBase = _streamBase;
-        int r0 = _ring[0], r1 = _ring[1], r2 = _ring[2], r3 = _ring[3];
+        // A position can look back at most as far as there is stream before it, and never past the window. Once the stream base reaches the
+        // window the first bound can no longer bind, so the base is clamped to keep the sum within an int.
+        int streamBase = (int)Math.Min(_streamBase, window);
         BrotliFastBlock block = _fast;
-        int skipShift = _plan.SkipShift;
+        // Only the last distance is needed on the path that finds nothing; the others live in the block's ring and change at copies only.
+        int[] ring = block.RingAfter;
+        _ring.CopyTo(ring, 0);
+        int r0 = ring[0];
         int pos = start;
         int insertStart = start;
         int last = end - 8; // the last position with eight bytes inside the block
+        int prefetchLast = _plan.HashBits > 15 ? last - PrefetchAhead : -1; // a table of 256 KiB or less stays in the L2 cache
         while (pos <= last)
         {
             ulong word64 = BrotliEncRaw.Load64(buffer, pos);
             uint word = (uint)word64;
             int slot = (int)(((word64 & hashMask) * 0x9E3779B185EBCA87UL) >> shift) << 1;
-            if (pos + PrefetchAhead <= last)
+            if (pos <= prefetchLast)
             {
-                // The table is larger than the L1 cache: ask for the slot a few positions on while this one is searched.
+                // The table is larger than the cache: ask for the slot a few positions on while this one is searched.
                 BrotliEncRaw.Prefetch(head, (int)(((BrotliEncRaw.Load64(buffer, pos + PrefetchAhead) & hashMask) * 0x9E3779B185EBCA87UL) >> shift) << 1);
             }
 
-            ref int cell = ref BrotliEncRaw.Slot(head, slot);
-            int candidate = cell;
+            int candidate = BrotliEncRaw.Slot(head, slot);
             uint candidateWord = (uint)BrotliEncRaw.Slot(head, slot + 1);
-            cell = pos;
+            BrotliEncRaw.Slot(head, slot) = pos;
             BrotliEncRaw.Slot(head, slot + 1) = (int)word;
-            int maxDistance = (int)Math.Min(window, streamBase + pos);
+            int maxDistance = Math.Min(window, pos + streamBase);
             // One test decides whether this position has a candidate at all: most positions have none, and two separate, data-dependent
             // branches (last distance, table slot) cost more than the arithmetic that merges them.
             int candidateDistance = pos - candidate;
             bool tableHit = (candidateWord == word) & ((candidate | (maxDistance - candidateDistance)) >= 0);
-            bool ringHit = (r0 <= maxDistance) & (BrotliEncRaw.Load32(buffer, r0 <= maxDistance ? pos - r0 : pos) == word);
-            if (!(tableHit | ringHit))
+            if (!tableHit)
             {
                 // Incompressible stretches are crossed faster the longer they have gone without a copy.
-                pos += 1 + ((pos - insertStart) >> skipShift);
+                pos += 1 + ((pos - insertStart) >> FastSkipShift);
                 continue;
             }
 
+            bool ringHit = (r0 <= maxDistance) & (BrotliEncRaw.Load32(buffer, r0 <= maxDistance ? pos - r0 : pos) == word);
             int length = 0;
             int distance = 0;
             int score = 0;
-            int code = 0; // the short distance code of the copy (RFC 7932 section 4)
             if (ringHit)
             {
                 distance = r0;
@@ -89,23 +95,25 @@ internal sealed partial class BrotliEncoderCore
                     length = l2;
                     distance = candidateDistance;
                     score = s2;
-                    code = distance == r0 ? 0 : distance == r1 ? 1 : distance == r2 ? 2 : distance == r3 ? 3 : BrotliDistanceCoding.NearCode(distance, r0, r1);
                 }
             }
 
             if (score <= 0)
             {
-                // Incompressible stretches are crossed faster the longer they have gone without a copy.
-                pos += 1 + ((pos - insertStart) >> skipShift);
+                pos += 1 + ((pos - insertStart) >> FastSkipShift);
                 continue;
             }
 
+            // RFC 7932 section 4: the short code that names the distance, if one does.
+            int r1 = ring[1], r2 = ring[2], r3 = ring[3];
+            int code = distance == r0 ? 0 : distance == r1 ? 1 : distance == r2 ? 2 : distance == r3 ? 3 : BrotliDistanceCoding.NearCode(distance, r0, r1);
             block.Add(pos - insertStart, length, distance, code);
             if (distance != r0)
             {
-                r3 = r2;
-                r2 = r1;
-                r1 = r0;
+                ring[3] = r2;
+                ring[2] = r1;
+                ring[1] = r0;
+                ring[0] = distance;
                 r0 = distance;
             }
 
@@ -135,10 +143,6 @@ internal sealed partial class BrotliEncoderCore
             block.AddTail(end - insertStart);
         }
 
-        block.RingAfter[0] = r0;
-        block.RingAfter[1] = r1;
-        block.RingAfter[2] = r2;
-        block.RingAfter[3] = r3;
         _hashedUpTo = end;
     }
 }
