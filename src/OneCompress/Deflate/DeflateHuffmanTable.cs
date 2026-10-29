@@ -333,7 +333,7 @@ public sealed class DeflateHuffmanTable
     // longer than the (primary - l1) first-level bits that follow it, the first-level index alone decides both symbols.
     private void BuildFast(int size)
     {
-        if (Alphabet != DeflateAlphabet.LiteralLength || _deflate64)
+        if (Alphabet != DeflateAlphabet.LiteralLength)
         {
             return;
         }
