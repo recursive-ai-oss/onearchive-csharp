@@ -8,11 +8,12 @@ Two packages:
 - `RecursiveAI.OneCompress` - codecs and checksums.
 - `RecursiveAI.OneArchive` - archive containers and a simple `Archive` API, built on OneCompress.
 
-**Status: 0.2.0-preview.1.** OneCompress has Zstandard (frames, skippable frames, dictionaries and
+**Status: 0.3.0-preview.1.** OneCompress has Zstandard (frames, skippable frames, dictionaries and
 dictionary training, long-distance matching, multithreaded compression in fixed-size jobs, the seekable
-format), LZ4 (block and frame), Deflate, zlib and gzip, LZMA, LZMA2, xz (with the branch and delta filters)
-and lzip, the bzip2 decoder, and CRC32, CRC32C, CRC64, Adler-32 and xxHash64. OneArchive reads and writes
-tar and zip, reads 7z, and handles single compressed streams. Everything is preview: see below.
+format), LZ4 (block and frame), Deflate, zlib, gzip and Deflate64, LZMA, LZMA2, xz (with the branch and delta
+filters) and lzip, bzip2, Brotli (with its built-in dictionary), the LZX decoder, and CRC32, CRC32C, CRC64,
+Adler-32 and xxHash64. OneArchive reads and writes tar, zip, 7z, cpio and ar, with zip and 7z encryption, reads
+cab, and handles single compressed streams. Everything is preview: see below.
 
 ```csharp
 byte[] packed = Zstd.Compress(data, new ZstdCompressionOptions { Level = 19 });
