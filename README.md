@@ -8,12 +8,13 @@ Two packages:
 - `RecursiveAI.OneCompress` - codecs and checksums.
 - `RecursiveAI.OneArchive` - archive containers and a simple `Archive` API, built on OneCompress.
 
-**Status: 0.3.0-preview.1.** OneCompress has Zstandard (frames, skippable frames, dictionaries and
+**Status: 0.4.0-preview.1.** OneCompress has Zstandard (frames, skippable frames, dictionaries and
 dictionary training, long-distance matching, multithreaded compression in fixed-size jobs, the seekable
 format), LZ4 (block and frame), Deflate, zlib, gzip and Deflate64, LZMA, LZMA2, xz (with the branch and delta
 filters) and lzip, bzip2, Brotli (with its built-in dictionary), the LZX decoder, and CRC32, CRC32C, CRC64,
-Adler-32 and xxHash64. OneArchive reads and writes tar, zip, 7z, cpio and ar, with zip and 7z encryption, reads
-cab, and handles single compressed streams. Everything is preview: see below.
+Adler-32 and xxHash64, plus PPMd (variants H and I). OneArchive reads and writes tar, zip, 7z, cpio, ar and
+ISO 9660 (with Joliet and Rock Ridge), with zip and 7z encryption, reads cab and RAR 5 (listing, metadata and stored
+entries), and handles single compressed streams. Everything is preview: see below.
 
 ```csharp
 byte[] packed = Zstd.Compress(data, new ZstdCompressionOptions { Level = 19 });
@@ -37,11 +38,12 @@ for example one directory per git worktree.
 Zstandard, LZ4, Deflate, zlib, gzip and the LZMA family (LZMA, LZMA2, xz, lzip) are preview while their speed is
 below the reference tools' in some rows. Their compression ratio and byte-identical output are already at the
 target; speed is what is still being tuned. The bzip2 decoder and the lzip decoder meet their targets and stay
-preview with the rest of this release. Brotli, the bzip2 encoder, Deflate64 and LZX are preview until they have been
-measured on the benchmark machines. The archive layer is preview while the containers are being added and the
-formats' interop and fuzz coverage grows. BCJ2 is not supported: 7z entries that use it are listed,
-and opening them is a typed "unsupported method" error. PPMd (variants H and I; 7z and zip method 98) is read and written
-and is preview until it has been measured on the benchmark machines. Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
+preview with the rest of this release. Brotli (compress is below the tool's speed at qualities 0 and 5, and quality 11 is
+2% larger), PPMd (speed 0.57-0.72 of 7-Zip's, same sizes) are preview; the bzip2 encoder meets its target on both machines. Deflate64 and LZX meet the
+targets on x64; Deflate64 decode is below it on arm64. They stay preview with the rest of this release. The archive layer
+is preview while the formats' interop and fuzz coverage grows. BCJ2 is not supported: 7z entries that use it are listed,
+and opening them is a typed "unsupported method" error. RAR 5 is read only: compressed entries raise a typed error.
+Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
 
 | Codec | Diagnostic ID |
 |---|---|
@@ -101,7 +103,17 @@ x64 is an AMD Ryzen 9 7950X3D on Linux; arm64 is an Apple M2 on macOS. .NET 10.0
 | lzip compress, levels 4-9 | enwik8 0.91-0.97, Silesia 0.85-0.92 (levels 4, 8, 9 below 0.87); size -0.02% to +0.48% | enwik8 0.89-0.93, Silesia 0.81-0.89; same sizes |
 | lzip decompress | 0.99-1.14, at the target | 1.28-1.44, at the target |
 | 7z archive size (LZMA2, against `7zz -mx=1/5/9 -mmt=1`) | -0.89% to +0.91%, at the target | |
-| Brotli, bzip2 compress, Deflate64, LZX | not yet measured on these machines | not yet measured |
+| bzip2 compress, levels 1 and 9 (against `bzip2`, start-up subtracted) | 1.11-1.14, at the target; size -0.02% to +0.01% | 1.09-1.10, at the target; same sizes |
+| Brotli compress, quality 0 and 5 (window 22) | 0.37 and 0.59; size -9.84% and -0.11% | 0.32 and 0.56; same sizes |
+| Brotli compress, quality 11 | 1.10; size +2.04% | 1.17; size +2.04% |
+| Brotli decompress, quality 5 and 11 (against `brotli` 1.2.1) | 0.83-0.93 (0.83 on one stream written by the tool, quality 5); other streams at the target | 0.92-1.01, at the target |
+| Deflate64 compress, levels 1, 5, 9 (against `7zz` zip Deflate64) | 1.03, 0.92 and 3.03, at the target; size -1.04% to +0.38% | 1.00, 0.92 and 3.22, at the target; same sizes |
+| Deflate64 decompress | 0.94-1.07, at the target | 0.71-0.74 |
+| LZX decompress (against `cabextract` 1.11, on a cabinet from our test encoder) | 1.06, at the target | 1.01, at the target |
+| PPMd compress, 7z PPMD, mx 1 and 5 (against `7zz`) | 0.59 and 0.61; size equal | 0.57 and 0.59; size equal |
+| PPMd decompress, mx 1 and 5 | 0.60-0.63 | 0.62-0.66 |
+| PPMd compress, mx 8 and 9 | 0.65 and 0.67; size equal | 0.65 and 0.67; size equal |
+| PPMd decompress, mx 8 and 9 | 0.68-0.70 | 0.72 |
 | Dictionary training | 2.9-73x the tool's time on one thread, 1.4-26x with the default thread count; 5-30x its memory | 3-35x the tool's time, 20-40x its memory; output with our dictionaries within 1% of the tool's overall, up to 2.6% larger on tiny training sets and 1.1-2.1% larger with 64 KiB and larger dictionaries on Silesia |
 
 Peak memory of the LZMA family's in-memory calls is 0.5-2 GB on these corpora, because they hold the whole input and
@@ -118,12 +130,12 @@ Archive.Create("backup.tar.zst").Add("assets/").Save();          // format and c
 using var archive = Archive.Open("data.tar");                  // entries, random access when the source can seek
 ```
 
-Read and written: tar (ustar, pax, GNU, sparse files); zip (store, Deflate, Deflate64, bzip2 and Zstandard; LZMA and xz
+Read and written: tar (ustar, pax, GNU, sparse files); zip (store, Deflate, Deflate64, bzip2, PPMd and Zstandard; LZMA and xz
 entries read; zip64, data descriptors; WinZip AES, and traditional encryption for reading); 7z (Copy, Deflate,
-Deflate64, BZip2, LZMA, LZMA2, Delta, the branch filters, Zstandard; solid folders, encoded headers, AES-256); cpio
-(newc, crc, odc) and ar (common, GNU, BSD). Read only: cab (stored, MSZIP, LZX). Single streams (`.gz`, `.zst`, `.lz4`,
+Deflate64, BZip2, LZMA, LZMA2, PPMd, Delta, the branch filters, Zstandard; solid folders, encoded headers, AES-256); cpio
+(newc, crc, odc), ar (common, GNU, BSD) and ISO 9660 with Joliet and Rock Ridge. Read only: cab (stored, MSZIP, LZX) and RAR 5 (list and metadata, stored entries, multi-volume sets; compressed entries raise a typed error). Single streams (`.gz`, `.zst`, `.lz4`,
 `.bz2`, `.xz`, `.lz`, and `.br`, which is recognised by its name) and tar inside them (`.tar.gz`, `.tar.zst`, ...) are
-one archive. AES needs `System.Security.Cryptography.Aes`, which the browser does not provide. The other containers plug into the same reader and writer interfaces. The model, the safety defaults and limits, and the tar coverage are in `docs/archive.md`.
+one archive. AES needs `System.Security.Cryptography.Aes`, which the browser does not provide. An app that uses few codecs can trim the rest: set the `RecursiveAI.OneArchive.AllCodecs` feature switch to false and register what it needs with `ArchiveCodecs.AddX()` (`docs/archive-codecs.md`). The other containers plug into the same reader and writer interfaces. The model, the safety defaults and limits, and the tar coverage are in `docs/archive.md`.
 
 ## Layout
 
