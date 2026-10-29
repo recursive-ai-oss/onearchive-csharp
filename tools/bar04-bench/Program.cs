@@ -94,10 +94,10 @@ switch (mode)
     default: return Usage();
 }
 
-// docs/ppmd.md "Levels": the order and model memory 7-Zip uses for -mx in a 7z archive. Levels above 9 behave as 9.
+// docs/ppmd.md "Levels": the order and model memory 7-Zip uses for -mx in a 7z archive on a large input. Levels above 9 behave as 9.
 static (int Order, int MemoryMiB) PpmdParams(int level) => Math.Clamp(level, 1, 9) switch
 {
-    1 => (4, 1), 2 => (4, 2), 3 => (5, 4), 4 => (5, 8), 5 => (6, 16), 6 => (8, 32), 7 => (16, 64), 8 => (24, 64), _ => (32, 64),
+    1 => (4, 1), 2 => (4, 2), 3 => (5, 4), 4 => (5, 8), 5 => (6, 16), 6 => (8, 32), 7 => (16, 64), 8 => (24, 128), _ => (32, 256),
 };
 
 static PpmdHOptions PpmdLevel(int level)

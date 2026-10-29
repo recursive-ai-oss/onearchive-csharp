@@ -12,7 +12,8 @@ internal sealed class PpmdArchiveCodec : ArchiveCodec
 {
     private const int DefaultLevel = 5;
 
-    // The order and model memory for each level, the numbers 7-Zip's levels use. Level 0 is "no compression" and never gets here.
+    // The order and model memory for each level, the numbers 7-Zip's -mx levels use for a large input
+    // (testdata/ppmd/levels/NOTES.md). Level 0 is "no compression" and never gets here.
     private static (int Order, int MemoryLog2) SevenZipLevel(int level) => Math.Clamp(level, 1, 9) switch
     {
         1 => (4, 20),
@@ -22,8 +23,8 @@ internal sealed class PpmdArchiveCodec : ArchiveCodec
         5 => (6, 24),
         6 => (8, 25),
         7 => (16, 26),
-        8 => (24, 26),
-        _ => (32, 26),
+        8 => (24, 27),
+        _ => (32, 28),
     };
 
     private static (int Order, int MemoryMiB, PpmdRestoreMethod Restore) ZipLevel(int level) => Math.Clamp(level, 1, 9) switch
@@ -35,8 +36,8 @@ internal sealed class PpmdArchiveCodec : ArchiveCodec
         5 => (8, 16, PpmdRestoreMethod.Restart),
         6 => (9, 32, PpmdRestoreMethod.Restart),
         7 => (10, 64, PpmdRestoreMethod.CutOff),
-        8 => (11, 64, PpmdRestoreMethod.CutOff),
-        _ => (12, 64, PpmdRestoreMethod.CutOff),
+        8 => (11, 128, PpmdRestoreMethod.CutOff),
+        _ => (12, 256, PpmdRestoreMethod.CutOff),
     };
 
     // A small input does not need a big model: the smallest power of two (from 64 KiB) that is at least 16 times the input.
