@@ -27,6 +27,13 @@ under the Revised BSD License set forth in Section 4.c of the IETF Trust's Legal
 > INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 > NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## RFC 8878 code tables
+
+The length code baselines, extra-bit counts and default distributions in `src/OneCompress/Zstd/ZstdFormat.cs` are transcribed from
+the code components of IETF RFC 8878 (Zstandard Compression and the 'application/zstd' Media Type). They are licensed under the
+same Revised BSD License as above (Section 4.c of the IETF Trust's Legal Provisions), with the notice "Copyright (c) 2021 IETF
+Trust and the persons identified as authors of the code. All rights reserved."
+
 ## Microsoft Open Specifications ([MS-CAB], [MS-PATCH])
 
 The cabinet reader and the LZX decoder are written from Microsoft's Cabinet File Format ([MS-CAB]) and LZX DELTA Compression and

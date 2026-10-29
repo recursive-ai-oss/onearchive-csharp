@@ -1,3 +1,10 @@
+// The code tables in this file (length code baselines and extra bits, and the default distributions) are transcribed from
+// IETF RFC 8878 sections 3.1.1.3.2.1.1 and 3.1.1.3.2.2.
+// Copyright (c) 2021 IETF Trust and the persons identified as authors of the code. All rights reserved.
+// Redistribution and use in source and binary forms, with or without modification, is permitted pursuant to, and subject to the
+// license terms contained in, the Revised BSD License set forth in Section 4.c of the IETF Trust's Legal Provisions Relating to
+// IETF Documents (https://trustee.ietf.org/license-info).
+
 using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Zstd;
