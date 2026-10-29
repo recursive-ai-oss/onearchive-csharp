@@ -8,26 +8,26 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// </summary>
 /// <remarks>
 /// <para>Method, in two phases. First the rotations are bucketed by their first two bytes (a counting pass), and each bucket is sorted by
-/// the next five bytes at a time: a rotation is packed with those five bytes into one 64-bit word (key in the upper 40 bits, rotation
-/// index in the lower 24), the words are sorted as plain integers, and runs of equal keys are sorted again on the five bytes after. After
-/// six such rounds the rotations are ordered on their first 32 bytes; almost every block is fully sorted by then.
-/// Rotations still tied on 32 bytes go to the second phase: prefix doubling (Manber and Myers, 1990) organised as Larsson and Sadakane
-/// describe (1999). A group of rotations that agree on their first <c>h</c> bytes is split by the group that the rotation <c>h</c> bytes
-/// further on belongs to, which orders them on <c>2h</c> bytes, and <c>h</c> doubles until it passes the block length. Only the groups
-/// that are still tied are revisited. Both phases break ties by rotation index, so equal rotations (a periodic block) come out in index
-/// order whatever the sort routine: the output depends on the block alone.</para>
-/// <para>Memory: two 32-bit words and one 64-bit word per block byte, kept between calls.</para>
+/// the next five bytes: a rotation is packed with those five bytes into one 64-bit word (key in the upper 40 bits, rotation index in the
+/// lower 24), the words are sorted as plain integers (a most-significant-byte radix split for large buckets, then a quicksort whose
+/// partition has no data-dependent branch), and runs of equal keys are left to the second phase. After this the rotations are ordered on
+/// their first seven bytes.
+/// The second phase is prefix doubling (Manber and Myers, 1990) organised as Larsson and Sadakane describe (1999). A group of rotations that
+/// agree on their first <c>h</c> bytes is split by the group that the rotation <c>h</c> bytes further on belongs to, which orders them on
+/// <c>2h</c> bytes, and <c>h</c> doubles until it passes the block length. Only the groups that are still tied are revisited. Both
+/// phases break ties by rotation index, so equal rotations (a periodic block) come out in index order whatever the sort routine: the output
+/// depends on the block alone.</para>
+/// <para>Memory: two 32-bit words and two 64-bit words per block byte (the sort keys and the radix scratch), kept between calls.</para>
 /// </remarks>
 [Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2BlockSorter
 {
     private const int KeyBytes = 5;
-    private const int Rounds = 1;
     private const int FirstDepth = 2;
-    private const int SortedDepth = FirstDepth + (KeyBytes * Rounds); // 32 bytes
+    private const int SortedDepth = FirstDepth + KeyBytes; // 7 bytes
     private const int Tail = SortedDepth + 8;
     private const ulong IndexMask = 0xFFFFFF;
-    private const int RadixThreshold = 2048;
+    private const int RadixThreshold = 1024;
 
     private int[] _order = [];
     private int[] _rank = [];
@@ -124,7 +124,7 @@ public sealed class BZip2BlockSorter
             }
             else if (hi - lo > 1)
             {
-                SortRange(ext, keys, order, rank, lo, hi, FirstDepth);
+                SortRange(keys, order, rank, lo, hi);
             }
         }
 
@@ -155,12 +155,12 @@ public sealed class BZip2BlockSorter
     private static ulong KeyAt(byte[] ext, int position, int depth) =>
         (System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(ext.AsSpan(position + depth)) & 0xFFFFFFFFFF000000UL) | (uint)position;
 
-    // keys[lo..hi) hold rotations (index in the low 24 bits) whose key at `depth` is already filled in. Sorts them, then deals with each run of equal keys:
-    // a single rotation is final; a longer run is sorted again on the next five bytes, or, once 32 bytes are compared, left to the doubling phase.
-    private void SortRange(byte[] ext, ulong[] keys, int[] order, int[] rank, int lo, int hi, int depth)
+    // keys[lo..hi) hold rotations (index in the low 24 bits) with their key bytes filled in. Sorts them, then deals with each run of equal
+    // keys: a single rotation is final; a longer run is tied on SortedDepth bytes, gets the rank of its first row and is left to the
+    // doubling phase.
+    private void SortRange(ulong[] keys, int[] order, int[] rank, int lo, int hi)
     {
         RadixSort(keys, lo, hi, 0);
-        int nextDepth = depth + KeyBytes;
         int a = lo;
         while (a < hi)
         {
@@ -171,31 +171,16 @@ public sealed class BZip2BlockSorter
                 b++;
             }
 
-            if (b - a == 1)
+            for (int i = a; i < b; i++)
             {
-                int p = (int)(keys[a] & IndexMask);
-                order[a] = p;
+                int p = (int)(keys[i] & IndexMask);
+                order[i] = p;
                 rank[p] = a;
             }
-            else if (nextDepth >= SortedDepth)
-            {
-                for (int i = a; i < b; i++)
-                {
-                    int p = (int)(keys[i] & IndexMask);
-                    order[i] = p;
-                    rank[p] = a;
-                }
 
+            if (b - a > 1)
+            {
                 _groupCount = Append(ref _groups, _groupCount, a, b);
-            }
-            else
-            {
-                for (int i = a; i < b; i++)
-                {
-                    keys[i] = KeyAt(ext, (int)(keys[i] & IndexMask), nextDepth);
-                }
-
-                SortRange(ext, keys, order, rank, a, b, nextDepth);
             }
 
             a = b;
@@ -212,7 +197,7 @@ public sealed class BZip2BlockSorter
         {
             if (size > 1)
             {
-                keys.AsSpan(lo, size).Sort();
+                SortWords(keys.AsSpan(lo, size));
             }
 
             return;
@@ -255,6 +240,85 @@ public sealed class BZip2BlockSorter
             {
                 RadixSort(keys, lo + from, lo + to, level + 1);
             }
+        }
+    }
+
+    // Sorts 64-bit words in increasing order. Every word in a call is distinct (the low bits hold the rotation index), which lets the
+    // partition below run without a branch per element: a quicksort whose comparisons are branch mispredictions in the library sort costs
+    // more than the sort's other work here. The result is the sorted sequence of the input, so it cannot depend on how it is reached.
+    private static void SortWords(Span<ulong> a)
+    {
+        int budget = 2 * (System.Numerics.BitOperations.Log2((uint)a.Length) + 1);
+        while (a.Length > 16)
+        {
+            if (budget-- == 0)
+            {
+                a.Sort();
+                return;
+            }
+
+            int last = a.Length - 1;
+            int mid = last >> 1;
+            // Median of three goes to the end as the pivot.
+            if (a[mid] < a[0])
+            {
+                (a[mid], a[0]) = (a[0], a[mid]);
+            }
+
+            if (a[last] < a[0])
+            {
+                (a[last], a[0]) = (a[0], a[last]);
+            }
+
+            if (a[last] < a[mid])
+            {
+                (a[last], a[mid]) = (a[mid], a[last]);
+            }
+
+            // Now a[0] <= a[mid] <= a[last]; the median a[mid] is the pivot, moved next to the end.
+            ulong pivot = a[mid];
+            a[mid] = a[last - 1];
+            a[last - 1] = pivot;
+
+            int i = 1;
+            for (int j = 1; j < last - 1; j++)
+            {
+                ulong v = a[j];
+                ulong w = a[i];
+                a[j] = w;
+                a[i] = v;
+                i += v < pivot ? 1 : 0;
+            }
+
+            a[last - 1] = a[i];
+            a[i] = pivot;
+
+            // Recurse into the smaller part, loop on the larger.
+            Span<ulong> left = a[..i];
+            Span<ulong> right = a[(i + 1)..];
+            if (left.Length < right.Length)
+            {
+                SortWords(left);
+                a = right;
+            }
+            else
+            {
+                SortWords(right);
+                a = left;
+            }
+        }
+
+        for (int x = 1; x < a.Length; x++)
+        {
+            ulong v = a[x];
+            int y = x - 1;
+            while (y >= 0 && a[y] > v)
+            {
+                a[y + 1] = a[y];
+                y--;
+            }
+
+            a[y + 1] = v;
         }
     }
 
@@ -313,7 +377,7 @@ public sealed class BZip2BlockSorter
         }
         else
         {
-            k.Sort();
+            SortWords(k);
         }
 
         ulong previous = ulong.MaxValue;

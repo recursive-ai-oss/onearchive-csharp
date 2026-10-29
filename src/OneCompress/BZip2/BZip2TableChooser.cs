@@ -114,53 +114,42 @@ public sealed class BZip2TableChooser
             _builder.Build(_freq.AsSpan(t * stride, alphabetSize), _lengths.AsSpan(t * stride, alphabetSize), maxLength);
         }
 
-        // A group's cost under every table is added up in one go: each symbol's six code lengths sit in two 64-bit words, three 21-bit lanes
-        // each (a group's cost is at most 50 x 20 = 1000, so no lane overflows into the next).
-        Span<ulong> low = stackalloc ulong[BZip2HuffmanTable.MaxAlphabetSize];
-        Span<ulong> high = stackalloc ulong[BZip2HuffmanTable.MaxAlphabetSize];
-        const ulong LaneMask = (1UL << 21) - 1;
+        // A group's cost under every table is added up in one go: each symbol's code lengths, one per table, sit in one 64-bit word as ten-bit
+        // lanes (a group's cost is at most 50 x 20 = 1000, which fits a lane, so no lane carries into the next).
+        Span<ulong> packed = stackalloc ulong[BZip2HuffmanTable.MaxAlphabetSize];
+        const ulong LaneMask = (1UL << 10) - 1;
+        Span<bool> changed = stackalloc bool[MaxTables];
         for (int pass = 0; pass < Passes; pass++)
         {
             for (int s = 0; s < alphabetSize; s++)
             {
-                ulong l = 0;
-                ulong h = 0;
+                ulong word = 0;
                 for (int t = 0; t < k; t++)
                 {
-                    ulong len = _lengths[(t * stride) + s];
-                    if (t < 3)
-                    {
-                        l |= len << (21 * t);
-                    }
-                    else
-                    {
-                        h |= len << (21 * (t - 3));
-                    }
+                    word |= (ulong)_lengths[(t * stride) + s] << (10 * t);
                 }
 
-                low[s] = l;
-                high[s] = h;
+                packed[s] = word;
             }
 
             // The symbol counts of each table follow the groups it holds: a group that moves is taken out of one table's counts and put into
             // the other's, which gives the counts a rebuild from scratch would.
             bool moved = false;
+            changed.Clear();
             for (int g = 0; g < groups; g++)
             {
                 ReadOnlySpan<ushort> group = symbols.Slice(g * GroupSize, Math.Min(GroupSize, symbols.Length - (g * GroupSize)));
-                ulong costLow = 0;
-                ulong costHigh = 0;
+                ulong cost = 0;
                 foreach (ushort s in group)
                 {
-                    costLow += low[s];
-                    costHigh += high[s];
+                    cost += packed[s];
                 }
 
                 int best = 0;
-                ulong bestCost = costLow & LaneMask;
+                ulong bestCost = cost & LaneMask;
                 for (int t = 1; t < k; t++)
                 {
-                    ulong c = t < 3 ? (costLow >> (21 * t)) & LaneMask : (costHigh >> (21 * (t - 3))) & LaneMask;
+                    ulong c = (cost >> (10 * t)) & LaneMask;
                     if (c < bestCost)
                     {
                         best = t;
@@ -172,6 +161,8 @@ public sealed class BZip2TableChooser
                 if (best != previous)
                 {
                     moved = true;
+                    changed[previous] = true;
+                    changed[best] = true;
                     _selectors[g] = (byte)best;
                     foreach (ushort s in group)
                     {
@@ -187,9 +178,13 @@ public sealed class BZip2TableChooser
                 break;
             }
 
+            // A table whose counts did not change gets the lengths it already has, so only the others are rebuilt.
             for (int t = 0; t < k; t++)
             {
-                _builder.Build(_freq.AsSpan(t * stride, alphabetSize), _lengths.AsSpan(t * stride, alphabetSize), maxLength);
+                if (changed[t])
+                {
+                    _builder.Build(_freq.AsSpan(t * stride, alphabetSize), _lengths.AsSpan(t * stride, alphabetSize), maxLength);
+                }
             }
         }
 
