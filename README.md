@@ -39,8 +39,9 @@ below the reference tools' in some rows. Their compression ratio and byte-identi
 target; speed is what is still being tuned. The bzip2 decoder and the lzip decoder meet their targets and stay
 preview with the rest of this release. Brotli, the bzip2 encoder, Deflate64 and LZX are preview until they have been
 measured on the benchmark machines. The archive layer is preview while the containers are being added and the
-formats' interop and fuzz coverage grows. PPMd and BCJ2 are not supported: archive entries that use them are listed,
-and opening them is a typed "unsupported method" error. Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
+formats' interop and fuzz coverage grows. BCJ2 is not supported: 7z entries that use it are listed,
+and opening them is a typed "unsupported method" error. PPMd (variants H and I; 7z and zip method 98) is read and written
+and is preview until it has been measured on the benchmark machines. Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
 
 | Codec | Diagnostic ID |
 |---|---|
@@ -53,6 +54,7 @@ and opening them is a typed "unsupported method" error. Their public types carry
 | lzip | `ONECOMPRESS007` |
 | Brotli | `ONECOMPRESS008` |
 | LZX (decoder) | `ONECOMPRESS009` |
+| PPMd (variants H and I) | `ONECOMPRESS010` |
 | OneArchive: `Archive`, the entry model, readers and writers, every container, encryption | `ONEARCHIVE001` |
 
 ```xml

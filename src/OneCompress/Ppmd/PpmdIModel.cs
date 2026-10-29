@@ -11,6 +11,7 @@
 // Same layout idea as PpmdHModel: one byte array, 12-byte units, 32-bit offsets, 0 as null. A context's symbol
 // count is stored minus one in a byte, so 256 symbols fit. Variant I adds the cut-off restore method.
 
+using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Ppmd;
@@ -167,25 +168,28 @@ public sealed partial class PpmdIModel : IPpmdModel
 
     // ---- raw memory access ----
 
-    private int U16(int a) => _m[a] | (_m[a + 1] << 8);
+    private int U16(int a) => BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(_m, a, 2));
 
     private void SetU16(int a, int v)
     {
-        _m[a] = (byte)v;
-        _m[a + 1] = (byte)(v >> 8);
+        BinaryPrimitives.WriteUInt16LittleEndian(new Span<byte>(_m, a, 2), (ushort)v);
     }
 
-    private int U32(int a) => _m[a] | (_m[a + 1] << 8) | (_m[a + 2] << 16) | (_m[a + 3] << 24);
+    private int U32(int a) => BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(_m, a, 4));
 
     private void SetU32(int a, int v)
     {
-        _m[a] = (byte)v;
-        _m[a + 1] = (byte)(v >> 8);
-        _m[a + 2] = (byte)(v >> 16);
-        _m[a + 3] = (byte)(v >> 24);
+        BinaryPrimitives.WriteInt32LittleEndian(new Span<byte>(_m, a, 4), v);
     }
 
-    private void Copy6(int dst, int src) => Buffer.BlockCopy(_m, src, _m, dst, StateSize);
+    // A state is 6 bytes; both parts are read before either is written, so overlapping ranges copy correctly.
+    private void Copy6(int dst, int src)
+    {
+        int lo = U32(src);
+        int hi = U16(src + 4);
+        SetU32(dst, lo);
+        SetU16(dst + 4, hi);
+    }
 
     private void Swap6(int a, int b)
     {

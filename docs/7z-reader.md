@@ -74,7 +74,7 @@ off the CRC check for that stream.
 
 ## Not done yet
 
-PPMd and BCJ2 coders. AES-256 is read (`7z-aes-derivation.md`). Writing is in `7z-writer.md`.
+The BCJ2 coder. PPMd (variant H) is read (`ppmd.md`). AES-256 is read (`7z-aes-derivation.md`). Writing is in `7z-writer.md`.
 
 ## Zip entries (methods 14 and 95)
 

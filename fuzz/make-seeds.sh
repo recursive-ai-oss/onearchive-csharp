@@ -14,7 +14,7 @@ out="${1:?usage: make-seeds.sh DIR}"
 rm -rf "$out"; mkdir -p "$out"
 for t in zstd-decode zstd-decode-dict lz4-decode lz4-decode-dict lz4-block zstd-encode-roundtrip \
          zstd-encode-long-roundtrip zstd-train-roundtrip lz4-encode-frame lz4-encode-block \
-         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip deflate64-decode deflate64-encode-roundtrip bzip2-decode bzip2-encode-roundtrip brotli-decode brotli-encode-roundtrip lzma-decode xz-decode lzip-decode lzma-encode-roundtrip xz-encode-roundtrip tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read sevenzip-read cpio-read ar-read cpio-roundtrip ar-roundtrip rar-read iso-read iso-roundtrip; do
+         deflate-decode zlib-decode gzip-decode deflate-encode-roundtrip deflate64-decode deflate64-encode-roundtrip bzip2-decode bzip2-encode-roundtrip ppmd-decode ppmd-roundtrip brotli-decode brotli-encode-roundtrip lzma-decode xz-decode lzip-decode lzma-encode-roundtrip xz-encode-roundtrip tar-read archive-open tar-roundtrip zip-read zip-roundtrip single-stream-read sevenzip-read cpio-read ar-read cpio-roundtrip ar-roundtrip rar-read iso-read iso-roundtrip; do
   mkdir -p "$out/$t"
 done
 
@@ -106,6 +106,13 @@ n=0
 for p in "$payloads"/*; do
   n=$((n + 1))
   { printf "\x$(printf %02x $((n % 9)))\x$(printf %02x $((n * 5 % 12)))\x$(printf %02x $((n * 3 % 256)))\x$(printf %02x $((n * 11 % 256)))\x00"; head -c 6000 "$p"; } > "$out/bzip2-encode-roundtrip/$(basename "$p")-$n"
+done
+# ppmd: the round-trip seeds are (flags, order, memory selector, then the data); the decoder seeds come from
+# fuzz/seeds-ppmd.sh. Flag bit 0 selects variant I, bit 2 the cut-off restore, bit 3 an end marker, and bit 1 (decoder) a known output size.
+n=0
+for p in "$payloads"/*; do
+  n=$((n + 1))
+  { printf "\x$(printf %02x $((n % 16)))\x$(printf %02x $((n * 5 % 64)))\x$(printf %02x $((n * 3 % 9)))"; head -c 6000 "$p"; } > "$out/ppmd-roundtrip/$(basename "$p")-$n"
 done
 # brotli round trip: (quality, window, write size, output size, flush plan, then the program that expands into data).
 n=0
