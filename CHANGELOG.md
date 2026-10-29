@@ -4,9 +4,28 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.4.0-preview.1] - 2026-10-29
+
+Everything new here is preview and carries `[Experimental]`. The README has the measurements against the reference tools on both machines, misses included.
+
 ### Added
 
-- PPMd (`ONECOMPRESS010`, preview): variants H and I as `PpmdH`/`PpmdI`, encoders, decoders and `PpmdStream`, byte-identical to 7-Zip's output; zip method 98 and the 7z PPMD coder, read and write. New limit `ArchiveLimits.MaxPpmdMemorySize` (256 MiB). See `docs/ppmd.md`.
+- PPMd (`ONECOMPRESS010`): variants H and I as `PpmdH`/`PpmdI`, encoders, decoders and `PpmdStream`, byte-identical to 7-Zip's output; zip method 98 and the 7z PPMD coder, read and write. The codec is ported from the public-domain reference sources (see `THIRD-PARTY-NOTICES.md`). Levels 8 and 9 use 128 and 256 MiB of model memory, as 7-Zip does on large inputs. New limit `ArchiveLimits.MaxPpmdMemorySize` (256 MiB). See `docs/ppmd.md`.
+- ISO 9660 read and write, with Joliet and Rock Ridge (`docs/iso.md`).
+- RAR 5 (read only): list and metadata, stored entries, multi-volume sets; compressed entries raise a typed error. RAR 4 archives and header-encrypted archives are also refused with a typed error.
+- Codec registration for the archive layer: by default every codec is available, and an app that wants a smaller trimmed or NativeAOT binary sets the `RecursiveAI.OneArchive.AllCodecs` feature switch to false and registers only the codecs it uses with `ArchiveCodecs`. A missing codec raises `ArchiveUnsupportedException` naming the format, the method and the call to add. A `.tar.zst`-only NativeAOT app shrank from 3.82 to 3.07 MB, without the brotli dictionary (`docs/archive-codecs.md`).
+- Benchmarks against the reference tools for brotli, bzip2 compress, Deflate64, LZX and PPMd.
+
+### Changed
+
+- Brotli: faster decoder (a fast command loop) and a much faster encoder at every quality: a bucketed match finder, a fused meta-block writer for qualities 0-5, smaller tables. Qualities 0-9 are still below the tool's speed (see the README). Compressed bytes at qualities 0-9 differ from 0.3, still identical on every platform.
+- bzip2 encoder: about twice as fast (two-phase block sort, vector move-to-front, incremental table choice); on x64 it now runs at 1.11-1.14 of `bzip2`. Compressed bytes are unchanged.
+- Deflate64 encoder: levels 5-9 use an optimal parse with block splitting, and levels 1-4 share one fast class; output is smaller at levels 4-9.
+- Deflate64, bzip2, PPMd, AES and ZipCrypto entries in zip, and the 7z Deflate64, PPMd and AES-256 coders (including encrypted headers), are covered by interop tests with 7-Zip and Info-ZIP. AES needs `System.Security.Cryptography.Aes`, which the browser does not provide; there only ZipCrypto reading works.
+
+### Not supported
+
+- BCJ2 in 7z is listed but refused with a typed "unsupported method" error. Quantum cabinets and cabinets that span files are refused with a typed error.
 
 ## [0.3.0-preview.1] - 2026-10-28
 
@@ -72,7 +91,8 @@ First preview. Both codecs are preview and their public types carry `[Experiment
 - Input is treated as untrusted: the Zstandard decoder caps the window it will allocate (8 MiB by default), malformed input is a typed error, and every decoder has a fuzz target.
 - NativeAOT, trimming and browser WebAssembly are supported; output is byte-identical on every platform.
 
-[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v0.3.0-preview.1...HEAD
+[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v0.4.0-preview.1...HEAD
+[0.4.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.4.0-preview.1
 [0.3.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.3.0-preview.1
 [0.2.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.2.0-preview.1
 [0.1.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.1.0-preview.1
