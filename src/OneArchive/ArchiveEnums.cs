@@ -29,6 +29,9 @@ public enum ArchiveFormat
 
     /// <summary>Microsoft cabinet (see <c>RecursiveAI.OneArchive.Cab</c>): read only; stored, MSZIP and LZX folders.</summary>
     Cab = 7,
+
+    /// <summary>ISO 9660 (see <c>RecursiveAI.OneArchive.Iso</c>): the primary hierarchy with Rock Ridge, and Joliet, read and write.</summary>
+    Iso = 8,
 }
 
 /// <summary>A compression layer wrapped around a whole archive, as in <c>.tar.zst</c>.</summary>

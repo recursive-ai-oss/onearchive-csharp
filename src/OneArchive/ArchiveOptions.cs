@@ -3,6 +3,7 @@ using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cab;
 using RecursiveAI.OneArchive.Cpio;
+using RecursiveAI.OneArchive.Iso;
 using RecursiveAI.OneArchive.SevenZip;
 using RecursiveAI.OneArchive.Zip;
 
@@ -38,6 +39,9 @@ public class ArchiveOpenOptions
 
     /// <summary>Gets the cabinet reading options (the limits above override <see cref="CabReaderOptions.Limits"/>). Default: the cabinet defaults.</summary>
     public CabReaderOptions? Cab { get; init; }
+
+    /// <summary>Gets the ISO 9660 reading options (the limits above override <see cref="IsoReaderOptions.Limits"/>). Default: the ISO 9660 defaults.</summary>
+    public IsoReaderOptions? Iso { get; init; }
 
     /// <summary>Gets the ar reading options (the limits above override <see cref="ArReaderOptions.Limits"/>). Default: the ar defaults.</summary>
     public ArReaderOptions? Ar { get; init; }
@@ -202,6 +206,9 @@ public sealed class ArchiveCreateOptions
 
     /// <summary>Gets the cpio writing options. Default: newc with 512-byte blocks.</summary>
     public CpioWriterOptions? Cpio { get; init; }
+
+    /// <summary>Gets the ISO 9660 writing options. Default: level 3 with Joliet and Rock Ridge.</summary>
+    public IsoWriterOptions? Iso { get; init; }
 
     /// <summary>Gets the ar writing options. Default: the GNU variant.</summary>
     public ArWriterOptions? Ar { get; init; }
