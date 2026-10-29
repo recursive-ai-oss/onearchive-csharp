@@ -25,6 +25,7 @@ internal static class BrotliClusterer
         internal int Total;
         internal long SumXLogX; // sum of count * log2(count)
         internal int[] Used = [];
+        internal long[] XLogs = []; // XLog2X of each count, kept so that merge deltas do not recompute them
         internal int UsedCount;
         internal bool Alive = true;
 
@@ -137,6 +138,7 @@ internal static class BrotliClusterer
         if (g.Used.Length < alphabetSize)
         {
             g.Used = new int[alphabetSize];
+            g.XLogs = new long[alphabetSize];
         }
 
         for (int s = 0; s < alphabetSize; s++)
@@ -144,8 +146,10 @@ internal static class BrotliClusterer
             int c = g.Counts[s];
             if (c > 0)
             {
+                long x = BrotliEncodeTables.XLog2X(c);
                 total += c;
-                sum += BrotliEncodeTables.XLog2X(c);
+                sum += x;
+                g.XLogs[s] = x;
                 g.Used[used++] = s;
             }
         }
@@ -168,7 +172,7 @@ internal static class BrotliClusterer
             if (other > 0)
             {
                 int mine = small.Counts[s];
-                overlap += BrotliEncodeTables.XLog2X(mine + other) - BrotliEncodeTables.XLog2X(mine) - BrotliEncodeTables.XLog2X(other);
+                overlap += BrotliEncodeTables.XLog2X(mine + other) - small.XLogs[s] - large.XLogs[s];
             }
         }
 

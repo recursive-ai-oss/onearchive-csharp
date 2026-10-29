@@ -10,7 +10,7 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// A meta-block that would not shrink is written as an uncompressed one (a last meta-block cannot be uncompressed, so it is followed by an
 /// empty last meta-block).
 /// </remarks>
-internal sealed class BrotliMetaBlockWriter
+internal sealed partial class BrotliMetaBlockWriter
 {
     private static readonly byte[] s_lut0 = BrotliContextTables.Lut0.ToArray();
     private static readonly byte[] s_lut1 = BrotliContextTables.Lut1.ToArray();
@@ -101,6 +101,12 @@ internal sealed class BrotliMetaBlockWriter
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     private void WriteCompressed(BrotliBitWriter w, byte[] data, int start, int length, BrotliCommandList cmds, int[] ring, bool isLast)
     {
+        if (UsesSimplePath)
+        {
+            WriteSimple(w, data, start, length, cmds, ring, isLast);
+            return;
+        }
+
         int nCmd = cmds.Count;
         // ---- Distance codes. The short codes depend only on the ring of last distances. ----
         var shortCode = new sbyte[nCmd];
@@ -392,62 +398,8 @@ internal sealed class BrotliMetaBlockWriter
             BrotliPrefixCodeWriter.Write(w, distLengths[i], OnlySymbol(distTreeHist[i]));
         }
         // ---- The commands. ----
-        var wi = new BlockWalker(cmdBlocks);
-        var wl = new BlockWalker(litBlocks);
-        var wd = new BlockWalker(distBlocks);
-        int litPos = start;
-        bool singleLiteralTree = litTrees == 1 && litSplit.BlockCount == 1;
-        for (int j = 0; j < nCmd; j++)
-        {
-            wi.Next(w);
-            int type = wi.Type;
-            int symbol = cmdSymbols[j];
-            w.Write(cmdCodes[type][symbol], cmdLengths[type][symbol]);
-            int ic = BrotliCodes.InsertCodeOf[symbol];
-            int cc = BrotliCodes.CopyCodeOf[symbol];
-            if (BrotliCodes.InsertExtra[ic] > 0)
-            {
-                w.Write((uint)(cmds.Insert[j] - BrotliCodes.InsertBase[ic]), BrotliCodes.InsertExtra[ic]);
-            }
-
-            if (cmds.Copy[j] != 0 && BrotliCodes.CopyExtra[cc] > 0)
-            {
-                w.Write((uint)(cmds.Copy[j] - BrotliCodes.CopyBase[cc]), BrotliCodes.CopyExtra[cc]);
-            }
-
-            int insert = cmds.Insert[j];
-            if (singleLiteralTree)
-            {
-                w.WriteSymbols(data.AsSpan(litPos, insert), litCodes[0], litLengths[0]);
-            }
-            else
-            {
-                for (int i = 0; i < insert; i++)
-                {
-                    int p = litPos + i;
-                    wl.Next(w);
-                    int t = wl.Type;
-                    int tree = contextsPerType == 1 ? litMap[t << 6] : litMap[(t << 6) + LiteralContext(modes[t], p > 0 ? data[p - 1] : 0, p > 1 ? data[p - 2] : 0)];
-                    int s = data[p];
-                    w.Write(litCodes[tree][s], litLengths[tree][s]);
-                }
-            }
-
-            litPos += insert + cmds.Covered[j];
-
-            int e = distOfCommand[j];
-            if (e >= 0)
-            {
-                wd.Next(w);
-                int tree = distMap[(wd.Type << 2) + distContext[e]];
-                int s = distSymbols[e];
-                w.Write(distCodes[tree][s], distLengths[tree][s]);
-                if (distExtraBits[e] > 0)
-                {
-                    w.Write((uint)distExtra[e], distExtraBits[e]);
-                }
-            }
-        }
+        EmitCommands(w, data, start, cmds, cmdSymbols, cmdLengths, cmdCodes, cmdHist, litLengths, litCodes, litTreeHist, litMap, modes, contextsPerType,
+            distLengths, distCodes, distTreeHist, distMap, distContext, distSymbols, distExtraBits, distExtra, distOfCommand, litBlocks, cmdBlocks, distBlocks);
         if (isLast)
         {
             w.AlignToByte();
@@ -821,38 +773,6 @@ internal sealed class BrotliMetaBlockWriter
             {
                 w.Write((uint)(count - BrotliCodes.BlockBase[code]), BrotliCodes.BlockExtra[code]);
             }
-        }
-    }
-
-    /// <summary>Follows the blocks of one category while elements are written, writing each block switch where it falls.</summary>
-    private struct BlockWalker
-    {
-        private readonly BlockCoding _coding;
-        private int _block;
-        private int _left;
-
-        internal BlockWalker(BlockCoding coding)
-        {
-            _coding = coding;
-            _block = 0;
-            _left = coding.Split.Lengths[0];
-        }
-
-        internal readonly int Type => _coding.Split.Types[_block];
-
-        // Called before each element: switches block when the current one is used up, then counts the element.
-        internal void Next(BrotliBitWriter w)
-        {
-            if (_left == 0 && _block + 1 < _coding.Split.BlockCount)
-            {
-                _block++;
-                int sym = _coding.TypeSymbol[_block];
-                w.Write(_coding.TypeCodes[sym], _coding.TypeLengths[sym]);
-                _coding.WriteCount(w, _coding.Split.Lengths[_block]);
-                _left = _coding.Split.Lengths[_block];
-            }
-
-            _left--;
         }
     }
 }

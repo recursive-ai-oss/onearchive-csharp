@@ -4,6 +4,8 @@ namespace RecursiveAI.OneCompress.Brotli;
 
 internal sealed partial class BrotliEncoderCore
 {
+    private const int PrefetchDistance = 8;
+
     private readonly BrotliDictionaryIndex.Hit[] _hits = new BrotliDictionaryIndex.Hit[16];
     private readonly byte[] _transformed = new byte[BrotliTransforms.MaxTransformedLength];
 
@@ -49,13 +51,35 @@ internal sealed partial class BrotliEncoderCore
     // input yet, so they are entered with the next block instead.
     private int HashableEnd => _blockEnd - (_plan.LongHashBits > 0 ? 11 : _plan.HashLength == 4 ? 3 : 7);
 
+    // Brings the table lines a later position will use into the cache while the current one is being searched: the tables are far larger
+    // than the cache, and a search waits on its bucket otherwise. The position must have 12 bytes inside the block.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void PrefetchBuckets(int position)
+    {
+        int h = BucketHash(position);
+        BrotliEncRaw.Prefetch(_bucketCounts, h);
+        BrotliEncRaw.Prefetch(_bucketPositions, h << _plan.BucketBits);
+        if (_plan.LongHashBits > 0)
+        {
+            int g = LongHash(position);
+            BrotliEncRaw.Prefetch(_longCounts, g);
+            BrotliEncRaw.Prefetch(_longPositions, g << _plan.LongBucketBits);
+        }
+    }
+
     // Enters every position below limit that has not been entered yet and has enough bytes inside the block to be hashed.
     private void BucketUpTo(int limit)
     {
         int p = _hashedUpTo;
         int stop = Math.Min(limit, HashableEnd);
+        int ahead = _blockEnd - 12;
         while (p < stop)
         {
+            if (p + PrefetchDistance <= ahead)
+            {
+                PrefetchBuckets(p + PrefetchDistance);
+            }
+
             BucketInsert(p);
             p++;
         }
@@ -76,7 +100,7 @@ internal sealed partial class BrotliEncoderCore
             Match m = FindBucketed(pos, end, ring, false);
             if (m.Score <= 0)
             {
-                pos++;
+                pos += 1 + ((pos - insertStart) >> _plan.SkipShift);
                 continue;
             }
 
@@ -135,7 +159,23 @@ internal sealed partial class BrotliEncoderCore
         int maxDistance = (int)Math.Min(_window, _streamBase + pos);
 
         // The recent distances cost the least to name, so even three bytes are worth a copy.
-        if (maxLength >= 3)
+        if (maxLength >= 4)
+        {
+            // Most positions have no copy at a recent distance; three bytes compared in one load rule that out without a length scan.
+            uint first3 = BrotliEncRaw.Load32(buffer, pos) & 0xFFFFFF;
+            for (int r = 0; r < 4; r++)
+            {
+                int d = ring[r];
+                if (d > maxDistance || (BrotliEncRaw.Load32(buffer, pos - d) & 0xFFFFFF) != first3)
+                {
+                    continue;
+                }
+
+                int len = BrotliEncRaw.CommonLength(buffer, pos - d, pos, 3, maxLength);
+                Consider(ref best, len, len, d, false, r == 0 ? CommandCost : RingDistanceCost);
+            }
+        }
+        else if (maxLength >= 3)
         {
             for (int r = 0; r < 4; r++)
             {
@@ -157,6 +197,11 @@ internal sealed partial class BrotliEncoderCore
         if (pos + (hashLength == 4 ? 4 : 8) <= end)
         {
             BucketUpTo(pos);
+            if (pos + PrefetchDistance + 12 <= end)
+            {
+                PrefetchBuckets(pos + PrefetchDistance);
+            }
+
             ulong word = BrotliEncRaw.Load64Or32(buffer, pos, hashLength);
             int h = BucketHash(pos);
             int bucketBits = _plan.BucketBits;

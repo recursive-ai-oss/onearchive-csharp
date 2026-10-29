@@ -103,4 +103,22 @@ internal static class BrotliEncRaw
 
         return len;
     }
+
+    /// <summary>
+    /// Asks the CPU to load the cache line of <c>t[index]</c> ahead of use. A hint only: it never faults, changes no result, and does
+    /// nothing where there is no such instruction. The caller passes an index inside the table.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Prefetch(int[] t, int index)
+    {
+#if !CHECKED
+        if (System.Runtime.Intrinsics.X86.Sse.IsSupported)
+        {
+            unsafe
+            {
+                System.Runtime.Intrinsics.X86.Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(t), (nint)(uint)index)));
+            }
+        }
+#endif
+    }
 }
