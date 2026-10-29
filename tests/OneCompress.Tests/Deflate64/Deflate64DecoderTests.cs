@@ -172,4 +172,58 @@ public class Deflate64DecoderTests
             copy[bit >> 3] ^= (byte)(1 << (bit & 7));
         }
     }
+
+    // Long runs (length symbol 285 with its 16 extra bits), repeats at distances up to 64 KiB and text-like literals, so the decoder's
+    // fast loop, its hand-over to the per-symbol path and matches that reach into the window are all exercised.
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(5, 3)]
+    [InlineData(9, 7)]
+    public void LargeRoundTripDecodesAnyWayTheInputAndOutputAreSplit(int level, int seed)
+    {
+        var rng = new Random(seed);
+        var data = new List<byte>();
+        byte[] words = new byte[4096];
+        rng.NextBytes(words);
+        while (data.Count < 700_000)
+        {
+            switch (rng.Next(5))
+            {
+                case 0:
+                    data.AddRange(Enumerable.Repeat((byte)rng.Next(256), rng.Next(1, 70000)));
+                    break;
+                case 1 when data.Count > 70000:
+                    int distance = rng.Next(1, 65537);
+                    int length = rng.Next(3, 70000);
+                    for (int i = 0; i < length; i++)
+                    {
+                        data.Add(data[data.Count - distance]);
+                    }
+
+                    break;
+                case 2:
+                    for (int i = rng.Next(1, 3000); i > 0; i--)
+                    {
+                        data.Add((byte)(words[rng.Next(64)] & 0x1F | 0x40));
+                    }
+
+                    break;
+                default:
+                    for (int i = rng.Next(1, 200); i > 0; i--)
+                    {
+                        data.Add((byte)rng.Next(256));
+                    }
+
+                    break;
+            }
+        }
+
+        byte[] original = data.ToArray();
+        byte[] compressed = RecursiveAI.OneCompress.Deflate64.Deflate64.Compress(original, new Deflate64Options { Level = level });
+        Assert.Equal(original, RecursiveAI.OneCompress.Deflate64.Deflate64.Decompress(compressed));
+        foreach ((int inPiece, int outPiece) in new[] { (1 << 20, 1 << 20), (1000, 100000), (1 << 20, 1000), (4093, 65537), (17, 4099) })
+        {
+            Assert.Equal(original, Decode(compressed, inPiece, outPiece));
+        }
+    }
 }

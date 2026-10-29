@@ -16,4 +16,4 @@ Normative notes for `Deflate64Decoder`. The format facts (symbols, extra bits, w
 - **End:** `Done` is returned after the final block; bytes after it are left unconsumed. The one-call and stream readers refuse
   them unless `AllowTrailingData` is set. A truncated stream is a `CompressionFormatException` with `IsTruncated` set,
   raised by `ThrowIfIncomplete` or by the readers.
-- **Speed:** a per-symbol slow path only. Deflate's fast loop budget of 56 bits does not fit symbol 285 plus its 16 extra bits.
+- **Speed:** a fast loop (`Deflate64FastLoop`, built like Deflate's) runs while 24 input and 280 output bytes remain. A second bit refill follows a length whose code and extra bits leave fewer than 29 bits (symbol 285: 15 + 16 bits, then a distance code and 14 extra bits do not fit one 56-bit refill). Matches longer than 258 bytes, or reaching into the window, leave the loop and are copied by the per-symbol path, which also handles the ends of the buffers.

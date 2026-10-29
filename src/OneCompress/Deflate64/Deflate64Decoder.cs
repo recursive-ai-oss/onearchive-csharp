@@ -494,6 +494,36 @@ public sealed class Deflate64Decoder
 
                 case State.Symbol:
                 {
+                    if (br.Remaining >= Deflate64FastLoop.InputMargin && dst.Length - dp >= Deflate64FastLoop.OutputMargin)
+                    {
+                        FastResult result = Deflate64FastLoop.Run(ref br, dst, ref dp, _literalTable!, _distanceTable!, out int matchLength, out int matchDistance);
+                        switch (result)
+                        {
+                            case FastResult.HistoryMatch:
+                                // A match that reaches into the window or is longer than the loop's output margin: the copy state does it.
+                                if (matchDistance > _windowLen + dp)
+                                {
+                                    throw Bad(br, "a match distance within the output so far");
+                                }
+
+                                _copyLength = matchLength;
+                                _copyDistance = matchDistance;
+                                _state = State.Copy;
+                                continue;
+                            case FastResult.EndOfBlock:
+                                if (EndBlock(ref br))
+                                {
+                                    return OperationStatus.Done;
+                                }
+
+                                continue;
+                            case FastResult.InvalidLiteralLength:
+                                throw Bad(br, "a valid literal/length code (symbols 286 and 287 are not allowed)");
+                            case FastResult.InvalidDistance:
+                                throw Bad(br, "a valid distance code");
+                        }
+                    }
+
                     if (!br.TryPeekSymbol(_literalTable!, out DeflateHuffmanEntry e))
                     {
                         return OperationStatus.NeedMoreData;
