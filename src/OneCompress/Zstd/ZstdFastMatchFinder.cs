@@ -601,7 +601,8 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
             ulong v0 = Raw.ReadUInt64(window, ip);
             do
             {
-                nint ip1 = ip + 1;
+                {
+                    nint ip1 = ip + 1;
                 nint ip2 = ip + step;
                 ulong v1 = Raw.ReadUInt64(window, ip1);
                 nuint h0 = (nuint)((v0 * multiplier) >> hashShift);
@@ -632,6 +633,48 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
 
                 ip = ip2;
                 v0 = v2;
+
+                }
+
+                if (ip >= phaseEnd)
+                {
+                    break;
+                }
+
+                {
+                    nint ip1 = ip + 1;
+                nint ip2 = ip + step;
+                ulong v1 = Raw.ReadUInt64(window, ip1);
+                nuint h0 = (nuint)((v0 * multiplier) >> hashShift);
+                nuint h1 = (nuint)((v1 * multiplier) >> hashShift);
+                nint candidate0 = (nint)Raw.Get(table, h0);
+                nint candidate1 = (nint)Raw.Get(table, h1);
+                Raw.Set(table, h0, (uint)ip);
+                Raw.Set(table, h1, (uint)ip1);
+                ulong v2 = Raw.ReadUInt64(window, ip2);
+
+                if ((nuint)ip2 >= rep && (uint)v2 == Raw.ReadUInt32(window, ip2 - (nint)rep))
+                {
+                    offset = (uint)rep;
+                    return ip2;
+                }
+
+                if (Raw.ReadUInt32(window, candidate0) == (uint)v0 && ip - candidate0 <= reach)
+                {
+                    offset = (uint)(ip - candidate0);
+                    return ip;
+                }
+
+                if (Raw.ReadUInt32(window, candidate1) == (uint)v1 && ip1 - candidate1 <= reach)
+                {
+                    offset = (uint)(ip1 - candidate1);
+                    return ip1;
+                }
+
+                ip = ip2;
+                v0 = v2;
+
+                }
             }
             while (ip < phaseEnd);
 

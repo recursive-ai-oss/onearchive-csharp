@@ -627,10 +627,10 @@ public sealed class ZstdBlockWriter
         Array.Clear(llB);
         Array.Clear(ofB);
         Array.Clear(mlB);
-        byte[] llCodeTable = s_literalLengthCodes;
-        byte[] mlCodeTable = s_matchLengthCodes;
-        uint[] llInfo = s_literalLengthInfo;
-        uint[] mlInfo = s_matchLengthInfo;
+        var llCodeTable = new Raw.Table<byte>(s_literalLengthCodes);
+        var mlCodeTable = new Raw.Table<byte>(s_matchLengthCodes);
+        var llInfo = new Raw.Table<uint>(s_literalLengthInfo);
+        var mlInfo = new Raw.Table<uint>(s_matchLengthInfo);
         int i = 0;
         for (; i + 2 <= nseq; i += 2)
         {
@@ -671,10 +671,10 @@ public sealed class ZstdBlockWriter
         ReadOnlySpan<uint> offsetValues,
         SequenceCode[] seqCodes,
         int i,
-        byte[] llCodeTable,
-        byte[] mlCodeTable,
-        uint[] llInfo,
-        uint[] mlInfo,
+        Raw.Table<byte> llCodeTable,
+        Raw.Table<byte> mlCodeTable,
+        Raw.Table<uint> llInfo,
+        Raw.Table<uint> mlInfo,
         uint[] llHistogram,
         uint[] ofHistogram,
         uint[] mlHistogram)
@@ -684,13 +684,13 @@ public sealed class ZstdBlockWriter
         ZstdSequence s = Raw.Get(sequences, i);
         uint ofValue = Raw.Get(offsetValues, i);
         uint lls = s.LiteralLength;
-        int ll = lls < 64 ? Raw.Get(llCodeTable, (int)lls) : BitOperations.Log2(lls) + 19;
+        int ll = lls < 64 ? llCodeTable[(int)lls] : BitOperations.Log2(lls) + 19;
         uint mls = s.MatchLength;
         uint m = mls - 3;
-        int ml = m < 128 ? Raw.Get(mlCodeTable, (int)m) : BitOperations.Log2(m) + 36;
+        int ml = m < 128 ? mlCodeTable[(int)m] : BitOperations.Log2(m) + 36;
         int of = BitOperations.Log2(ofValue);
-        uint li = Raw.Get(llInfo, ll);
-        uint mi = Raw.Get(mlInfo, ml);
+        uint li = llInfo[ll];
+        uint mi = mlInfo[ml];
         ref SequenceCode record = ref Raw.RefRw(seqCodes, i);
         record.Codes = (uint)ll | ((uint)ml << 8) | ((uint)of << 16) | (((li >> 24) + (mi >> 24)) << 24);
         record.LlMlExtra = (lls - (li & 0xFFFFFF)) | ((mls - (mi & 0xFFFFFF)) << (int)(li >> 24));
