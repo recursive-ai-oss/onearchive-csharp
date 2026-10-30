@@ -9,8 +9,8 @@ namespace RecursiveAI.ManagedBench;
 /// </summary>
 internal static class GameData
 {
-    private const int MaxFrames = 20000;
-    private const int MaxSnapshots = 3000;
+    private const int MaxFrames = 250000;
+    private const int MaxSnapshots = 12000;
     private const long MaxBytes = 48L << 20;
 
     private static readonly Dictionary<string, byte[]> Dictionaries = [];
