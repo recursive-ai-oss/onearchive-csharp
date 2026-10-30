@@ -33,6 +33,7 @@
     <PackageReference Include="BrotliManagedFast" Version="1.1.0" />
     <PackageReference Include="Lzma.Net" Version="5.8.4.3" />
     <PackageReference Include="LZMA-SDK" Version="22.1.1" />
+    <PackageReference Include="System.IO.Hashing" Version="10.0.0" />
   </ItemGroup>
 
 </Project>

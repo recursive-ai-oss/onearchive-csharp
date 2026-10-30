@@ -7,7 +7,8 @@ namespace RecursiveAI.ManagedBench;
 /// <summary>One implementation in a row: our own, a managed library, or a native one shown for information.</summary>
 internal sealed record Cand(string Lib, string Version, Kind Kind, Func<Ctx, int> Run);
 
-internal enum Kind { Ours, Managed, Native }
+/// <summary>Sweep candidates are further levels of ours, run on the same data so a managed row can be matched by size.</summary>
+internal enum Kind { Ours, Sweep, Managed, Native }
 
 /// <summary>Shared buffers of one row. Compression rows write into <see cref="Dst"/>; decode rows read <see cref="Packed"/>.</summary>
 internal sealed class Ctx
@@ -15,6 +16,10 @@ internal sealed class Ctx
     public byte[] Src = [];
     public byte[] Dst = [];
     public byte[] Packed = [];
+    /// <summary>Small-payload rows: the length of each payload inside <see cref="Src"/>.</summary>
+    public int[] Parts = [];
+    /// <summary>Small-payload rows: the length of each compressed payload inside <see cref="Dst"/> (compress) or <see cref="Packed"/> (decode).</summary>
+    public int[] PackedParts = [];
 }
 
 /// <summary>A measured row: what is compressed or decoded, with whom, and how the result is checked.</summary>
@@ -27,7 +32,12 @@ internal sealed class Row
     public required List<Cand> Cands { get; init; }
     /// <summary>Compression rows: decodes the output with our decoder to prove the candidate's stream is real.</summary>
     public Func<byte[], int, byte[]>? Verify { get; init; }
+    /// <summary>Small-payload compress rows: checks the payloads laid out in <see cref="Ctx.Dst"/>; returns null when they decode to the input.</summary>
+    public Func<Ctx, int, string?>? VerifyParts { get; init; }
+    /// <summary>Checksum rows: speed only, the candidate checks its own value.</summary>
+    public bool Hash { get; init; }
     public int Runs { get; init; } = 3;
+    public string KindName => Decode ? "decode" : Hash ? "hash" : "compress";
 }
 
 internal static class Program
@@ -77,7 +87,9 @@ internal static class Program
             {
                 ctx = null;
                 GC.Collect();
-                ctx = new Ctx { Src = Slices.Load(Corpora, row.Data) };
+                ctx = new Ctx();
+                if (row.Data.StartsWith("game:", StringComparison.Ordinal)) (ctx.Src, ctx.Parts) = GameData.Load(Corpora, row.Data[5..]);
+                else ctx.Src = Slices.Load(Corpora, row.Data);
                 ctx.Dst = new byte[ctx.Src.Length + (ctx.Src.Length >> 2) + (4 << 20)];
                 ctxData = row.Data;
             }
@@ -100,12 +112,12 @@ internal static class Program
                     if (failed[c] is null && best[c] == double.MaxValue) failed[c] = "not run";
                     if (failed[c] is not null)
                     {
-                        line = $"{row.Id}\t{row.Data}\t{(row.Decode ? "decode" : "compress")}\t{cand.Lib}\t{cand.Version}\t{role}\t{ctx.Src.Length}\t-1\t0\t0\t0\t{loadBefore}\t{loadAfter}\tFAILED: {failed[c]}";
+                        line = $"{row.Id}\t{row.Data}\t{row.KindName}\t{cand.Lib}\t{cand.Version}\t{role}\t{ctx.Src.Length}\t-1\t0\t0\t0\t{loadBefore}\t{loadAfter}\tFAILED: {failed[c]}";
                     }
                     else
                     {
                         double mbps = ctx.Src.Length / 1e6 / best[c];
-                        line = string.Create(CultureInfo.InvariantCulture, $"{row.Id}\t{row.Data}\t{(row.Decode ? "decode" : "compress")}\t{cand.Lib}\t{cand.Version}\t{role}\t{ctx.Src.Length}\t{size[c]}\t{best[c]:F4}\t{mbps:F2}\t{row.Runs}\t{loadBefore}\t{loadAfter}");
+                        line = string.Create(CultureInfo.InvariantCulture, $"{row.Id}\t{row.Data}\t{row.KindName}\t{cand.Lib}\t{cand.Version}\t{role}\t{ctx.Src.Length}\t{size[c]}\t{best[c]:F4}\t{mbps:F2}\t{row.Runs}\t{loadBefore}\t{loadAfter}");
                     }
 
                     tsv.WriteLine(line);
@@ -161,6 +173,7 @@ internal static class Program
 
     private static string? Check(Row row, Ctx ctx, int n)
     {
+        if (row.Hash) return n == ctx.Src.Length ? null : "checksum row returned the wrong length";
         if (row.Decode)
         {
             if (n != ctx.Src.Length) return $"decoded {n} bytes, expected {ctx.Src.Length}";
@@ -168,6 +181,7 @@ internal static class Program
         }
 
         if (n <= 0) return "no output";
+        if (row.VerifyParts is not null) return row.VerifyParts(ctx, n);
         if (row.Verify is null) return null;
         try
         {
@@ -249,12 +263,13 @@ internal static class Io
     }
 
     /// <summary>Decodes through a stream wrapper into <see cref="Ctx.Dst"/>.</summary>
-    public static int Read(Ctx c, Func<Stream, Stream> make)
+    public static int Read(Ctx c, Func<Stream, Stream> make, int limit = -1)
     {
         using var ms = new MemoryStream(c.Packed, writable: false);
         using var s = make(ms);
         int total = 0, n;
-        while (total < c.Dst.Length && (n = s.Read(c.Dst, total, Math.Min(1 << 20, c.Dst.Length - total))) > 0) total += n;
+        int end = limit < 0 ? c.Dst.Length : limit;   // streams without an end marker must not be read past the data
+        while (total < end && (n = s.Read(c.Dst, total, Math.Min(1 << 20, end - total))) > 0) total += n;
         return total;
     }
 
