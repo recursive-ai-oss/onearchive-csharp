@@ -525,7 +525,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
             cand -= delta;
         }
 
-        return (best << 32) | (uint)found;
+        return ((long)best << 32) | (uint)found;
     }
 
     // Walk for the wide chain: one entry yields two candidates, the one it belongs to and, when the entry's first link
@@ -574,7 +574,7 @@ public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
             cand -= skip;
         }
 
-        return (best << 32) | (uint)found;
+        return ((long)best << 32) | (uint)found;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -8,6 +8,11 @@ if (args.Length > 0 && args[0] == "small")
     return RecursiveAI.Smoke.SmallRows.Run(args);
 }
 
+if (!RecursiveAI.Smoke.Lz4HighCheck.Run())
+{
+    return 1;
+}
+
 string compress = OneCompressInfo.Name;
 string archive = OneArchiveInfo.Name;
 if (compress != "OneCompress" || !archive.Contains(compress, StringComparison.Ordinal))
