@@ -8,12 +8,12 @@ Two packages:
 - `RecursiveAI.OneCompress` - codecs and checksums.
 - `RecursiveAI.OneArchive` - archive containers and a simple `Archive` API, built on OneCompress.
 
-**Status: preview.** The latest release on nuget.org is 0.5.0-preview.1; this page describes the code on `main`, and the measurements below are from 0.5.0-preview.1. OneCompress has Zstandard (frames, skippable frames, dictionaries and
+**Status: preview.** The latest release on nuget.org is 0.7.0-preview.1; this page describes the code on `main`. The measurements below are from 0.5.0-preview.1, with the rows marked "0.5.1" remeasured at 0.5.1-preview.1 (0.7.0-preview.1 changed no codec). OneCompress has Zstandard (frames, skippable frames, dictionaries and
 dictionary training, long-distance matching, multithreaded compression in fixed-size jobs, the seekable
 format), LZ4 (block and frame), Deflate, zlib, gzip and Deflate64, LZMA, LZMA2, xz (with the branch and delta
 filters) and lzip, bzip2, Brotli (with its built-in dictionary), the LZX decoder, and CRC32, CRC32C, CRC64,
 Adler-32 and xxHash64, plus PPMd (variants H and I). OneArchive reads and writes tar, zip, 7z, cpio, ar and
-ISO 9660 (with Joliet and Rock Ridge), with zip and 7z encryption, reads cab and RAR 5 (listing, metadata and stored
+ISO 9660 (with Joliet and Rock Ridge) and Microsoft compound files, with zip and 7z encryption, reads cab and RAR 5 (listing, metadata and stored
 entries), and handles single compressed streams. Everything is preview: see below.
 
 ```csharp
@@ -41,7 +41,7 @@ target; speed is what is still being tuned. Brotli (compress is below the tool's
 2% larger) and PPMd (decompression at the target on both machines; compression 0.85-0.91 of 7-Zip's speed, same sizes) are preview too.
 The bzip2 codec, the lzip decoder, Deflate64 and LZX meet their targets on both machines and stay preview with the rest. The archive layer
 is preview while the formats' interop and fuzz coverage grows. BCJ2 is not supported: 7z entries that use it are listed,
-and opening them is a typed "unsupported method" error. RAR 5 is read only: compressed entries raise a typed error.
+and opening them is a typed "unsupported method" error. RAR 5 is read only, and decompressing RAR's own compression is not planned: compressed entries raise a typed "unsupported method" error.
 Their public types carry `[Experimental]`, so using them is a compiler error until you opt in per codec:
 
 | Codec | Diagnostic ID |
@@ -134,7 +134,7 @@ using var archive = Archive.Open("data.tar");                  // entries, rando
 Read and written: tar (ustar, pax, GNU, sparse files); zip (store, Deflate, Deflate64, bzip2, PPMd and Zstandard; LZMA and xz
 entries read; zip64, data descriptors; WinZip AES, and traditional encryption for reading); 7z (Copy, Deflate,
 Deflate64, BZip2, LZMA, LZMA2, PPMd, Delta, the branch filters, Zstandard; solid folders, encoded headers, AES-256); cpio
-(newc, crc, odc), ar (common, GNU, BSD) and ISO 9660 with Joliet and Rock Ridge. Microsoft compound files (.doc, .xls, .ppt, .msg; versions 3 and 4, storages as directories; `docs/cfb.md`) are read and written. Read only: cab (stored, MSZIP, LZX) and RAR 5 (list and metadata, stored entries, multi-volume sets; compressed entries raise a typed error). Single streams (`.gz`, `.zst`, `.lz4`,
+(newc, crc, odc), ar (common, GNU, BSD) and ISO 9660 with Joliet and Rock Ridge. Microsoft compound files (.doc, .xls, .ppt, .msg; versions 3 and 4, storages as directories; `docs/cfb.md`) are read and written. Read only: cab (stored, MSZIP, LZX) and RAR 5 (list and metadata, stored entries, multi-volume sets; RAR's own compression is not supported, so compressed entries raise a typed error). Single streams (`.gz`, `.zst`, `.lz4`,
 `.bz2`, `.xz`, `.lz`, and `.br`, which is recognised by its name) and tar inside them (`.tar.gz`, `.tar.zst`, ...) are
 one archive. AES needs `System.Security.Cryptography.Aes`, which the browser does not provide. An app that uses few codecs can trim the rest: set the `RecursiveAI.OneArchive.AllCodecs` feature switch to false and register what it needs with `ArchiveCodecs.AddX()` (`docs/archive-codecs.md`). The other containers plug into the same reader and writer interfaces. The model, the safety defaults and limits, and the tar coverage are in `docs/archive.md`.
 
