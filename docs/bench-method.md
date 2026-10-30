@@ -91,7 +91,7 @@ The references are the tools pinned in `tools/pins.tsv` (version, URL, SHA-256),
 | lzip | `lzip` |
 
 7-Zip (`7zz`), pigz, zlib's `minigzip`, bsdtar, GNU tar, Info-ZIP, cpio, ar, xorriso, cabextract and the RARLAB
-`rar`/`unrar` binaries are installed for interoperability tests and as references for the container and decoder rows.
+`rar`/`unrar` binaries are installed for interoperability tests of the RAR 5 container reader.
 Every row records the reference's version string.
 
 ## Peak memory
