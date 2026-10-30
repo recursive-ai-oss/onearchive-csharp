@@ -190,7 +190,7 @@ internal static class Rows
             [
                 Mine("", c => OC.Brotli.Brotli.TryDecompress(c.Packed, c.Dst, out int n) ? n : -1),
                 Man(BmfV, c => BrotliManagedFast.BrotliDecoder.TryDecompress(c.Packed, c.Dst, out int n) ? n : -1),
-                Man(BslV, c => Io.Read(c, s => new BrotliSharpLib.BrotliStream(s, CompressionMode.Decompress))),
+                // BrotliSharpLib is left out of the decode row: it did not finish 32 MiB of quality-5 output within the 300 s timeout.
                 Nat("BCL (brotli)", "net10", c => System.IO.Compression.BrotliDecoder.TryDecompress(c.Packed, c.Dst, out int n) ? n : -1),
             ],
         });
