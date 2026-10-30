@@ -184,7 +184,7 @@ internal static class Rows
 
         rows.Add(new Row
         {
-            Id = "brotli-decode/q5", Data = Full, Decode = true,
+            Id = "brotli-decode/q5", Data = S32, Decode = true,
             MakePacked = c => Tool.Pipe("brotli", "-q 5 -c", c.Src),
             Cands =
             [
