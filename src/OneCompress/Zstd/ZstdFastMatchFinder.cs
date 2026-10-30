@@ -987,6 +987,7 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         // The short hash multiplies the low bytes only: (v << cut) * P is v * (P << cut).
         ulong shortMultiplier = HashPrime << (64 - (8 * _minMatch));
         long windowSize = _windowSize;
+        nint reach = (nint)Math.Min(windowSize, int.MaxValue);
         uint rep1 = reps.Offset1, rep2 = reps.Offset2, rep3 = reps.Offset3;
         // The first repeat offset as the search tests it: one beyond the window is never used, and uint.MaxValue is never reachable.
         nuint rep = rep1 <= windowSize ? rep1 : uint.MaxValue;
@@ -995,7 +996,7 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         nint anchor = blockStart;
         while (ip <= limit)
         {
-            nint matchStart = SearchDouble(window, ip, anchor, end, rep, out int matchLength, out uint offset);
+            nint matchStart = SearchDouble(window, ip, anchor, end, rep, longTable, shortTable, longShift, shortShift, shortMultiplier, reach, out int matchLength, out uint offset);
             if (matchStart < 0)
             {
                 break;
@@ -1064,17 +1065,24 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
     // ip and the short candidate of ip (for which it also tries the long candidate of ip + 1, as it is worth more). Returns the
     // position of the first match, with its length counted forward and its offset; the caller extends it backward. Returns -1 when
     // the block has no more positions to try. The step grows by one for every 256 bytes without a match.
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private nint SearchDouble(ReadOnlySpan<byte> window, nint ip, nint anchor, int end, nuint rep, out int matchLength, out uint offset)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nint SearchDouble(
+        ReadOnlySpan<byte> window,
+        nint ip,
+        nint anchor,
+        int end,
+        nuint rep,
+        Span<uint> longTable,
+        Span<uint> shortTable,
+        int longShift,
+        int shortShift,
+        ulong shortMultiplier,
+        nint reach,
+        out int matchLength,
+        out uint offset)
     {
         // Bounds: see FindDoubleNoDictionary; ip <= end - 8 so the eight-byte read at ip is inside the window, and a candidate is a
         // position stored earlier, at most end - 8.
-        Span<uint> longTable = _primary;
-        Span<uint> shortTable = _secondary;
-        int longShift = 64 - _primaryLog;
-        int shortShift = 64 - _secondaryLog;
-        ulong shortMultiplier = HashPrime << (64 - (8 * _minMatch));
-        nint reach = (nint)Math.Min(_windowSize, int.MaxValue);
         nint limit = end - 8;
         while (ip <= limit)
         {
