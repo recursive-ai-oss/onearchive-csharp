@@ -173,6 +173,11 @@ and in how far the parse looks ahead.
   far is replaced by the new one, which takes its children. A node entered with fewer than 256 bytes left in its block was ordered
   by fewer bytes, so the shortcut that starts a comparison at the shorter of the two bounding prefix lengths is not used on it, and
   the bounds are forgotten after it. The search then extends the best match past the cap.
+  **Thinned insertion:** when the window log is 21 or more (sources over 1 MiB, or of unknown size), positions skipped over by a match or
+  a lazy step are entered with at most 16 nodes visited, and when more than 16 of them lie between the last one entered and the next
+  search, only every 8th is entered (the first of them, then every eighth) and the last 16 are all entered. A repeat of text already in
+  the tree adds little, a later match into skipped text starts at most 7 bytes late and is extended backwards over the literals before it,
+  and the saving is about a quarter of the time at levels 13 to 15 for 0.2% to 0.5% more output on silesia.tar.
 - **Gain:** a match of length `L` at offset `d` has gain `4 L - floor(log2 d)`; a repeat-offset match has `4 L - 1`. The search keeps
   the candidate of highest gain (earliest on ties). Repeat offsets are tried before the table: with a literal in front, the three
   repeat offsets; with none, the second, the third and the first minus one (the cases RFC 8878 section 3.1.1.5 gives codes 1 to 3 to).
@@ -201,6 +206,10 @@ btultra2 parses the first block of a frame twice.
   and its best match is often far down a chain. The three repeat offsets (with a literal in front; with none, the second, the third and the first minus
   one, RFC 8878 section 3.1.1.5) are candidates too, from four bytes (three when `minMatch` is 3). A candidate that reaches the
   target length ends the stretch at once: the longest candidate is measured to its end and taken.
+  **Thinned insertion** (strategies btopt and btultra, window log 21 or more): positions the parse does not search are entered into the
+  tree without looking for matches; when more than 8 of them lie between the last one entered and the next search, only every 8th is
+  entered (the first of them, then every eighth) and the last 8 are all entered. At btultra these insertions also visit at most 16 nodes.
+  btultra2 enters every position with the full budget. Costs 0.2% to 0.4% in size, for a saving of 10% to 25% of the time.
 - **Prices:** in 1/256 bit. A symbol costs `log2(total) - log2(count)` (counts below 1 are 1; `log2` is the integer table of `ZstdCost`), plus
   its extra bits. Four count sets: literals (256), literal length codes (36), match length codes (53) and offset codes (32; the offset
   value's base-2 logarithm, so the repeat codes 1 to 3 are codes 0 and 1). Counts of the first block start from the block's literal

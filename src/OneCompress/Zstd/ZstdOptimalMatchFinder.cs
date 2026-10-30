@@ -58,6 +58,15 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
 
     private const int Bit = ZstdCost.Bit;
 
+    // The tree is walked node by node, each at an unrelated place in tables and a window far larger than the cache. Hints start
+    // those loads early and change no value: the head slot of a position HeadWarmDistance ahead, the first node and its link pair of
+    // a position RootWarmDistance ahead, and each node's link pair before the window bytes compared with it are loaded. Tables under
+    // 2^18 entries stay in the cache and are left alone.
+    private const int HeadWarmDistance = 16;
+    private const int RootWarmDistance = 8;
+    private const int WarmMinHashLog = 18;
+    private bool _warm;
+
     private struct Cell
     {
         public int Price;
@@ -82,6 +91,21 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
     private int _compareLimit;
     private bool _prune;
     private bool _twoPass;
+
+    // Positions the parse does not search are entered into the tree without looking for matches. In the two lower optimal
+    // strategies, when more than _insertTail of them lie between the last one entered and the next search only every
+    // _insertStride-th is entered (the last _insertTail always are): a match is usually a repeat of text that is already in the tree,
+    // and a later match into skipped text starts a few bytes late and is extended backwards. The top-level
+    // strategy enters every position. Ultra also walks at most UltraInsertAttempts nodes for these insertions.
+    private const int SkipStride = 8;
+    private const int SkipTail = 8;
+    private const int UltraInsertAttempts = 16;
+
+    // Sources under 1 MiB are small enough to keep every position: the saving there is little and the loss counts more.
+    private const int ThinInsertsMinWindowLog = 21;
+    private int _insertStride = 1;
+    private int _insertTail;
+    private int _insertAttempts;
     private long _windowSize;
     private int _next;
     private bool _blockSeen;
@@ -143,10 +167,15 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
         _repeatMinMatch = Math.Min(_minMatch, 4);
         _shift = 64 - (8 * _minMatch);
         _hashLog = Math.Clamp(parameters.HashLog, 6, 26);
+        _warm = Raw.CanWarm && _hashLog >= WarmMinHashLog;
         _attempts = 1 << Math.Clamp(parameters.SearchLog, 0, 12);
         _sufficient = Math.Clamp(parameters.TargetLength, Math.Max(_minMatch, 8), OptNum - 1);
         _compareLimit = Math.Max(_sufficient, CompareLimit);
         _windowSize = parameters.WindowSize;
+        bool thin = !_twoPass && parameters.WindowLog >= ThinInsertsMinWindowLog;
+        _insertStride = thin ? SkipStride : 1;
+        _insertTail = SkipTail;
+        _insertAttempts = thin && parameters.Strategy == ZstdStrategy.BinaryTreeUltra ? Math.Min(_attempts, UltraInsertAttempts) : _attempts;
         _linkLog = Math.Clamp(parameters.ChainLog - 1, 4, 25);
         Prepare(ref _head, 1 << _hashLog);
         PrepareLinks();
@@ -919,11 +948,14 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
     {
         int next = _next;
         int unused = 0;
+        int stride = _insertStride;
+        int tail = _insertTail;
+        int insertAttempts = _insertAttempts;
         while (next < p)
         {
-            int budget = _attempts;
+            int budget = insertAttempts;
             TreeWalk(window, next, end, false, ref budget, ref unused);
-            next++;
+            next += p - next > tail ? stride : 1;
         }
 
         _next = next;
@@ -952,6 +984,25 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
         int mask = (1 << _linkLog) - 1;
         int h = Hash(window, p);
         int maxLength = Math.Min(end - p, _compareLimit);
+        if (_warm)
+        {
+            // Bounds: the hash reads eight bytes, so q + 8 <= end; a stored position is inside the window and below p.
+            if (p + HeadWarmDistance <= end - 8)
+            {
+                Raw.Warm(head, Hash(window, p + HeadWarmDistance));
+            }
+
+            if (p + RootWarmDistance <= end - 8)
+            {
+                int root = (int)(Raw.Get(head, Hash(window, p + RootWarmDistance)) & PositionMask);
+                if (root != 0)
+                {
+                    Raw.Warm(tree, (root & mask) * 2);
+                    Raw.WarmAt(window, root);
+                }
+            }
+        }
+
         uint candidate = Raw.Get(head, h);
         Raw.Set(head, h, maxLength < _compareLimit ? (uint)p | TaintBit : (uint)p);
         int smallSlot = (p & mask) * 2;
@@ -969,6 +1020,11 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
             }
 
             budget--;
+            if (_warm)
+            {
+                Raw.Warm(tree, (c & mask) * 2);
+            }
+
             bool tainted = (candidate & TaintBit) != 0;
             int length = tainted ? 0 : Math.Min(smallLength, largeLength);
             length += ZstdFastMatchFinder.Count(window, c + length, p + length, p + maxLength);
