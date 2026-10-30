@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.7.0-preview.1] - 2026-10-29
+
+Everything is still preview and carries `[Experimental]`. No codec changed since 0.5.1-preview.1, so the README measurements stand. Version 0.6 is reserved for RAR compressed entries.
+
 ### Added
 
 - Microsoft compound file writer (`CompoundFileWriter`, `CompoundFileWriterOptions`): versions 3 and 4, FAT, DIFAT, mini stream, red-black directory trees, CLSIDs, state bits and times, reachable as `Archive.Create("x.cfb")` (`docs/cfb.md`).
@@ -130,7 +134,8 @@ First preview. Both codecs are preview and their public types carry `[Experiment
 - Input is treated as untrusted: the Zstandard decoder caps the window it will allocate (8 MiB by default), malformed input is a typed error, and every decoder has a fuzz target.
 - NativeAOT, trimming and browser WebAssembly are supported; output is byte-identical on every platform.
 
-[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v0.5.1-preview.1...HEAD
+[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v0.7.0-preview.1...HEAD
+[0.7.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.7.0-preview.1
 [0.5.1-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.5.1-preview.1
 [0.5.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.5.0-preview.1
 [0.4.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.4.0-preview.1
