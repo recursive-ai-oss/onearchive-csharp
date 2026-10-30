@@ -67,7 +67,7 @@ internal static class Rows
         });
 
         // 2. zstd ---------------------------------------------------------------------------------
-        foreach (var (lvl, data, runs) in new[] { (1, Full, 3), (3, Full, 3), (5, Full, 3), (9, S32, 3), (15, S32, 2), (19, S16, 2) })
+        foreach (var (lvl, data, runs) in new[] { (1, Full, 3), (2, Full, 3), (3, Full, 3), (4, Full, 3), (5, Full, 3), (7, S64, 3), (9, S32, 3), (12, S32, 2), (13, S32, 2), (14, S32, 2), (15, S32, 2), (17, S16, 2), (19, S16, 2), (22, S10, 2) })
         {
             int level = lvl;
             rows.Add(new Row
@@ -83,16 +83,20 @@ internal static class Rows
             });
         }
 
-        rows.Add(new Row
+        foreach (int dl in new[] { 1, 3, 19 })
         {
-            Id = "zstd-decode/L3", Data = Full, Decode = true,
-            MakePacked = c => Tool.Pipe("zstd", "-3 -q -c", c.Src),
-            Cands =
-            [
-                Mine("", c => Zstd.TryDecompress(c.Packed, c.Dst, out int n, ZstdDec) ? n : -1),
-                Man(ZstdSharpV, c => { using var d = new Decompressor(); return d.Unwrap(c.Packed, c.Dst); }),
-            ],
-        });
+            int level = dl;
+            rows.Add(new Row
+            {
+                Id = $"zstd-decode/L{level}", Data = Full, Decode = true,
+                MakePacked = c => Tool.Pipe("zstd", $"-{level} -q -c", c.Src),
+                Cands =
+                [
+                    Mine("", c => Zstd.TryDecompress(c.Packed, c.Dst, out int n, ZstdDec) ? n : -1),
+                    Man(ZstdSharpV, c => { using var d = new Decompressor(); return d.Unwrap(c.Packed, c.Dst); }),
+                ],
+            });
+        }
         rows.Add(new Row
         {
             Id = "zstd-ldm/L3", Data = Full,
@@ -161,7 +165,7 @@ internal static class Rows
         });
 
         // 4. brotli -----------------------------------------------------------------------------
-        foreach (var (q, data, runs) in new[] { (0, S64, 3), (1, S64, 3), (5, S32, 3), (11, S10, 2) })
+        foreach (var (q, data, runs) in new[] { (0, S64, 3), (1, S64, 3), (2, S64, 3), (4, S32, 3), (5, S32, 3), (7, S16, 2), (9, S16, 2), (11, S10, 2) })
         {
             int quality = q;
             rows.Add(new Row
@@ -223,7 +227,7 @@ internal static class Rows
         });
 
         // 7. xz and lzip compress ---------------------------------------------------------------
-        foreach (var (p, data, runs) in new[] { (0, S32, 3), (1, S32, 3), (3, S16, 3), (6, S16, 2) })
+        foreach (var (p, data, runs) in new[] { (0, S32, 3), (1, S32, 3), (3, S16, 3), (6, S16, 2), (9, S16, 2) })
         {
             int preset = p;
             rows.Add(new Row

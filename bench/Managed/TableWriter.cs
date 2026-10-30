@@ -51,7 +51,7 @@ internal static class TableWriter
                 + (failed.Count > 0 ? "; failed: " + string.Join(", ", failed.Select(x => $"{x.Lib} ({x.Note})")) : "");
             string mbpsOurs = ours.Mbps.ToString("F1", CultureInfo.InvariantCulture);
             tsv.Append(string.Join('\t', g.Key, ours.Data, mbpsOurs, best, bestMbps, ratio, size, nat, ours.Load, other, ob, mb)).Append('\n');
-            md.Append($"| {g.Key} | {ours.Data} | {mbpsOurs} | {best}{(bestMbps.Length > 0 ? " (" + bestMbps + ")" : "")} | {ratio} | {size} | {nat} | {ours.Load} | {other} |\n");
+            md.Append(CultureInfo.InvariantCulture, $"| {g.Key} | {ours.Data} | {mbpsOurs} | {best}{(bestMbps.Length > 0 ? " (" + bestMbps + ")" : "")} | {ratio} | {size} | {nat} | {ours.Load} | {other} |\n");
         }
 
         File.WriteAllText(outPath, tsv.ToString());
