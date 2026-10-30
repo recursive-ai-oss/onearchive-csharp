@@ -100,6 +100,7 @@ public sealed class ZstdSequenceStore
     // offsets itself (it must, to find repeat matches) passes the offset value it coded: 1 to 3 for a repeat, otherwise
     // offset + 3. The block writer then skips resolving them again, provided the store's chain started from the offsets the
     // writer holds (see BeginTracking and TryGetTracked).
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     internal void AppendTracked(ReadOnlySpan<byte> window, int anchor, uint literalLength, uint matchLength, uint offset, uint offsetValue)
     {
         int ll = (int)literalLength;
