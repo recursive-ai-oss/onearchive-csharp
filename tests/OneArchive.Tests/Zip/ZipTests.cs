@@ -86,6 +86,9 @@ internal sealed class RawZip
 
     public long Position => _out.Count;
 
+    /// <summary>Lists the entries in the central directory in the opposite order to their local headers.</summary>
+    public bool ReverseDirectory { get; set; }
+
     public static byte[] Deflate(byte[] data)
     {
         var ms = new MemoryStream();
@@ -167,7 +170,7 @@ internal sealed class RawZip
     public byte[] Finish(string comment = "", long? countOverride = null, long? directoryOffsetOverride = null, long? directorySizeOverride = null)
     {
         long dirStart = _out.Count;
-        foreach (Entry e in _entries)
+        foreach (Entry e in ReverseDirectory ? Enumerable.Reverse(_entries) : _entries)
         {
             uint crc = e.Crc ?? Crc(e.Plain);
             var h = new byte[46];

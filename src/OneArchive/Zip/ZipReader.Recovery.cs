@@ -55,6 +55,8 @@ public sealed partial class ZipReader
     {
         _entries = null;
         _byOffset = null;
+        _lazy?.Buf.Dispose();
+        _lazy = null;
         _comment = string.Empty;
         _useDirectory = false;
         _buf = new ZipInputBuffer(_stream, _origin, 0);

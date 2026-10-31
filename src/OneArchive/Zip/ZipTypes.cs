@@ -117,6 +117,9 @@ public sealed class ZipEntry : ArchiveEntry
 
     // The uncompressed size the header declares, kept for entries (links, directories) whose public Size is zero.
     internal long DeclaredSize { get; init; }
+
+    // Set by a reader in lazy directory mode, which keeps no table of its entries: the token says which reader made this one.
+    internal object? Owner { get; init; }
 }
 
 /// <summary>Options for <see cref="ZipReader"/> and the zip part of <see cref="ArchiveOpenOptions"/>.</summary>
@@ -146,9 +149,29 @@ public sealed class ZipReaderOptions
 
     /// <summary>
     /// Gets the most bytes of central directory the reader holds in memory (names, extra fields and comments of every entry).
-    /// Default 128 MiB. A larger directory raises <see cref="RecursiveAI.OneCompress.CompressionLimitException"/>.
+    /// Default 128 MiB. Not applied with <see cref="LazyDirectory"/>. A larger directory raises <see cref="RecursiveAI.OneCompress.CompressionLimitException"/>.
     /// </summary>
     public long MaxCentralDirectorySize { get; init; } = 128L << 20;
+
+    /// <summary>
+    /// Gets a value indicating whether a seekable stream's central directory is read as the entries are asked for, instead of
+    /// being loaded whole. Default false. When true the reader's memory does not grow with the number of entries (archives with
+    /// hundreds of thousands of them, such as mail exports): it holds the record being returned and one more, and
+    /// <see cref="ZipReader.OpenEntryStream(ArchiveEntry)"/> opens any entry it returned earlier by seeking to its local header.
+    /// </summary>
+    /// <remarks>
+    /// <para>The directory is still checked as a whole before the first entry is returned (every record parses, the offsets and sizes are
+    /// consistent, no two entries share or overlap data, and with <see cref="Recovery"/> every local header is where the directory says),
+    /// by reading it once without keeping it; the entries, their order and the errors are those of the default mode. What differs:
+    /// <list type="bullet">
+    /// <item><see cref="MaxCentralDirectorySize"/> does not apply, since the directory is never held;</item>
+    /// <item>a symbolic link's target is read when its entry is returned rather than when the archive is opened, so a link whose data is damaged fails at that entry;</item>
+    /// <item>when the directory lists the local headers out of offset order, the reader keeps their offsets (8 bytes per entry) to find each entry's neighbour;</item>
+    /// <item>the reader walks the directory once, as before; an entry it returned stays openable with <see cref="ZipReader.OpenEntryStream(ArchiveEntry)"/> at any later time, for as long as the caller keeps the <see cref="ZipEntry"/> (the reader itself keeps none).</item>
+    /// </list>
+    /// It has no effect on a stream that cannot seek or with <see cref="ForceStreaming"/>.</para>
+    /// </remarks>
+    public bool LazyDirectory { get; init; }
 
     /// <summary>Gets the encoding for names that are not flagged UTF-8 and have no Unicode path field. Default <see langword="null"/>: IBM code page 437, as APPNOTE 4.4.17 says.</summary>
     public Encoding? LegacyNameEncoding { get; init; }

@@ -60,7 +60,8 @@ Also covered: `cpio-read`, `cpio-roundtrip`, `ar-read`, `ar-roundtrip`, `iso-rea
 ## Zip and single-stream targets
 
 `zip-read` (the zip reader through the central directory, with entries re-opened out of order, and forward-only in odd pieces;
-every entry read must have the length it declares), `zip-roundtrip` (entries built from the input are written with an option
+every entry read must have the length it declares), `zip-read-lazy` (the reader with `LazyDirectory` against the default reader: same entries, same refusals, and entries re-opened after the walk read the same),
+`zip-roundtrip` (entries built from the input are written with an option
 mix - store or zstd, zip64, data descriptors, seekable or not - and read back both ways), `zip-recover` (the reader in recovery mode on a seekable
 and a forward-only stream: damage records must lie inside the input, a failed entry must be in the damage list, and an archive the strict reader
 accepts must come out of recovery with the same entries and no damage; seeds are the `zip-read` archives whole, cut in half and with text spliced in) and `single-stream-read`
