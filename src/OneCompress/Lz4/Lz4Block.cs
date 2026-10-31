@@ -177,6 +177,7 @@ public static class Lz4Block
     /// <param name="options">The dictionary; <see langword="null"/> for the defaults.</param>
     /// <returns>True on success; false when <paramref name="destination"/> is too small.</returns>
     /// <exception cref="CompressionFormatException">The block is truncated or invalid.</exception>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     public static bool TryDecompress(ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten, Lz4BlockOptions? options = null)
     {
         Lz4Dictionary? dictionary = options?.Dictionary;

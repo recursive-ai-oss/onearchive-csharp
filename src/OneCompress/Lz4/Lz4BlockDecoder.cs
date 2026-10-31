@@ -47,6 +47,7 @@ public static class Lz4BlockDecoder
         return false;
     }
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     // Decodes a block that may reach back into a dictionary kept outside the output; the false and exception results are those of TryDecode.
     internal static bool TryDecodeWithDictionary(ReadOnlySpan<byte> source, Span<byte> destination, ReadOnlySpan<byte> dictionary, out int written)
     {
@@ -132,6 +133,9 @@ public static class Lz4BlockDecoder
     /// As above, with a separate dictionary: it counts as history that precedes <c>dst[outStart..]</c>, so a match may reach back into
     /// it without the dictionary being copied next to the output.
     /// </summary>
+    // Jitted fully optimized on the first call: a caller that decodes many tiny blocks would otherwise spend its first
+    // hundred milliseconds in unoptimized code.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     internal static BlockResult Decode(ReadOnlySpan<byte> src, Span<byte> dst, int outStart, ReadOnlySpan<byte> dictionary, out int written, out int errorOffset)
     {
         int ip = 0;
@@ -158,6 +162,72 @@ public static class Lz4BlockDecoder
                 }
             }
 
+            // Short sequences (no length bytes, a match that does not overlap itself) are the bulk of small blocks, which the fast
+            // loop's margins never let it near. They are decoded here with exact copies; anything else, and every error, is left
+            // to the general code, which sees the sequence untouched.
+            while (ip < iend)
+            {
+                int t = Lz4Raw.Get(src, ip);  // ip < iend
+                int literals = t >> 4;
+                int length = (t & 15) + Lz4Format.MinMatch;
+                int shortOffsetAt = ip + 1 + literals;
+                if (literals == 15 || (t & 15) == 15 || shortOffsetAt + 2 > iend || length + literals > oend - op)
+                {
+                    break;
+                }
+
+                int shortOffset = Lz4Raw.ReadUInt16(src, shortOffsetAt);  // shortOffsetAt + 2 <= iend
+                int matchAt = op + literals;
+                if (shortOffset == 0 || shortOffset > matchAt + dictionary.Length)
+                {
+                    break;
+                }
+
+                if (shortOffset <= matchAt)
+                {
+                    if (shortOffset < length)
+                    {
+                        break;
+                    }
+
+                    Lz4Raw.CopyUpTo16(dst, op, src, ip + 1, literals);  // inside both spans: checked above
+                    if (length <= 16)
+                    {
+                        Lz4Raw.CopyUpTo16(dst, matchAt, dst, matchAt - shortOffset, length);
+                    }
+                    else
+                    {
+                        Lz4Raw.Copy16(dst, matchAt, dst, matchAt - shortOffset);
+                        Lz4Raw.CopyUpTo16(dst, matchAt + 16, dst, matchAt - shortOffset + 16, length - 16);
+                    }
+                }
+                else
+                {
+                    int inDictionary = shortOffset - matchAt;
+                    if (length > inDictionary)
+                    {
+                        break;
+                    }
+
+                    Lz4Raw.CopyUpTo16(dst, op, src, ip + 1, literals);
+                    int from = dictionary.Length - inDictionary;
+                    if (length <= 16)
+                    {
+                        Lz4Raw.CopyUpTo16(dst, matchAt, dictionary, from, length);
+                    }
+                    else
+                    {
+                        Lz4Raw.Copy16(dst, matchAt, dictionary, from);
+                        Lz4Raw.CopyUpTo16(dst, matchAt + 16, dictionary, from + 16, length - 16);
+                    }
+                }
+
+                lastMatchStart = matchAt;
+                onlySequence = false;
+                ip = shortOffsetAt + 2;
+                op = matchAt + length;
+            }
+
             if (ip >= iend)
             {
                 // The block ended after a match (or was empty): the last sequence must carry literals only.
@@ -166,7 +236,7 @@ public static class Lz4BlockDecoder
                 break;
             }
 
-            int token = src[ip++];
+            int token = Lz4Raw.Get(src, ip++);  // ip < iend, checked above
 
             // Block format, "Compressed block format": the high nibble is the literal count, 15 meaning more bytes follow.
             int literalLength = token >> 4;
@@ -409,6 +479,7 @@ public static class Lz4BlockDecoder
     // out, too little room for the wide copies, a bad offset) is left undone, with the position back at its token, for the
     // general code in Decode to finish or to report. The sequence is never the block's last: 19 bytes of input remain after its
     // token, so the offset field exists.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     private static (int Ip, int Op, int LastMatchStart) FastLoop(ReadOnlySpan<byte> src, Span<byte> dst, ReadOnlySpan<byte> dictionary, int ipStart, int opStart, int matchStart)
     {
         nint ip = ipStart;
