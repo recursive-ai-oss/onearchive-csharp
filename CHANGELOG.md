@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-31
+
+Additive over 1.0.0: no public API was removed or changed, and compressed bytes are unchanged for every codec and level. Every new mode is off by default.
+
 ### Added
 
 - `ArchiveLimits.LargeArchive` (4,000,000 entries, 256 GiB declared size, every other limit at its default) and a "Large archives" section in `docs/archive.md`: with `ZipReaderOptions.LazyDirectory` a million-entry mail export opens, lists and extracts. The defaults are unchanged.
@@ -170,7 +174,9 @@ First preview. Both codecs are preview and their public types carry `[Experiment
 - Input is treated as untrusted: the Zstandard decoder caps the window it will allocate (8 MiB by default), malformed input is a typed error, and every decoder has a fuzz target.
 - NativeAOT, trimming and browser WebAssembly are supported; output is byte-identical on every platform.
 
-[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v0.7.0-preview.1...HEAD
+[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v1.1.0
+[1.0.0]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v1.0.0
 [0.7.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.7.0-preview.1
 [0.5.1-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.5.1-preview.1
 [0.5.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.5.0-preview.1
