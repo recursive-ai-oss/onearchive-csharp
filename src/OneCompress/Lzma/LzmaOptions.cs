@@ -138,7 +138,7 @@ public readonly struct LzmaEncoderSettings
     // Search depths of the hash-chain presets 0 to 3; the binary-tree presets derive theirs from the nice length.
     private static ReadOnlySpan<byte> PresetChainDepth => [6, 8, 12, 24];
 
-    private LzmaEncoderSettings(int lc, int lp, int pb, uint dictionarySize, int niceLength, int depth, LzmaMode mode, LzmaMatchFinderKind matchFinder, bool endMarker)
+    private LzmaEncoderSettings(int lc, int lp, int pb, uint dictionarySize, int niceLength, int depth, int lazyLength, LzmaMode mode, LzmaMatchFinderKind matchFinder, bool endMarker)
     {
         Lc = lc;
         Lp = lp;
@@ -146,6 +146,7 @@ public readonly struct LzmaEncoderSettings
         DictionarySize = dictionarySize;
         NiceLength = niceLength;
         Depth = depth;
+        LazyLength = lazyLength;
         Mode = mode;
         MatchFinder = matchFinder;
         WriteEndMarker = endMarker;
@@ -168,6 +169,9 @@ public readonly struct LzmaEncoderSettings
 
     /// <summary>Gets the search depth (never 0).</summary>
     public int Depth { get; }
+
+    // The fast parser looks one position ahead only when the match it found is shorter than this; int.MaxValue leaves it to the nice length.
+    internal int LazyLength { get; }
 
     /// <summary>Gets the parser.</summary>
     public LzmaMode Mode { get; }
@@ -193,7 +197,7 @@ public readonly struct LzmaEncoderSettings
         int p = o.Preset;
         bool ext = o.Extreme;
         LzmaMode mode = o.Mode ?? ((p <= 3 && !ext) ? LzmaMode.Fast : LzmaMode.Normal);
-        LzmaMatchFinderKind mf = o.MatchFinder ?? (p == 0 ? (ext ? LzmaMatchFinderKind.BinaryTree4 : LzmaMatchFinderKind.HashChain3) : p <= 3 ? (ext ? LzmaMatchFinderKind.BinaryTree4 : LzmaMatchFinderKind.HashChain4) : LzmaMatchFinderKind.BinaryTree4);
+        LzmaMatchFinderKind mf = o.MatchFinder ?? (p <= 3 ? (ext ? LzmaMatchFinderKind.BinaryTree4 : LzmaMatchFinderKind.HashChain4) : LzmaMatchFinderKind.BinaryTree4);
         uint dict = o.DictionarySize != 0 ? o.DictionarySize : PresetDictionary[p];
         int nice = o.NiceLength;
         if (nice == 0)
@@ -218,6 +222,8 @@ public readonly struct LzmaEncoderSettings
             }
         }
 
-        return new LzmaEncoderSettings(o.Lc, o.Lp, o.Pb, dict, nice, depth, mode, mf, o.WriteEndMarker);
+        // Presets 0 and 1 are the speed presets: they skip the look-ahead for any match of 3 (preset 0) or 4 (preset 1) bytes or more.
+        int lazy = ext ? int.MaxValue : p switch { 0 => 3, 1 => 4, _ => int.MaxValue };
+        return new LzmaEncoderSettings(o.Lc, o.Lp, o.Pb, dict, nice, depth, lazy, mode, mf, o.WriteEndMarker);
     }
 }

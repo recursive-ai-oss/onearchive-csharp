@@ -4,7 +4,7 @@ namespace RecursiveAI.OneCompress.Lzma;
 
 public sealed partial class LzmaEncoderCore
 {
-    // The fast parser: greedy with one step of lazy matching, but choosing by price. Among the repeated distances and the finder's
+    // The fast parser: greedy with one step of lazy matching (only for matches shorter than the preset's lazy length), but choosing by price. Among the repeated distances and the finder's
     // matches it takes the one that saves the most bits against coding the same bytes as literals, and it codes a literal instead
     // when the match at the next position would make the two-position plan cheaper.
     private void ParseFast(int horizon)
@@ -52,7 +52,7 @@ public sealed partial class LzmaEncoderCore
             return;
         }
 
-        if (best.Length < nice && maxLen > 2 && horizon > 2)
+        if (best.Length < nice && best.Length < _settings.LazyLength && maxLen > 2 && horizon > 2)
         {
             int n2 = PeekNext(p);
             int state2 = LzmaModel.NextStateAfterLiteral(_state);
