@@ -18,7 +18,7 @@ cp "$out"/cfb-read/* "$out/cfb-recover/"
 # The damaged vectors from tools/cfb/gen_damaged.py, cut to 70,000 bytes, are the seeds that matter most for cfb-recover.
 for f in "$root"/testdata/cfb/damaged/*.cfb "$root"/testdata/cfb/damaged/*.cfb.gz; do
   b="$(basename "$f" .gz)"
-  case "$f" in *.gz) gzip -dc "$f" | head -c 70000 > "$out/cfb-recover/$b" ;; *) head -c 70000 "$f" > "$out/cfb-recover/$b" ;; esac
+  case "$f" in *.gz) { gzip -dc "$f" || true; } | head -c 70000 > "$out/cfb-recover/$b" ;; *) head -c 70000 "$f" > "$out/cfb-recover/$b" ;; esac
 done
 for n in 40 400 3000; do
   head -c "$n" "$root/testdata/cfb/v3-many-entries.cfb" > "$out/cfb-write/script-$n"
