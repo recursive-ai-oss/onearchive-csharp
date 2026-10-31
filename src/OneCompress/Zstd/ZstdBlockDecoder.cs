@@ -330,6 +330,7 @@ internal sealed class ZstdBlockDecoder
     // A whole block's sequences in one function, for blocks with few of them (game-sized payloads): no hand-offs between loops,
     // the last sequence (which has no state update bits) and the stream's start are handled in line, and every check is made
     // for each sequence. The table rows and the bit arithmetic are those of RunFast.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static int RunSmall(
         ref ZstdSequenceDecoder sequences,
         SequenceEntry[] rows,
@@ -661,6 +662,7 @@ internal sealed class ZstdBlockDecoder
     // piecewise kind. Never handles the last sequence (index `last`), which has no state update bits. Contains no
     // calls, uses native-width indices and reads each table row as one 64-bit value (see SequenceEntry): that keeps the
     // loop's variables in registers, which matters more here than any instruction count.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void RunFast<TLoop>(
         ref SequenceState st,
         SequenceEntry[] rows,
@@ -897,6 +899,7 @@ internal sealed class ZstdBlockDecoder
     // One sequence the careful way: refills as often as the bits require, works near the start of the stream, and
     // finishes a sequence the fast loop set aside. Index counts the sequence as done only when its match is copied; the fast
     // loop counts a sequence it set aside as started, so Pending says where to resume.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void RunGeneral(
         ref SequenceState st,
         SequenceEntry[] rows,
