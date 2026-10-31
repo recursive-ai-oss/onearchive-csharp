@@ -54,22 +54,22 @@ Large-window brotli (window above 24) is not part of RFC 7932 and is not produce
 | Q | Block | Table | Hash bytes | Depth | Long table | Parse | Contexts, splitting | Dictionary |
 |---|---|---|---|---|---|---|---|---|
 | 0 | 128 KiB | 2^15 heads | 5 | 1 | | greedy, one probe | none | no |
-| 1 | 128 KiB | 2^17 heads | 6 | 1 | | greedy, one probe | none | no |
-| 2 | 128 KiB | 2^16 x 2 | 5 | 2 | | greedy | none | no |
-| 3 | 256 KiB | 2^15 x 8 | 6 | 4 | | lazy 1 | literal contexts | no |
-| 4 | 1 MiB | 2^15 x 8 | 6 | 8 | | lazy 1 | + block splitting | no |
-| 5 | 4 MiB | 2^16 x 16 | 6 | 8 | | lazy 1 | + context mode search | no |
+| 1 | 128 KiB | 2^18 heads | 6 | 1 | | greedy, one probe | none | no |
+| 2 | 128 KiB | 2^17 x 2 | 7 | 2 | | greedy | none | no |
+| 3 | 128 KiB | 2^17 x 4 | 5 | 4 | | greedy | none | no |
+| 4 | 256 KiB | 2^16 x 8 | 6 | 6 | | lazy 1 | literal contexts, one block type | no |
+| 5 | 4 MiB | 2^16 x 16 | 6 | 8 | | lazy 1 | + block splitting, context mode search | no |
 | 6 | 4 MiB | 2^18 x 16 | 6 | 16 | 2^16 x 8, 8 deep | lazy 1 | + distance parameter search | identity |
 | 7 | 4 MiB | 2^18 x 32 | 6 | 24 | 2^16 x 16, 16 deep | lazy 2 | same, finer literal splitting | identity |
 | 8 | 4 MiB | 2^18 x 32 | 6 | 32 | 2^17 x 16, 16 deep | lazy 2 | same | identity |
 | 9 | 4 MiB | 2^17 x 64 | 6 | 48 | 2^17 x 32, 32 deep | lazy 2 | same | identity |
 | 10 | 1 MiB | 2^20 binary tree | 4 | 64 | | shortest path, 2 passes | same, finest literal splitting | all transforms |
-| 11 | 1 MiB | 2^20 binary tree | 4 | 128 | | shortest path, 3 passes | same | all transforms |
+| 11 | 1 MiB | 2^20 binary tree | 4 | 128 (nice length 256) | | shortest path, 3 passes | same | all transforms |
 
 "Table" is the number of hash values times the slots each owns ("x 16"); "Depth" is the number of entries of a bucket (or tree nodes at q10
 and q11) visited per position. Qualities 0 to 5 skip ahead on incompressible data: after a miss the position advances by
-`1 + (bytes since the last copy >> S)`, with S = 6 at qualities 0 to 2 and 5 at qualities 3 to 5 (the positions skipped over are still
-entered in the table at q4 and q5; at q2 and q3 see "Sparse entry" below). Qualities 6 to 11 do not skip. The nice length (a match this long ends the search) is 64, and 128 at qualities 10 and 11. The
+`1 + (bytes since the last copy >> S)`, with S = 6 at qualities 0 to 3 and 5 at qualities 4 and 5 (the positions skipped over are still
+entered in the table at q5; at q2 to q4 see "Sparse entry" below). Qualities 6 to 11 do not skip. The nice length (a match this long ends the search) is 64, 128 at quality 10 and 256 at quality 11. The
 table is the single source; `BrotliQualityPlan.For` must match it.
 
 ## Match finding
@@ -83,10 +83,13 @@ table is the single source; `BrotliQualityPlan.For` must match it.
   taken from the 64-bit word at the position, so a table candidate always agrees on that many bytes before its length is measured and
   copies found through the table are at least that long (`FastHashLength` in the plan). Only positions with eight bytes inside the
   block are probed or entered; the last seven bytes of a block are literals.
-- **Two-way table** (q2): each hash value (5 bytes, taken the same way) owns two slots, the two latest positions, each with its four
+- **Two-way table** (q2): each hash value (7 bytes, taken the same way) owns two slots, the two latest positions, each with its four
   bytes; entering a position moves the newer slot to the older and writes the new one. Both are candidates, newest first. This is the
   bucketed table of q2 to q9 with a bucket size of 2 and a depth of 2, minus the entry counts.
-- **Bucketed table** (q2 to q9): each hash value owns `2^BucketBits` slots holding the latest positions with that hash, the oldest slot
+- **Four-way table** (q3): the two-way table with four slots per hash value (5 bytes). Every candidate that agrees on the four stored
+  bytes is measured and scored as at q2; the best score wins and the newest of equal scores is kept. Nothing is lazy and only the last
+  distance has a short code, as at q0 to q2.
+- **Bucketed table** (q4 to q9): each hash value owns `2^BucketBits` slots holding the latest positions with that hash, the oldest slot
   overwritten first (a count of entries made per bucket says where the next goes). Candidates are visited newest first, at most Depth
   of them; a candidate must agree with the position on the hashed bytes and on the byte just past the best length so far; the search ends
   at the nice length. Every position that is not skipped is entered before the next one is searched, so a lazy probe sees the
@@ -137,10 +140,10 @@ first four bytes and lies within the window. Each candidate's copy is measured a
 than `FastHashLength` are not candidates. The better score wins; on equal scores the newer slot wins. Only the last distance has a short
 code, as at q0. A position with no candidate whose score is positive is a miss. Entry follows "Sparse entry".
 
-**q3 to q9** try the four last distances first (any length from 3), then the bucket candidates, then the dictionary. After a copy
-every position it covers is entered, except at q3 (below).
+**q4 to q9** try the four last distances first (any length from 3), then the bucket candidates, then the dictionary. After a copy
+every position it covers is entered, except at q4 (below).
 
-**Sparse entry (q2 and q3).** After a copy of 32 bytes or more only its last two positions are entered, and positions stepped over by
+**Sparse entry (q2 to q4).** After a copy of 16 bytes or more (32 at q3) only its last two positions are entered, and positions stepped over by
 the skip-ahead are not entered; the position just before the next probe is. The positions are a small share of what a later search
 finds, and entering them costs a hash and two stores each. The measured price is under 0.2% of size on text.
 
@@ -160,7 +163,10 @@ Per block (1 MiB):
 2. **Costs.** Costs are in 1/256 bit and path costs are 64-bit. The first pass uses the block's byte histogram for literals
    (`log2(total / count)`, unseen bytes `+ 3` bits, at least 1/8 bit), 9 bits per command symbol, 4 bits for distance symbols
    below 16 and 6 for the others. Later passes use the symbol statistics of the previous pass's commands (unseen symbols
-   priced 3 bits, literals 4 bits above the seen ones).
+   priced 3 bits, literals 4 bits above the seen ones). From the second pass on, a literal is priced in its UTF8 context (RFC 7932
+   section 7.1): the counts of that context's literals in the previous pass, blended with the block-wide counts at weight 1024 (the
+   counts of the context are scaled by the block's literal count plus 256, the block-wide ones by 1024 times their own count plus one),
+   at least 1/8 bit.
 3. **Path.** A forward dynamic programme over positions, one node each, holding the cheapest cost, its predecessor, the number
    of literals pending and the four last distances. Edges from a node: one literal; each of the four recent distances at lengths
    `max(2, len - 6)` to `len`; for each tree candidate its lengths from just above the next shorter candidate (at least 4,
@@ -176,11 +182,9 @@ Done by the meta-block writer, in this order (each choice by estimated size, int
 
 1. **Distance parameters.** q6 and up try `(NPOSTFIX, NDIRECT)` = (0,0), (0,8), (1,0), (1,8), (2,0), (2,12) and keep the one with
    the smallest distance entropy; below q6 it is (0,0). Distances are mapped onto the short codes (RFC 7932 section 4) first.
-2. **Block splitting** (q4 and up) separately for literals, commands and distances (section 6). The sequence is cut into equal
-   segments: for commands and distances at least 256 symbols and at most 128 segments (at q4: 32, merged pair by pair up to 16 of them;
-   the pairwise merging of long histograms is the largest cost of the splitter, and the estimated gain of the extra segments is
-   small); for literals at least 1024 symbols and at most
-   128 segments at q4 to q6, at least 512 and at most 256 at q7 to q9, at least 256 and at most 2048 at q10 and q11.
+2. **Block splitting** (q5 and up) separately for literals, commands and distances (section 6). The sequence is cut into equal
+   segments: for commands and distances at least 256 symbols and at most 128 segments; for literals at least 1024 symbols and at most
+   128 segments at q5 and q6, at least 512 and at most 256 at q7 to q9, at least 64 and at most 8192 at q10 and q11.
    Segment histograms are clustered into at most 256 block types, then refined up to four times (stopping early when nothing
    moves) by a Viterbi search over the segments where a type change costs 14 bits. The split is kept only if its estimated cost, headers and switches included,
    beats a single type.

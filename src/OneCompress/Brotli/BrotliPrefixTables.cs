@@ -13,7 +13,7 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// </remarks>
 internal static class BrotliPrefixTables
 {
-    internal const int RootBits = 8;
+    internal const int RootBits = 9;
     internal const uint RootMask = (1u << RootBits) - 1;
     internal const uint LinkFlag = 0x80;
     internal const int MaxCodeLength = 15;

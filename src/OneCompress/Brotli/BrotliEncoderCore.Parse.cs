@@ -28,9 +28,13 @@ internal sealed partial class BrotliEncoderCore
         {
             ParseOptimal(start, end);
         }
-        else if (_plan.Quality == 2)
+        else if (_plan.Ways == 2)
         {
             ParseTwoWay(start, end);
+        }
+        else if (_plan.Ways == 4)
+        {
+            ParseFourWay(start, end);
         }
         else if (_plan.ChainDepth <= 1)
         {
@@ -48,7 +52,7 @@ internal sealed partial class BrotliEncoderCore
         if (_plan.UsesFastBlock)
         {
             // Position and the four bytes there, per slot, one slot per bucket (qualities 0 and 1) or two (quality 2).
-            _head = new int[(_plan.Quality == 2 ? 4 : 2) << _plan.HashBits];
+            _head = new int[(2 * Math.Max(1, _plan.Ways)) << _plan.HashBits];
             Array.Fill(_head, -1);
         }
         else if (_plan.BinaryTree)

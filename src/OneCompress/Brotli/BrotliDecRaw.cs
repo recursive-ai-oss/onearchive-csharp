@@ -77,15 +77,16 @@ internal static class BrotliDecRaw
     }
 
     /// <summary>
-    /// <c>t[index &amp; 63]</c> of the 64 code offsets of one literal block type; the index is masked, so it is below the span's length.
+    /// <c>t[index &amp; 1023]</c> of the code offsets of one literal block type: its 64 contexts, or the 1024 entries of the UTF8 table. The
+    /// index is masked, and the caller passes a span of at least as many entries as the largest index it computes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int At64(ReadOnlySpan<int> t, int index)
     {
 #if CHECKED
-        return t[index & 63];
+        return t[index & 1023];
 #else
-        return Unsafe.Add(ref MemoryMarshal.GetReference(t), (nint)(uint)(index & 63));
+        return Unsafe.Add(ref MemoryMarshal.GetReference(t), (nint)(uint)(index & 1023));
 #endif
     }
 
