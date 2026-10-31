@@ -42,14 +42,14 @@ calls. Byte-identical output with the `xz` and `lzip` tools is not a goal: the s
 The dictionary sizes, match finders and modes of presets 0 to 9 follow the `xz` manual (dictionary 256 KiB, 1, 2, 4, 4, 8, 8, 16, 32
 and 64 MiB; `hc4` for 0 to 3 (the manual says `hc3` for 0; `hc4` is as fast there and 4% smaller), `bt4` for 4 to 9; fast mode for 0 to 3, normal for 4 to 9). The manual leaves the nice
 lengths and depths to the implementation; they were set by measuring size and speed against `xz` on the corpus subset below. On a
-mixed 32 MiB Silesia sample the fast presets 0 to 3 write 0.2%, 5.8%, 1.9% and 0.9% more than the tool at the same preset; presets 4
-to 9 are within 1%. Presets 1 and 2 trade size for speed on purpose: preset 1 does not look ahead past a match of 4 bytes (about 3%
-more output, 28% faster), and preset 2 searches 12 candidates rather than 16 (about 1% more output, 10% faster).
+mixed 32 MiB Silesia sample the fast presets 0 to 3 write 0.2%, 6.7%, 1.9% and 0.9% more than the tool at the same preset; presets 4
+to 9 are within 1%. Presets 1 and 2 trade size for speed on purpose: preset 1 does not look ahead past a match of 3 bytes and searches 6 candidates (about 4%
+more output, 30% faster), and preset 2 searches 12 candidates rather than 16 (about 1% more output, 10% faster).
 
 | Preset | Dictionary | Match finder | Mode | Nice length | Depth |
 |---|---|---|---|---|---|
 | 0 | 256 KiB | HashChain4 | Fast | 6 | 6 |
-| 1 | 1 MiB | HashChain4 | Fast | 8 | 8 |
+| 1 | 1 MiB | HashChain4 | Fast | 8 | 6 |
 | 2 | 2 MiB | HashChain4 | Fast | 24 | 12 |
 | 3 | 4 MiB | HashChain4 | Fast | 48 | 24 |
 | 4 | 4 MiB | BinaryTree4 | Normal | 16 | 24 |
@@ -136,7 +136,7 @@ saving `length * literal - price` wins (a later match wins a tie, a repeated dis
 the same choice is made at `p + 1` (after a literal; matches at `p + 1` come from the finder, repeated lengths use the current distances);
 if coding a literal and then that candidate is cheaper than the first candidate over the same span (the shorter plan is padded with
 literals at `literal` each), a literal is coded now and the decision is retaken at `p + 1`. That second look is made only when the
-first winner is shorter than the *lazy length*: 3 for preset 0, 4 for preset 1, and the nice length (no limit of its own) for every other
+first winner is shorter than the *lazy length*: 3 for presets 0 and 1, and the nice length (no limit of its own) for every other
 setting. A winner of the lazy length or more is coded at once, which saves the finder call and the pricing at `p + 1`.
 
 **Normal.** A shortest-path search over the horizon. Node `i` holds the cheapest price to reach `p0 + i`, its predecessor, the symbol
