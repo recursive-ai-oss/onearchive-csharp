@@ -221,14 +221,14 @@ Level numbers of different libraries are not comparable (one library's "level 6"
 | Compress level 19 | 0.90 | 0.90 | +0.4% | |
 | Compress level 22 | 1.03 | 0.96 | +0.5% | |
 | Decompress, levels 1 / 3 | 0.95 / 0.92 | 0.97 / 1.01 | | |
-| Decompress level 19 | 0.86 | 1.00 | | x64 just below the bar |
+| Decompress level 19 | 0.87 | 1.00 | | x64 at the bar (0.84-0.88 over three runs) |
 | Long-distance matching, level 3 | 0.91 | 0.90 | +0.7% | |
 | Two workers, level 3 | 0.98 | 0.96 | +0.6% | |
 | With a trained dictionary, small game payloads, compress (frames, level 1 / 3) | 2.17 / 1.97 | 1.89 / 1.73 | +0.1% / -0.2% | |
 | Same, snapshots, compress (level 1 / 3) | 0.98 / 1.03 | 0.89 / 0.91 | -0.7% / -0.6% | |
 | Same, decompress (frames / snapshots) | 0.96 / 0.92 | 0.98 / 1.03 | | |
 
-Two rows are below the bar and are listed as they measured: Zstandard compression at level 1 (0.85) and level 2 (0.82) on x64. Their output is within 1% of ZstdSharp's (+0.5% and +0.4%), and arm64 meets both. Level 19 decompression on x64 is 0.86.
+Two rows are below the bar and are listed as they measured: Zstandard compression at level 1 (0.85) and level 2 (0.82) on x64. Their output is within 1% of ZstdSharp's (+0.5% and +0.4%), and arm64 meets both. Level 19 decompression on x64 sits at the bar: 0.87, the median of three runs that ranged from 0.84 to 0.88.
 
 ### LZ4 (against K4os.Compression.LZ4)
 
@@ -280,7 +280,7 @@ Brotli at qualities 4 to 7 is slower than BrotliManagedFast at the same quality 
 | LZMA decompress | 1.34 | 1.31 | |
 | LZMA2 decompress | 1.49 | 1.49 | against SharpCompress |
 | xz compress preset 0 | 1.05 | 1.04 | |
-| xz compress preset 1 | 0.99 | 0.90-0.92 | +0.7% |
+| xz compress preset 1 | 0.99 | 0.89 | +0.7% |
 | xz compress preset 3 | met by our preset 2 (0.96) | met by preset 2 (0.91) | Lzma.Net's preset 3 writes 5% larger output |
 | xz compress preset 6 | met by our preset 3 (1.52) | met by preset 3 (1.38) | our preset 6 is 14.6% smaller but 0.31 / 0.25 as fast |
 | xz compress preset 9 | 1.24 | 1.38 | +0.4% |
