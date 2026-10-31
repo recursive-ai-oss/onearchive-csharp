@@ -197,6 +197,40 @@ public class Lz4BlockTests
     }
 
     [Fact]
+    public void DictionaryBlocksDecodeWhenSizesAndDictionariesAlternate()
+    {
+        var rng = new Random(11);
+        var dicts = new Lz4Dictionary[2];
+        for (int d = 0; d < 2; d++)
+        {
+            byte[] c = new byte[4000 + d * 3000];
+            rng.NextBytes(c);
+            dicts[d] = new Lz4Dictionary(c);
+        }
+
+        foreach (int size in new[] { 10, 5000, 300, 70_000, 2_000_000, 40, 1_500_000 })
+        {
+            for (int d = 0; d < 2; d++)
+            {
+                byte[] payload = new byte[size];
+                for (int i = 0; i < size; i += 64)
+                {
+                    int n = Math.Min(64, size - i);
+                    if (rng.Next(2) == 0) dicts[d].Content.Slice(rng.Next(dicts[d].Length - 64), n).CopyTo(payload.AsSpan(i));
+                    else rng.NextBytes(payload.AsSpan(i, n));
+                }
+
+                byte[] block = Lz4Block.Compress(payload, new Lz4CompressionOptions { Level = 3, Dictionary = dicts[d] });
+                var options = new Lz4BlockOptions { Dictionary = dicts[d] };
+                Assert.Equal(payload, Lz4Block.Decompress(block, options));
+                byte[] dest = new byte[size];
+                Assert.Equal(size, Lz4Block.Decompress(block, dest, options));
+                Assert.Equal(payload, dest);
+            }
+        }
+    }
+
+    [Fact]
     public void OffsetZeroIsRejected()
     {
         byte[] block = [0x10, (byte)'a', 0, 0, 0x50, 1, 2, 3, 4, 5];
