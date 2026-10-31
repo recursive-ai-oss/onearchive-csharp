@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 using System.Numerics;
+using System.Runtime.Intrinsics;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -41,6 +42,9 @@ public sealed class ZstdBlockWriter
     /// </summary>
     public const int DestinationSlack = 320;
 
+    // Literal sections shorter than this, under estimated pricing, are priced against the tree in hand without counting their bytes; a
+    // longer one is large enough to repay a tree of its own, and counting its bytes is a small part of coding it.
+    private const int DirectLimit = 1024;
     private const int MinimumSequencesForNewTable = 64;
     private const int MinimumLiteralsForNewTree = 64;
 
@@ -324,17 +328,6 @@ public sealed class ZstdBlockWriter
             return WriteRawLiterals(literals, destination, rawHeader);
         }
 
-        uint[] histogram = _literalHistogram;
-        int maxSymbol = Histogram(literals, histogram, out int distinct, out ReadOnlySpan<byte> symbols);
-
-        if (distinct == 1)
-        {
-            // RLE literals: the header, then the one byte.
-            int h = WriteSizeHeader(destination, 1, n);
-            destination[h] = literals[0];
-            return h + 1;
-        }
-
         int rawCost = rawHeader + n;
         int bestCost = rawCost;
         int choice = 0; // 0 raw, 1 new tree, 2 previous tree
@@ -342,55 +335,90 @@ public sealed class ZstdBlockWriter
         int descriptionSize = 0;
         bool singleStream = n < 256;
 
-        // The previous tree's cost is cheap to know. A new tree costs about the entropy of the literals plus its description
-        // (roughly 8 bytes and 3 bits per distinct symbol); when the best alternative at hand (the previous tree, else raw) is no
-        // dearer than that, building a tree cannot pay. Small blocks with a dictionary, which is most of what the fast levels
-        // see, skip the tree build this way.
-        int previousCost = int.MaxValue;
-        long previousBits = 0;
-        if (_previousHuffman is not null && (symbols.IsEmpty ? _previousHuffman.TryEncodedBits(histogram, maxSymbol, out previousBits) : _previousHuffman.TryEncodedBits(histogram, symbols, out previousBits)))
+        // A small block with a tree to hand (a dictionary's, or the last block's) under estimated pricing does not look for a better
+        // tree when the one in hand fits: counting the bytes, pricing a tree of their own and building it cost more than the few
+        // percent such a tree saves on the few blocks it wins on. The tree in hand is priced straight from the bytes, with no
+        // counting. A tree that costs a quarter more than storing the bytes is a poor fit for them and a tree of their own may be
+        // far better, as is a block it cannot code or whose literals are all one byte; those take the full path below.
+        bool decided = false;
+        if (_estimatedPricing && n < DirectLimit && _previousHuffman is not null && _previousHuffman.TryEncodedBits(literals, out long directBits, out bool allEqual) && !allEqual)
         {
-            int streamBytes = StreamBytes(previousBits, singleStream, n);
-            previousCost = CompressedHeaderSize(n, streamBytes, singleStream) + streamBytes;
-        }
-
-        // Under estimated pricing a usable previous tree also makes fewer than twice the minimum a block too small to repay a tree
-        // of its own: its description is a fifth of such a block, and the estimate below would only confirm that.
-        bool tryNew = n >= (_estimatedPricing && previousCost != int.MaxValue ? 2 * MinimumLiteralsForNewTree : MinimumLiteralsForNewTree);
-        if (tryNew)
-        {
-            int estimate = CompressedHeaderSize(n, 0, singleStream) + 8 + ((distinct * 3) / 8)
-                + StreamBytes((symbols.IsEmpty ? ZstdCost.EntropyLowerBound(histogram, maxSymbol, n) : ZstdCost.EntropyLowerBound(histogram, symbols, n)) / ZstdCost.Bit, singleStream, n);
-
-            // The fast strategies want speed on small blocks: building a tree costs several times what coding the block with
-            // the tree already in hand does, so a usable previous tree (a dictionary's, or the last block's) is kept unless a new
-            // one could save an eighth of its cost even if it reached the entropy bound. The bound is optimistic, so this skips
-            // most trees that would have saved a few percent and none that would have saved a lot.
-            int margin = _estimatedPricing && n < SmallLiteralBlock && previousCost != int.MaxValue ? previousCost >> 3 : 0;
-            tryNew = estimate + margin < Math.Min(rawCost, previousCost);
-        }
-
-        bool built = tryNew && candidate.Build(histogram, maxSymbol);
-        if (built)
-        {
-            descriptionSize = candidate.WriteDescription(_description);
-            if (descriptionSize > 0)
+            int directBytes = StreamBytes(directBits, singleStream, n);
+            int directCost = CompressedHeaderSize(n, directBytes, singleStream) + directBytes;
+            if (directCost < bestCost)
             {
-                long bits = candidate.EncodedBits(histogram, maxSymbol);
-                int streamBytes = StreamBytes(bits, singleStream, n);
-                int cost = CompressedHeaderSize(n, streamBytes + descriptionSize, singleStream) + descriptionSize + streamBytes;
-                if (cost < bestCost)
+                bestCost = directCost;
+                choice = 2;
+            }
+
+            decided = directCost * 4 < rawCost * 5 || n < 2 * MinimumLiteralsForNewTree;
+        }
+
+        if (!decided)
+        {
+            bestCost = rawCost;
+            choice = 0;
+            uint[] histogram = _literalHistogram;
+            int maxSymbol = Histogram(literals, histogram, out int distinct, out ReadOnlySpan<byte> symbols);
+
+            if (distinct == 1)
+            {
+                // RLE literals: the header, then the one byte.
+                int h = WriteSizeHeader(destination, 1, n);
+                destination[h] = literals[0];
+                return h + 1;
+            }
+
+            // The previous tree's cost is cheap to know. A new tree costs about the entropy of the literals plus its description
+            // (roughly 8 bytes and 3 bits per distinct symbol); when the best alternative at hand (the previous tree, else raw) is no
+            // dearer than that, building a tree cannot pay. Small blocks with a dictionary, which is most of what the fast levels
+            // see, skip the tree build this way.
+            int previousCost = int.MaxValue;
+            long previousBits = 0;
+            if (_previousHuffman is not null && (symbols.IsEmpty ? _previousHuffman.TryEncodedBits(histogram, maxSymbol, out previousBits) : _previousHuffman.TryEncodedBits(histogram, symbols, out previousBits)))
+            {
+                int streamBytes = StreamBytes(previousBits, singleStream, n);
+                previousCost = CompressedHeaderSize(n, streamBytes, singleStream) + streamBytes;
+            }
+
+            // Under estimated pricing a usable previous tree also makes fewer than twice the minimum a block too small to repay a tree
+            // of its own: its description is a fifth of such a block, and the estimate below would only confirm that.
+            bool tryNew = n >= (_estimatedPricing && previousCost != int.MaxValue ? 2 * MinimumLiteralsForNewTree : MinimumLiteralsForNewTree);
+            if (tryNew)
+            {
+                int estimate = CompressedHeaderSize(n, 0, singleStream) + 8 + ((distinct * 3) / 8)
+                    + StreamBytes((symbols.IsEmpty ? ZstdCost.EntropyLowerBound(histogram, maxSymbol, n) : ZstdCost.EntropyLowerBound(histogram, symbols, n)) / ZstdCost.Bit, singleStream, n);
+
+                // The fast strategies want speed on small blocks: building a tree costs several times what coding the block with
+                // the tree already in hand does, so a usable previous tree (a dictionary's, or the last block's) is kept unless a new
+                // one could save an eighth of its cost even if it reached the entropy bound. The bound is optimistic, so this skips
+                // most trees that would have saved a few percent and none that would have saved a lot.
+                int margin = _estimatedPricing && n < SmallLiteralBlock && previousCost != int.MaxValue ? previousCost >> 3 : 0;
+                tryNew = estimate + margin < Math.Min(rawCost, previousCost);
+            }
+
+            bool built = tryNew && candidate.Build(histogram, maxSymbol);
+            if (built)
+            {
+                descriptionSize = candidate.WriteDescription(_description);
+                if (descriptionSize > 0)
                 {
-                    bestCost = cost;
-                    choice = 1;
+                    long bits = candidate.EncodedBits(histogram, maxSymbol);
+                    int streamBytes = StreamBytes(bits, singleStream, n);
+                    int cost = CompressedHeaderSize(n, streamBytes + descriptionSize, singleStream) + descriptionSize + streamBytes;
+                    if (cost < bestCost)
+                    {
+                        bestCost = cost;
+                        choice = 1;
+                    }
                 }
             }
-        }
 
-        if (previousCost < bestCost)
-        {
-            bestCost = previousCost;
-            choice = 2;
+            if (previousCost < bestCost)
+            {
+                bestCost = previousCost;
+                choice = 2;
+            }
         }
 
         if (choice == 0)
@@ -644,16 +672,9 @@ public sealed class ZstdBlockWriter
             Code(sequences, offsetValues, seqCodes, i, llCodeTable, mlCodeTable, llInfo, mlInfo, llHistogram, ofHistogram, mlHistogram);
         }
 
-        ulong llPresent = 0, ofPresent = 0, mlPresent = 0;
-        for (int c = 0; c < 56; c++)
-        {
-            uint ll = llHistogram[c] += llB[c];
-            uint of = ofHistogram[c] += ofB[c];
-            uint ml = mlHistogram[c] += mlB[c];
-            llPresent |= (ll != 0 ? 1UL : 0UL) << c;
-            ofPresent |= (of != 0 ? 1UL : 0UL) << c;
-            mlPresent |= (ml != 0 ? 1UL : 0UL) << c;
-        }
+        ulong llPresent = MergeAndFindPresent(llHistogram, llB);
+        ulong ofPresent = MergeAndFindPresent(ofHistogram, ofB);
+        ulong mlPresent = MergeAndFindPresent(mlHistogram, mlB);
 
         present[0] = llPresent;
         present[1] = ofPresent;
@@ -663,6 +684,32 @@ public sealed class ZstdBlockWriter
         maxLl = llPresent == 0 ? 0 : 63 - BitOperations.LeadingZeroCount(llPresent);
         maxOf = ofPresent == 0 ? 0 : 63 - BitOperations.LeadingZeroCount(ofPresent);
         maxMl = mlPresent == 0 ? 0 : 63 - BitOperations.LeadingZeroCount(mlPresent);
+    }
+
+    // Adds the counters of `extra` into `counters` (the first 56 of them: codes are at most 52) and returns a bit for each counter that
+    // is not zero. Eight counters at a time where the hardware has 256-bit vectors; the loop for other hardware gives the same words.
+    private static ulong MergeAndFindPresent(uint[] counters, uint[] extra)
+    {
+        ulong present = 0;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            for (int c = 0; c < 56; c += 8)
+            {
+                Vector256<uint> sum = Vector256.Create(new ReadOnlySpan<uint>(counters, c, 8)) + Vector256.Create(new ReadOnlySpan<uint>(extra, c, 8));
+                sum.CopyTo(counters, c);
+                present |= (ulong)(~Vector256.Equals(sum, Vector256<uint>.Zero).ExtractMostSignificantBits() & 0xFFu) << c;
+            }
+
+            return present;
+        }
+
+        for (int c = 0; c < 56; c++)
+        {
+            uint count = counters[c] += extra[c];
+            present |= (count != 0 ? 1UL : 0UL) << c;
+        }
+
+        return present;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
