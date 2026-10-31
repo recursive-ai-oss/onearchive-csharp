@@ -23,6 +23,10 @@ public sealed class ZstdBlockWriter
     private static readonly byte[] s_literalLengthCodes = BuildCodeTable(ZstdFormat.LiteralLengthBase, 64, 0);
     private static readonly byte[] s_matchLengthCodes = BuildCodeTable(ZstdFormat.MatchLengthBase, 128, 3);
 
+    // Per code: the baseline in the low 24 bits and the number of extra bits above them, so that one read gives both.
+    private static readonly uint[] s_literalLengthInfo = BuildInfoTable(ZstdFormat.LiteralLengthBase, ZstdFormat.LiteralLengthBits);
+    private static readonly uint[] s_matchLengthInfo = BuildInfoTable(ZstdFormat.MatchLengthBase, ZstdFormat.MatchLengthBits);
+
     // Per table kind (literal lengths, offsets, match lengths): the format's largest accuracy log, and the largest symbol the predefined table has.
     private static readonly int[] s_maxAccuracyLogs = [ZstdFormat.SequenceMaxAccuracyLog, ZstdFormat.OffsetMaxAccuracyLog, ZstdFormat.SequenceMaxAccuracyLog];
     private static readonly int[] s_defaultMaxSymbols = [ZstdFormat.LiteralLengthMaxSymbol, 28, ZstdFormat.MatchLengthMaxSymbol];
@@ -64,12 +68,16 @@ public sealed class ZstdBlockWriter
     // match-length extras packed side by side, then the offset's), so the loop reads one array.
     private struct SequenceCode
     {
-        public byte Ll;
-        public byte Ml;
-        public byte Of;
-        public byte LlMlBits;
+        // The three codes and the number of extra bits of the literal length and match length together, one byte each, so that a
+        // record is written with one store: literal length code, match length code, offset code, then the bit count.
+        public uint Codes;
         public uint LlMlExtra;
         public uint OfExtra;
+
+        public readonly int Ll => (byte)Codes;
+        public readonly int Ml => (byte)(Codes >> 8);
+        public readonly int Of => (byte)(Codes >> 16);
+        public readonly int LlMlBits => (int)(Codes >> 24);
     }
     private readonly uint[] _histogram4 = new uint[4 * 256];
     private readonly uint[] _literalHistogram = new uint[256];
@@ -193,6 +201,17 @@ public sealed class ZstdBlockWriter
         destination[0] = (byte)header;
         destination[1] = (byte)(header >> 8);
         destination[2] = (byte)(header >> 16);
+    }
+
+    private static uint[] BuildInfoTable(uint[] bases, byte[] bits)
+    {
+        var table = new uint[bases.Length];
+        for (int c = 0; c < table.Length; c++)
+        {
+            table[c] = bases[c] | ((uint)bits[c] << 24);
+        }
+
+        return table;
     }
 
     private static byte[] BuildCodeTable(uint[] bases, int length, int minimum)
@@ -538,12 +557,18 @@ public sealed class ZstdBlockWriter
         uint[] h4 = _histogram4;
         Array.Clear(h4);
         int i = 0;
-        for (; i + 4 <= data.Length; i += 4)
+        // Eight bytes per read, spread over the four sets. Bounds: i + 8 <= data.Length for the read.
+        for (; i + 8 <= data.Length; i += 8)
         {
-            Raw.RefRw(h4, data[i])++;
-            Raw.RefRw(h4, 256 + data[i + 1])++;
-            Raw.RefRw(h4, 512 + data[i + 2])++;
-            Raw.RefRw(h4, 768 + data[i + 3])++;
+            ulong v = Raw.ReadUInt64(data, i);
+            Raw.RefRw(h4, (int)(v & 0xFF))++;
+            Raw.RefRw(h4, 256 + (int)((v >> 8) & 0xFF))++;
+            Raw.RefRw(h4, 512 + (int)((v >> 16) & 0xFF))++;
+            Raw.RefRw(h4, 768 + (int)((v >> 24) & 0xFF))++;
+            Raw.RefRw(h4, (int)((v >> 32) & 0xFF))++;
+            Raw.RefRw(h4, 256 + (int)((v >> 40) & 0xFF))++;
+            Raw.RefRw(h4, 512 + (int)((v >> 48) & 0xFF))++;
+            Raw.RefRw(h4, 768 + (int)(v >> 56))++;
         }
 
         for (; i < data.Length; i++)
@@ -582,7 +607,8 @@ public sealed class ZstdBlockWriter
     // Turns the sequences into codes, extra bits and code histograms, resolving repeat offsets as it goes. A method of its own so
     // that its few live values stay in registers. Neighbouring sequences very often share a code, and two increments of the same
     // counter in a row wait on each other's store, so even and odd sequences count into separate histograms (histograms B), which
-    // are added into the real ones at the end; the sums are the same as a single pass.
+    // are added into the real ones at the end; the sums are the same as a single pass. Which codes occur is read off the
+    // histograms afterwards, which costs less than tracking it per sequence.
     private static void ComputeCodes(
         ReadOnlySpan<ZstdSequence> sequences,
         SequenceCode[] seqCodes,
@@ -597,29 +623,36 @@ public sealed class ZstdBlockWriter
         out int maxMl)
     {
         int nseq = sequences.Length;
-        ulong llPresent = 0, ofPresent = 0, mlPresent = 0;
         uint[] llB = histogramsB[0], ofB = histogramsB[1], mlB = histogramsB[2];
         Array.Clear(llB);
         Array.Clear(ofB);
         Array.Clear(mlB);
+        var llCodeTable = new Raw.Table<byte>(s_literalLengthCodes);
+        var mlCodeTable = new Raw.Table<byte>(s_matchLengthCodes);
+        var llInfo = new Raw.Table<uint>(s_literalLengthInfo);
+        var mlInfo = new Raw.Table<uint>(s_matchLengthInfo);
         int i = 0;
         for (; i + 2 <= nseq; i += 2)
         {
             // i + 1 < nseq <= every code array's length (EnsureCodeCapacity); codes are at most 52, inside the histograms' 64 entries.
-            Code(sequences, offsetValues, seqCodes, i, llHistogram, ofHistogram, mlHistogram, ref llPresent, ref ofPresent, ref mlPresent);
-            Code(sequences, offsetValues, seqCodes, i + 1, llB, ofB, mlB, ref llPresent, ref ofPresent, ref mlPresent);
+            Code(sequences, offsetValues, seqCodes, i, llCodeTable, mlCodeTable, llInfo, mlInfo, llHistogram, ofHistogram, mlHistogram);
+            Code(sequences, offsetValues, seqCodes, i + 1, llCodeTable, mlCodeTable, llInfo, mlInfo, llB, ofB, mlB);
         }
 
         if (i < nseq)
         {
-            Code(sequences, offsetValues, seqCodes, i, llHistogram, ofHistogram, mlHistogram, ref llPresent, ref ofPresent, ref mlPresent);
+            Code(sequences, offsetValues, seqCodes, i, llCodeTable, mlCodeTable, llInfo, mlInfo, llHistogram, ofHistogram, mlHistogram);
         }
 
+        ulong llPresent = 0, ofPresent = 0, mlPresent = 0;
         for (int c = 0; c < 56; c++)
         {
-            llHistogram[c] += llB[c];
-            ofHistogram[c] += ofB[c];
-            mlHistogram[c] += mlB[c];
+            uint ll = llHistogram[c] += llB[c];
+            uint of = ofHistogram[c] += ofB[c];
+            uint ml = mlHistogram[c] += mlB[c];
+            llPresent |= (ll != 0 ? 1UL : 0UL) << c;
+            ofPresent |= (of != 0 ? 1UL : 0UL) << c;
+            mlPresent |= (ml != 0 ? 1UL : 0UL) << c;
         }
 
         present[0] = llPresent;
@@ -638,35 +671,33 @@ public sealed class ZstdBlockWriter
         ReadOnlySpan<uint> offsetValues,
         SequenceCode[] seqCodes,
         int i,
+        Raw.Table<byte> llCodeTable,
+        Raw.Table<byte> mlCodeTable,
+        Raw.Table<uint> llInfo,
+        Raw.Table<uint> mlInfo,
         uint[] llHistogram,
         uint[] ofHistogram,
-        uint[] mlHistogram,
-        ref ulong llPresent,
-        ref ulong ofPresent,
-        ref ulong mlPresent)
+        uint[] mlHistogram)
     {
+        // Bounds: i < the sequences and offset values; a literal length below 64 and a match length less 3 below 128 index their code
+        // tables; the codes (at most 52) index the 53-entry info tables (35 for literal lengths) and the 64-entry histograms.
         ZstdSequence s = Raw.Get(sequences, i);
         uint ofValue = Raw.Get(offsetValues, i);
         uint lls = s.LiteralLength;
-        int ll = lls < 64 ? Raw.Get<byte>(s_literalLengthCodes, (int)lls) : BitOperations.Log2(lls) + 19;
-        uint m = s.MatchLength - 3;
-        int ml = m < 128 ? Raw.Get<byte>(s_matchLengthCodes, (int)m) : BitOperations.Log2(m) + 36;
+        int ll = lls < 64 ? llCodeTable[(int)lls] : BitOperations.Log2(lls) + 19;
+        uint mls = s.MatchLength;
+        uint m = mls - 3;
+        int ml = m < 128 ? mlCodeTable[(int)m] : BitOperations.Log2(m) + 36;
         int of = BitOperations.Log2(ofValue);
-        int llBitCount = Raw.Get(ZstdFormat.LiteralLengthBits, ll);
-        int mlBitCount = Raw.Get(ZstdFormat.MatchLengthBits, ml);
+        uint li = llInfo[ll];
+        uint mi = mlInfo[ml];
         ref SequenceCode record = ref Raw.RefRw(seqCodes, i);
-        record.Ll = (byte)ll;
-        record.Ml = (byte)ml;
-        record.Of = (byte)of;
-        record.LlMlBits = (byte)(llBitCount + mlBitCount);
-        record.LlMlExtra = (lls - Raw.Get(ZstdFormat.LiteralLengthBase, ll)) | ((s.MatchLength - Raw.Get(ZstdFormat.MatchLengthBase, ml)) << llBitCount);
+        record.Codes = (uint)ll | ((uint)ml << 8) | ((uint)of << 16) | (((li >> 24) + (mi >> 24)) << 24);
+        record.LlMlExtra = (lls - (li & 0xFFFFFF)) | ((mls - (mi & 0xFFFFFF)) << (int)(li >> 24));
         record.OfExtra = ofValue - (1u << of);
         Raw.RefRw(llHistogram, ll)++;
         Raw.RefRw(mlHistogram, ml)++;
         Raw.RefRw(ofHistogram, of)++;
-        llPresent |= 1UL << ll;
-        ofPresent |= 1UL << of;
-        mlPresent |= 1UL << ml;
     }
 
     // Sequences with no literals are rare; they use the shifted repeat-offset meaning (RFC 8878 §3.1.2.5), kept in one place.
@@ -721,9 +752,9 @@ public sealed class ZstdBlockWriter
             // Small blocks price their table choices exactly, which walks the code sequences.
             for (int i = 0; i < nseq; i++)
             {
-                llCodes[i] = seqCodes[i].Ll;
-                mlCodes[i] = seqCodes[i].Ml;
-                ofCodes[i] = seqCodes[i].Of;
+                llCodes[i] = (byte)seqCodes[i].Ll;
+                mlCodes[i] = (byte)seqCodes[i].Ml;
+                ofCodes[i] = (byte)seqCodes[i].Of;
             }
         }
 
@@ -992,34 +1023,36 @@ public sealed class ZstdBlockWriter
         if (llTable is not null && ofTable is not null && mlTable is not null)
         {
             // The common case: all three tables in use. Per-table arrays are read through locals.
-            ushort[] llNext = llTable.StateTable;
-            ushort[] ofNext = ofTable.StateTable;
-            ushort[] mlNext = mlTable.StateTable;
-            FseEncodingTable.SymbolTransform[] llT = llTable.Transforms;
-            FseEncodingTable.SymbolTransform[] ofT = ofTable.Transforms;
-            FseEncodingTable.SymbolTransform[] mlT = mlTable.Transforms;
+            var llNext = new Raw.Table<ushort>(llTable.StateTable);
+            var ofNext = new Raw.Table<ushort>(ofTable.StateTable);
+            var mlNext = new Raw.Table<ushort>(mlTable.StateTable);
+            var llT = new Raw.Table<FseEncodingTable.SymbolTransform>(llTable.Transforms);
+            var ofT = new Raw.Table<FseEncodingTable.SymbolTransform>(ofTable.Transforms);
+            var mlT = new Raw.Table<FseEncodingTable.SymbolTransform>(mlTable.Transforms);
             for (int i = last - 1; i >= 0; i--)
             {
                 // Bounds: i < nseq <= codes.Length; the codes are at most 52 and the transform arrays have 256 entries; a valid
                 // state shifted down by the bits it emits indexes inside the table (see FseEncodingTable.Encode).
                 ref SequenceCode sc = ref Raw.RefRw(codes, i);
-                FseEncodingTable.SymbolTransform t = Raw.Get(ofT, sc.Of);
+                uint word = sc.Codes;
+                int scOf = (byte)(word >> 16);
+                FseEncodingTable.SymbolTransform t = ofT[scOf];
                 uint nb = ((uint)ofState + t.NbBits) >> 16;
                 container |= (ulong)((uint)ofState & ((1u << (int)nb) - 1)) << bitCount;
                 bitCount += (int)nb;
-                ofState = Raw.Get(ofNext, (ofState >> (int)nb) + t.FindState);
+                ofState = ofNext[(ofState >> (int)nb) + t.FindState];
 
-                t = Raw.Get(mlT, sc.Ml);
+                t = mlT[(byte)(word >> 8)];
                 nb = ((uint)mlState + t.NbBits) >> 16;
                 container |= (ulong)((uint)mlState & ((1u << (int)nb) - 1)) << bitCount;
                 bitCount += (int)nb;
-                mlState = Raw.Get(mlNext, (mlState >> (int)nb) + t.FindState);
+                mlState = mlNext[(mlState >> (int)nb) + t.FindState];
 
-                t = Raw.Get(llT, sc.Ll);
+                t = llT[(byte)word];
                 nb = ((uint)llState + t.NbBits) >> 16;
                 container |= (ulong)((uint)llState & ((1u << (int)nb) - 1)) << bitCount;
                 bitCount += (int)nb;
-                llState = Raw.Get(llNext, (llState >> (int)nb) + t.FindState);
+                llState = llNext[(llState >> (int)nb) + t.FindState];
 
                 // At most 26 bits of states and 7 left over make 33; when the extras of all three codes fit in the remaining 30 bits
                 // (nearly every sequence of an ordinary block) they join the states in one flush, which shortens the chain of
@@ -1027,13 +1060,13 @@ public sealed class ZstdBlockWriter
                 // 33 + 31 would fill the 64-bit container exactly, and shifting it down by the 64 bits just written is a shift by
                 // zero in C#, which would leave the written bits in the container to be written again.
                 uint extra = sc.LlMlExtra;
-                int extraBits = sc.LlMlBits;
-                if ((uint)(extraBits + sc.Of) <= 30)
+                int extraBits = (int)(word >> 24);
+                if ((uint)(extraBits + scOf) <= 30)
                 {
                     container |= (ulong)extra << bitCount;
                     bitCount += extraBits;
                     container |= (ulong)sc.OfExtra << bitCount;
-                    bitCount += sc.Of;
+                    bitCount += scOf;
                     Raw.WriteUInt64(output, position, container);
                     position += bitCount >> 3;
                     container >>= bitCount & ~7;
@@ -1065,7 +1098,7 @@ public sealed class ZstdBlockWriter
                 container >>= bitCount & ~7;
                 bitCount &= 7;
                 container |= (ulong)sc.OfExtra << bitCount;
-                bitCount += sc.Of;
+                bitCount += scOf;
                 Raw.WriteUInt64(output, position, container);
                 position += bitCount >> 3;
                 container >>= bitCount & ~7;

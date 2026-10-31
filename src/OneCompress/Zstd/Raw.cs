@@ -351,4 +351,72 @@ internal static class Raw
         return 0;
 #endif
     }
+
+    /// <summary>
+    /// Compares 16 bytes at <paramref name="a"/> with 16 bytes at <paramref name="b"/> and returns a mask with bit <c>i</c> set when
+    /// byte <c>i</c> differs. The vector and scalar paths give the same mask. The caller guarantees both 16-byte ranges lie inside
+    /// <paramref name="span"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint DifferMask16(ReadOnlySpan<byte> span, nint a, nint b)
+    {
+#if CHECKED
+        uint mask = 0;
+        for (int i = 0; i < 16; i++)
+        {
+            if (span[checked((int)a) + i] != span[checked((int)b) + i])
+            {
+                mask |= 1u << i;
+            }
+        }
+
+        return mask;
+#else
+        if (Vector128.IsHardwareAccelerated)
+        {
+            ref byte origin = ref MemoryMarshal.GetReference(span);
+            Vector128<byte> x = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref origin, a));
+            Vector128<byte> y = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref origin, b));
+            return ~Vector128.Equals(x, y).ExtractMostSignificantBits() & 0xFFFF;
+        }
+
+        uint scalar = 0;
+        ref byte first = ref MemoryMarshal.GetReference(span);
+        for (int i = 0; i < 16; i++)
+        {
+            if (Unsafe.Add(ref first, a + i) != Unsafe.Add(ref first, b + i))
+            {
+                scalar |= 1u << i;
+            }
+        }
+
+        return scalar;
+#endif
+    }
+
+    /// <summary>
+    /// A table read in a hot loop without the null test and the length load an array access repeats on every read: the array's
+    /// first element is found once. Under the <c>Checked</c> configuration every read is bounds-checked. The caller guarantees
+    /// <c>0 &lt;= index &lt; array.Length</c> for every read.
+    /// </summary>
+    public readonly ref struct Table<T>
+    {
+#if CHECKED
+        private readonly T[] _array;
+
+        public Table(T[] array) => _array = array;
+
+        public T this[int index] => _array[index];
+#else
+        private readonly ref T _origin;
+
+        public Table(T[] array) => _origin = ref MemoryMarshal.GetArrayDataReference(array);
+
+        public T this[int index]
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => Unsafe.Add(ref _origin, index);
+        }
+#endif
+    }
 }
