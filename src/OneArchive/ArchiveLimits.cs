@@ -39,6 +39,24 @@ public sealed class ArchiveLimits
     public static ArchiveLimits Default { get; } = new();
 
     /// <summary>
+    /// Gets shared limits for very large archives, such as mail or backup exports with a million entries and tens of gigabytes of
+    /// content: <see cref="MaxEntryCount"/> 4,000,000 and <see cref="MaxTotalSize"/> 256 GiB. Every other limit keeps its default,
+    /// so the expansion-ratio, path length, path depth, window and PPMd memory protections stay on and a decompression bomb is
+    /// still refused once it has expanded past <see cref="ExpansionRatioGraceBytes"/> at more than <see cref="MaxExpansionRatio"/> to one.
+    /// <para>Raising the entry count is only safe for memory when the reader does not keep an object per entry. For zip that means
+    /// <see cref="Zip.ZipReaderOptions.LazyDirectory"/>; the default zip reader holds about 600 bytes per entry, so 4,000,000 entries
+    /// would be about 2.4 GB. Extraction holds no per-entry state except the directories it has made (and, for tar, the files a hard
+    /// link may name). Keep <see cref="Default"/> for archives from untrusted sources that are not expected to be large.</para>
+    /// </summary>
+    public static ArchiveLimits LargeArchive { get; } = new() { MaxEntryCount = LargeArchiveMaxEntryCount, MaxTotalSize = LargeArchiveMaxTotalSize };
+
+    /// <summary>The <see cref="MaxEntryCount"/> of <see cref="LargeArchive"/>: 4,000,000, four times a million-entry export.</summary>
+    public const int LargeArchiveMaxEntryCount = 4_000_000;
+
+    /// <summary>The <see cref="MaxTotalSize"/> of <see cref="LargeArchive"/>: 256 GiB.</summary>
+    public const long LargeArchiveMaxTotalSize = 256L << 30;
+
+    /// <summary>
     /// Gets the most content bytes all entries together may declare, counting a sparse file at its full size.
     /// The sum of declared sizes is checked as each header is read, before any data is. Default 1 GiB.
     /// </summary>

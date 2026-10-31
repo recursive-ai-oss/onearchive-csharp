@@ -140,6 +140,36 @@ buffered) and `MaxSparseRegions` 100,000.
 For a compressed archive the whole decompressed stream is metered, and after the last entry the rest of the stream is read
 so that the codec's own checks (Zstandard content checksum, truncation) run.
 
+### Large archives
+
+The defaults suit archives of up to about 100,000 entries and 1 GiB of content. A mail or backup export can hold a million entries
+and tens of gigabytes; opening one with the defaults raises `CompressionLimitException` (`MaxEntryCount`, or `MaxTotalSize` when
+the declared sizes pass 1 GiB first). To read one, set three things:
+
+```csharp
+var zip = new ZipReaderOptions { LazyDirectory = true };
+var limits = ArchiveLimits.LargeArchive;
+using Archive archive = Archive.Open(path, new ArchiveOpenOptions { Limits = limits, Zip = zip });
+Archive.Extract(path, target, new ArchiveExtractOptions { Limits = limits, Zip = zip });
+```
+
+- **`ArchiveLimits.LargeArchive`** changes two values: `MaxEntryCount` 4,000,000 (four times a million-entry export) and
+  `MaxTotalSize` 256 GiB (the sum of declared sizes, which also bounds the disk an extraction can fill). Everything else keeps its
+  default: `MaxExpansionRatio` 1000, `MaxPathLength`, `MaxPathDepth`, `MaxWindowSize` and `MaxPpmdMemorySize`, so a decompression
+  bomb, a deep or very long path, or a huge decoder window is still refused. Set the two numbers yourself for a different size.
+- **`ZipReaderOptions.LazyDirectory`** keeps zip memory flat: the default reader holds about 600 bytes per entry (630 MiB at a
+  million), the lazy one under 1 MiB, and the directory is still checked as a whole before the first entry. Without it, raise
+  `ZipReaderOptions.MaxCentralDirectorySize` too (default 128 MiB, passed by a million entries with long names) and expect the
+  memory above; the entry count then costs RAM, so do not raise `MaxEntryCount` far past what you expect. Lazy mode needs a seekable
+  stream; the other formats keep whatever per-entry state their readers need, which was not changed.
+- **Extraction** keeps no state that grows with the number of files. It does remember the directories it created (a cache of
+  checked directories, capped at 65,536 and emptied when full, and the directories whose permissions and times are applied at
+  the end, about 150 bytes each) and, for tar and RAR only, the path of every extracted file so that a hard link can name it
+  (about 200 bytes per file). Extracting a million-entry zip into a thousand folders holds under 1 MiB; peak working set stays
+  at the runtime's baseline.
+- **Still on** with the preset: `..`, absolute-path, drive-letter, link and device checks, overwrite rules, the expansion ratio
+  and the nesting and window limits. A hit is still a typed `CompressionLimitException` or `ArchiveSafetyException`.
+
 ## Tar
 
 ### Reading

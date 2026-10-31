@@ -618,7 +618,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
         ArchiveReader reader = NewReader();
         try
         {
-            var extractor = new ArchiveExtractor(targetDirectory, options, reader.Format.ToString().ToLowerInvariant());
+            var extractor = new ArchiveExtractor(targetDirectory, options, reader.Format.ToString().ToLowerInvariant(), canHaveHardLinks: reader.Format is ArchiveFormat.Tar or ArchiveFormat.Rar or ArchiveFormat.Cpio);
             ArchiveExtractResult result = await extractor.RunAsync(reader, async, ct).ConfigureAwait(false);
 
             // Read the compressed stream to its end so that its own checks (frame checksum, truncation) run.

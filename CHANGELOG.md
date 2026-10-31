@@ -6,8 +6,13 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ### Added
 
+- `ArchiveLimits.LargeArchive` (4,000,000 entries, 256 GiB declared size, every other limit at its default) and a "Large archives" section in `docs/archive.md`: with `ZipReaderOptions.LazyDirectory` a million-entry mail export opens, lists and extracts. The defaults are unchanged.
 - Zip lazy central directory (`ZipReaderOptions.LazyDirectory`, also through `ArchiveOpenOptions.Zip`): a seekable zip is enumerated record by record without holding the directory, so memory no longer grows with the entry count (a million-entry archive: 630 MiB held by the default reader, under 1 MiB by the lazy one), and `OpenEntryStream(entry)` seeks to any entry the reader returned earlier. The directory is validated before the first entry, with the same overlap and shared-header checks and the same errors; `MaxCentralDirectorySize` does not apply, and a symbolic link's target is read when its entry is handed out. Off by default; the default mode is unchanged. The `zip-read-lazy` fuzz target covers it.
 - Compound file recovery mode (`CompoundFileReaderOptions.Recovery`, `MaxRecoveryBytes`; `CompoundFileReader.Damage`, `IsRecovered`; `CfbDamage`, `CfbDamageKind`; `CfbEntry.IsDamaged`, `DeclaredSize`), also reachable through `ArchiveOpenOptions.CompoundFile`. A file the strict reader refuses is opened anyway when it can be: a cut-short file, FAT/DIFAT/mini FAT entries that point outside the file, chains that loop or end early, a lost directory start, bad directory entries and links (unreachable entries are attached to the root), header fields that disagree with the file. Streams that cannot be followed to their declared size are shortened and flagged; every problem is listed in `Damage`. Off by default; reading is unchanged without it, and a file that passes the strict checks reads the same either way. The `cfb-recover` fuzz target covers it.
+
+### Changed
+
+- Extraction no longer remembers every extracted file: only formats that can carry hard links (tar, RAR, cpio) keep file paths, the checked-directory cache is capped, and directories without permissions or times to restore are not queued. Extracting a million-entry zip went from 312 MiB held (369 MiB peak working set) to under 1 MiB held (94 MiB, the runtime's baseline). No safety check changed.
 
 ## [1.0.0] - 2026-10-31
 
