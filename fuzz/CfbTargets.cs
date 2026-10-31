@@ -15,6 +15,8 @@ namespace RecursiveAI.Fuzz;
 /// names, kinds, sizes, CLSIDs, state bits, times and content hashes must be unchanged, and writing must not throw.</item>
 /// <item><c>cfb-write</c>: the input is a script of random paths, sizes and contents. Every entry the writer accepts must be there, with the same
 /// content, when its output is read back, in both versions; a rejected entry must leave the writer usable.</item>
+/// <item><c>cfb-recover</c>: the input is a compound file, read with recovery on. Memory and stream sources must agree; a file the strict reader accepts must read
+/// identically with no damage listed; and what comes back must be readable, match the sizes listed, and never add up to more than the input holds.</item>
 /// </list>
 /// <c>fuzz/seeds-cfb.sh</c> writes seeds.
 /// </summary>
@@ -31,6 +33,16 @@ internal static class CfbTargets
     public static FuzzTarget Rewrite { get; } = new("cfb-rewrite", static data => RewriteCheck(data.ToArray()), static ex => ex is CompressionException);
 
     public static FuzzTarget Write { get; } = new("cfb-write", static data => WriteCheck(data.ToArray()), static _ => false);
+
+    public static FuzzTarget Recover { get; } = new("cfb-recover", static data => RecoverCheck(data.ToArray()), static ex => ex is CompressionException);
+
+    private static readonly CompoundFileReaderOptions s_recovering = new()
+    {
+        Recovery = true,
+        MaxRecoveryBytes = 1 << 26,
+        MaxDirectoryEntries = 20000,
+        Limits = new ArchiveLimits { MaxTotalSize = 1 << 24, MaxEntryCount = 2000, MaxPathLength = 1024, MaxPathDepth = 32 },
+    };
 
     private static readonly CompoundFileReaderOptions s_wide = new()
     {
@@ -262,6 +274,87 @@ internal static class CfbTargets
         if (a != b)
         {
             throw new InvalidOperationException("memory and stream sources gave different results");
+        }
+    }
+
+    private static void RecoverCheck(byte[] data)
+    {
+        string strict;
+        using (var r = TryOpen(() => new CompoundFileReader(data, s_options), out string failure))
+        {
+            strict = r is null ? failure : Summarize(r);
+        }
+
+        string a;
+        string b;
+        int damage;
+        using (var r = TryOpen(() => new CompoundFileReader(data, s_recovering), out string failure))
+        {
+            a = r is null ? failure : Summarize(r);
+            damage = r?.Damage.Count ?? 0;
+            if (r is not null)
+            {
+                CheckRecovered(r, data.Length);
+            }
+        }
+
+        using (var r = TryOpen(() => new CompoundFileReader(new MemoryStream(data), s_recovering), out string failure))
+        {
+            b = r is null ? failure : Summarize(r);
+        }
+
+        if (a != b)
+        {
+            throw new InvalidOperationException("memory and stream sources gave different results with recovery on");
+        }
+
+        if (!strict.Contains('!', StringComparison.Ordinal) && (a != strict || damage != 0))
+        {
+            throw new InvalidOperationException("a file the strict reader accepts was read differently, or reported damage, with recovery on");
+        }
+    }
+
+    // Everything listed can be read in full, at the size listed, and the streams together fit in the input (sectors are never shared).
+    private static void CheckRecovered(CompoundFileReader r, int inputLength)
+    {
+        long total = 0;
+        var seen = new HashSet<int>();
+        void Visit(CfbEntry parent)
+        {
+            foreach (CfbEntry e in r.GetChildren(parent))
+            {
+                if (!seen.Add(e.StreamId))
+                {
+                    throw new InvalidOperationException("an entry is listed twice: " + e.StreamId);
+                }
+
+                if (e.Kind == ArchiveEntryKind.File)
+                {
+                    if (e.Size > e.DeclaredSize)
+                    {
+                        throw new InvalidOperationException("a recovered stream is longer than declared");
+                    }
+
+                    using Stream s = r.OpenEntryStream(e);
+                    long n = ReadAll(s).Length;
+                    if (n != e.Size)
+                    {
+                        throw new InvalidOperationException($"entry {e.StreamId} lists {e.Size} bytes and gives {n}");
+                    }
+
+                    total += n;
+                }
+                else
+                {
+                    Visit(e);
+                }
+            }
+        }
+
+        Visit(r.Root);
+        if (total > inputLength)
+        {
+            throw new InvalidOperationException($"{total} bytes recovered from {inputLength}");
         }
     }
 

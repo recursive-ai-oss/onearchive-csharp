@@ -57,6 +57,25 @@ foreach (int version in new[] { 3, 4 })
     }
 }
 
+// Recovery: a wrong sector shift in the header is refused by default and repaired on request.
+byte[] damaged = (byte[])file.Clone();
+damaged[30] = 13;
+try
+{
+    using var refused = new CompoundFileReader(damaged);
+    _ = refused.Header;
+    return Fail("damaged header was accepted");
+}
+catch (RecursiveAI.OneCompress.CompressionFormatException)
+{
+}
+
+using var recovered = new CompoundFileReader(damaged, new CompoundFileReaderOptions { Recovery = true, Limits = new ArchiveLimits { MaxPathDepth = 100 } });
+if (!recovered.IsRecovered || recovered.Damage[0].Kind != CfbDamageKind.HeaderInconsistent || recovered.Find("big")?.Size != 9000)
+{
+    return Fail("recovery");
+}
+
 Console.WriteLine("cfb smoke ok");
 return 0;
 

@@ -347,7 +347,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
 
                 return new CabReader(stream, cab, leaveOpen: !ownsTop);
             case ArchiveFormat.CompoundFile:
-                var cfb = new CompoundFileReaderOptions { Limits = options.Limits, MaxDirectoryEntries = options.CompoundFile?.MaxDirectoryEntries ?? CompoundFileReaderOptions.DefaultMaxDirectoryEntries };
+                var cfb = new CompoundFileReaderOptions { Limits = options.Limits, MaxDirectoryEntries = options.CompoundFile?.MaxDirectoryEntries ?? CompoundFileReaderOptions.DefaultMaxDirectoryEntries, Recovery = options.CompoundFile?.Recovery ?? false, MaxRecoveryBytes = options.CompoundFile?.MaxRecoveryBytes ?? CompoundFileReaderOptions.Default.MaxRecoveryBytes };
                 if (!stream.CanSeek)
                 {
                     // Sector chains are followed by offset: a source that cannot seek is copied into memory first.

@@ -2,6 +2,12 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Compound file recovery mode (`CompoundFileReaderOptions.Recovery`, `MaxRecoveryBytes`; `CompoundFileReader.Damage`, `IsRecovered`; `CfbDamage`, `CfbDamageKind`; `CfbEntry.IsDamaged`, `DeclaredSize`), also reachable through `ArchiveOpenOptions.CompoundFile`. A file the strict reader refuses is opened anyway when it can be: a cut-short file, FAT/DIFAT/mini FAT entries that point outside the file, chains that loop or end early, a lost directory start, bad directory entries and links (unreachable entries are attached to the root), header fields that disagree with the file. Streams that cannot be followed to their declared size are shortened and flagged; every problem is listed in `Damage`. Off by default; reading is unchanged without it, and a file that passes the strict checks reads the same either way. The `cfb-recover` fuzz target covers it.
+
 ## [1.0.0] - 2026-10-31
 
 The first stable release. Both packages leave preview: `[Experimental]` is removed from every public type, so the `ONECOMPRESS001`-`ONECOMPRESS010` and `ONEARCHIVE001` diagnostics no longer exist and the `NoWarn` entries that opted in can be deleted. From 1.0 the API follows semantic versioning and compressed bytes per codec and level are stable within 1.x (README, Stability). The README speed tables are remeasured against the fastest managed .NET libraries on an AMD Ryzen 9 7950X3D and an Apple M2; the two rows still below the 0.87 bar are marked there.

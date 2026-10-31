@@ -128,8 +128,62 @@ public sealed class CfbEntry : ArchiveEntry
     /// <summary>Gets whether the stream is stored in the mini stream (its size is below the cutoff).</summary>
     public bool IsInMiniStream { get; init; }
 
+    /// <summary>
+    /// Gets the size the directory entry declares. Equal to <see cref="ArchiveEntry.Size"/> unless the reader recovered a damaged file
+    /// (see <see cref="CompoundFileReaderOptions.Recovery"/>) and the stream's sectors do not hold that many bytes, in which case
+    /// <see cref="ArchiveEntry.Size"/> is the shorter length that could be read.
+    /// </summary>
+    public long DeclaredSize { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether recovery found something wrong with this entry: a stream shortened because its sector chain is
+    /// broken, a directory entry with invalid fields, or an entry attached to the root because the tree no longer reaches it.
+    /// Always false unless <see cref="CompoundFileReaderOptions.Recovery"/> is set and the file needed recovery. The reasons are in <see cref="CompoundFileReader.Damage"/>.
+    /// </summary>
+    public bool IsDamaged { get; init; }
+
     internal CompoundFileReader? Owner { get; init; }
 }
+
+/// <summary>What a <see cref="CfbDamage"/> record describes.</summary>
+public enum CfbDamageKind
+{
+    /// <summary>A header field is inconsistent with the file ([MS-CFB] 2.2); a value derived from the file was used instead.</summary>
+    HeaderInconsistent = 0,
+
+    /// <summary>The file ends inside a sector of a table, the directory or the mini stream; the bytes that are there were used and the rest read as free or unallocated.</summary>
+    Truncated = 1,
+
+    /// <summary>The DIFAT or FAT is damaged: an entry points outside the file (which is also how a file cut short looks) or to a sector another chain uses, or the DIFAT chain is cut. Sectors the missing FAT part described are treated as free.</summary>
+    AllocationTableUnusable = 2,
+
+    /// <summary>The mini FAT or the mini stream is damaged; mini streams that need the lost part are shortened.</summary>
+    MiniStreamUnusable = 3,
+
+    /// <summary>The directory sector chain is cut or does not start where the header says; directory sectors were found by scanning.</summary>
+    DirectoryUnusable = 4,
+
+    /// <summary>A directory entry has invalid fields ([MS-CFB] 2.6.1); they were replaced by usable values or the entry was ignored.</summary>
+    BadEntry = 5,
+
+    /// <summary>A sibling or child link is invalid, loops, shares a subtree, or the siblings are not in name order ([MS-CFB] 2.6.4).</summary>
+    BadLink = 6,
+
+    /// <summary>An entry cannot be reached from the root; it was attached to the root.</summary>
+    OrphanedEntry = 7,
+
+    /// <summary>A stream's sector chain is shorter than its size, leaves the file, loops, or shares sectors with another chain; the stream was shortened.</summary>
+    DamagedStream = 8,
+}
+
+/// <summary>One thing recovery skipped, fixed or found damaged in a compound file. See <see cref="CompoundFileReaderOptions.Recovery"/>.</summary>
+/// <param name="Kind">What happened.</param>
+/// <param name="Offset">The file offset of the field or structure concerned.</param>
+/// <param name="Length">The bytes it covers; zero when it marks a place.</param>
+/// <param name="StreamId">The directory entry concerned (<see cref="CfbEntry.StreamId"/>), or -1 when no entry is involved.</param>
+/// <param name="EntryName">The stored name of that entry (<see cref="CfbEntry.RawName"/>); <see langword="null"/> when no entry is involved.</param>
+/// <param name="Reason">A short description of what was expected and not found.</param>
+public readonly record struct CfbDamage(CfbDamageKind Kind, long Offset, long Length, int StreamId, string? EntryName, string Reason);
 
 /// <summary>Options for reading compound files.</summary>
 public sealed class CompoundFileReaderOptions
@@ -148,4 +202,24 @@ public sealed class CompoundFileReaderOptions
     /// Exceeding it raises <see cref="RecursiveAI.OneCompress.CompressionLimitException"/>. Default 262,144.
     /// </summary>
     public int MaxDirectoryEntries { get; init; } = DefaultMaxDirectoryEntries;
+
+    /// <summary>
+    /// Gets a value indicating whether the reader recovers what it can from a damaged file. Default false: a file that breaks
+    /// [MS-CFB] is refused with <see cref="RecursiveAI.OneCompress.CompressionFormatException"/>, exactly as without this option.
+    /// When true, a file that passes the strict checks is read as usual and <see cref="CompoundFileReader.Damage"/> stays empty; otherwise the reader
+    /// opens what it can and lists what it skipped or fixed. Recovery covers a file cut short, FAT/DIFAT/mini FAT entries pointing outside the file
+    /// or at sectors another chain uses, chains that loop or end early, header fields that disagree with the file, directory entries with invalid fields,
+    /// broken or looping links (entries that become unreachable are attached to the root) and a directory chain that is lost (directory sectors are found
+    /// by scanning for the root entry). A stream whose sectors cannot be followed to its declared size is shortened to what can be read and flagged
+    /// (<see cref="CfbEntry.IsDamaged"/>). Sectors are never shared between recovered chains, so recovered output never exceeds the file's size.
+    /// Not repaired: a file with no usable header, no FAT, or no directory at all still raises <see cref="RecursiveAI.OneCompress.CompressionFormatException"/>.
+    /// All limits still apply.
+    /// </summary>
+    public bool Recovery { get; init; }
+
+    /// <summary>
+    /// Gets the most bytes recovery may examine while searching for lost directory sectors, in total. Default 1 GiB. The search reads each sector at most once,
+    /// so this bounds its work. Exceeding it raises <see cref="RecursiveAI.OneCompress.CompressionLimitException"/>. Only used when <see cref="Recovery"/> is true.
+    /// </summary>
+    public long MaxRecoveryBytes { get; init; } = 1L << 30;
 }
