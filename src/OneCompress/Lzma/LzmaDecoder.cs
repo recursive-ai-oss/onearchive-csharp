@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
@@ -15,7 +14,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// then starts over with the next header on the next call.</para>
 /// <para>See <c>docs/lzma-decoder.md</c> for the limits and the exact checks.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzmaDecoder : IStepDecoder
 {
     private const string Format = "lzma";

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 using RecursiveAI.OneCompress.Checksums;
 
@@ -14,7 +13,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// whole frame decodes straight into the caller's buffer. Not thread-safe. Opening validates the seek table against the
 /// file's length; <see cref="Verify"/> checks every frame.
 /// </remarks>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdSeekableReader : IDisposable
 {
     private readonly Stream? _stream;

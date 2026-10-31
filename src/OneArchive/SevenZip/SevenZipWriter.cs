@@ -1,6 +1,5 @@
 using RecursiveAI.OneArchive.Internal;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 using RecursiveAI.OneCompress.Checksums;
@@ -19,7 +18,6 @@ namespace RecursiveAI.OneArchive.SevenZip;
 /// <see cref="SevenZipWriterOptions"/>); directories and empty files only appear in the header. Symbolic links are
 /// files whose content is the UTF-8 target and whose attributes carry the Unix type. Documented in <c>docs/7z-writer.md</c>.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class SevenZipWriter : ArchiveWriter
 {
     private const int StartHeaderSize = 32;

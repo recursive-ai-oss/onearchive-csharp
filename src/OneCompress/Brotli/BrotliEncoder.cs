@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -15,7 +14,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// <para>The encoder holds the window plus one block (up to about 20 MiB at the largest window and 4 MiB blocks) and, from quality 2 up,
 /// four bytes per byte of that for the match finder. Choices the format leaves open are written down in docs/brotli-encoder.md.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BrotliEncoder
 {
     private readonly BrotliEncoderCore _core;

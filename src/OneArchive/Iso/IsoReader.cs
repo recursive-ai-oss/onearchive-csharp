@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneCompress;
@@ -25,7 +24,6 @@ namespace RecursiveAI.OneArchive.Iso;
 /// image, overlapping or repeated continuation areas, a missing descriptor terminator, records that do not fit their sector);
 /// a limit raises <see cref="CompressionLimitException"/>; unsupported features raise <see cref="ArchiveUnsupportedException"/>.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class IsoReader : ArchiveReader
 {
     internal const string Name = IsoFormat.Name;

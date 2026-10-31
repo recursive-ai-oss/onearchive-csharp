@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Lzma;
 
 namespace RecursiveAI.OneCompress.Xz;
 
 /// <summary>One-call decompression of <c>.xz</c> data. Everything here is built on <see cref="XzDecoder"/>. A buffer may hold several streams, with padding between them; their outputs are joined.</summary>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static partial class Xz
 {
     /// <summary>Decompresses a buffer holding one or more xz streams.</summary>
@@ -40,7 +38,6 @@ public static partial class Xz
 /// of the data only after a complete stream: an inner stream that ends inside one, or is empty, raises
 /// <see cref="CompressionFormatException"/> with <see cref="CompressionFormatException.IsTruncated"/> set. Bytes after the last stream that do not start another one raise it unless <see cref="XzDecompressionOptions.AllowTrailingData"/> is set. Writing is not supported.
 /// </remarks>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class XzStream : Stream
 {
     /// <summary>The size of the buffer that holds compressed bytes read from the inner stream.</summary>

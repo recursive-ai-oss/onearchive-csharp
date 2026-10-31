@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace RecursiveAI.OneArchive.Cab;
 
 /// <summary>The compression method of a cabinet folder ([MS-CAB] 2.2, <c>typeCompress</c>).</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum CabCompression
 {
     /// <summary>No compression.</summary>
@@ -21,7 +19,6 @@ public enum CabCompression
 }
 
 /// <summary>The <c>flags</c> field of the cabinet header ([MS-CAB] 2.1).</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 [Flags]
 public enum CabHeaderFeatures : ushort
 {
@@ -39,7 +36,6 @@ public enum CabHeaderFeatures : ushort
 }
 
 /// <summary>The <c>attribs</c> field of a file ([MS-CAB] 2.3).</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 [Flags]
 public enum CabAttributes : ushort
 {
@@ -66,7 +62,6 @@ public enum CabAttributes : ushort
 }
 
 /// <summary>How a file relates to the neighbouring cabinets of a set ([MS-CAB] 2.3, <c>iFolder</c>).</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum CabContinuation
 {
     /// <summary>The file lies completely in this cabinet.</summary>
@@ -83,7 +78,6 @@ public enum CabContinuation
 }
 
 /// <summary>The cabinet header ([MS-CAB] 2.1): every field the format defines.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CabHeader
 {
     /// <summary>Gets the cabinet size the header declares (<c>cbCabinet</c>).</summary>
@@ -133,7 +127,6 @@ public sealed class CabHeader
 }
 
 /// <summary>One folder of a cabinet ([MS-CAB] 2.2): a run of data blocks that holds the compressed bytes of its files one after another.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CabFolder
 {
     /// <summary>Gets the position of the folder in the cabinet.</summary>
@@ -159,7 +152,6 @@ public sealed class CabFolder
 }
 
 /// <summary>A file of a cabinet ([MS-CAB] 2.3). <see cref="ArchiveEntry.Name"/> uses <c>/</c> between components.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CabEntry : ArchiveEntry
 {
     /// <summary>Gets the position of the entry in the cabinet's file table.</summary>
@@ -188,7 +180,6 @@ public sealed class CabEntry : ArchiveEntry
 }
 
 /// <summary>Options for reading cabinets.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CabReaderOptions
 {
     /// <summary>The options with every default.</summary>

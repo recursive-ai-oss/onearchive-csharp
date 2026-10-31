@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -30,7 +29,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// one it replaces. A search visits at most <c>2^SearchLog</c> nodes. With a dictionary, the dictionary's hash chains are searched with
 /// the attempts that are left.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
 {
     // Positions one parse stretch looks ahead at most (the cells of the path search).

@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Deflate;
 
 namespace RecursiveAI.OneCompress.Deflate64;
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneCompress.Deflate64;
 /// Memory: about 1 MiB at levels 1 to 4 (a 192 KiB window, a hash table, a 64 KiB chain array, token arrays and the output buffer) and about 2.5 MiB at levels 5 to 9 (binary-tree finder and price lists instead of the chain), allocated on
 /// construction and reused. The encoder never produces a distance of 65536 (the farthest it uses is 65535).
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class Deflate64Encoder
 {
     private const int HistorySize = Deflate64Tables.WindowSize;

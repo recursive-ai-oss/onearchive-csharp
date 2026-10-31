@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -7,7 +6,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// One-call compression and decompression of bzip2 data. Everything here is built on <see cref="BZip2Encoder"/> and <see cref="BZip2Decoder"/>. A buffer may hold several streams
 /// one after the other (as <c>cat a.bz2 b.bz2</c> or a parallel compressor writes them); their outputs are joined.
 /// </summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class BZip2
 {
     // The first stage run-length coding expands 5 bytes to at most 259, and the Huffman and move-to-front stages

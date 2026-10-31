@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 
 namespace RecursiveAI.OneArchive;
@@ -25,7 +24,6 @@ namespace RecursiveAI.OneArchive;
 /// default method; a 7z archive with a compressed header needs <see cref="AddLzma"/>; cabinets need <see cref="AddDeflate"/>
 /// (MSZIP) or <see cref="AddLzx"/>.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class ArchiveCodecs
 {
     /// <summary>Registers Zstandard: <c>.zst</c> and <c>.tar.zst</c>, zip method 93, 7z Zstandard.</summary>

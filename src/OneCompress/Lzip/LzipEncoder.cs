@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Checksums;
 using RecursiveAI.OneCompress.Lzma;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneCompress.Lzip;
 
 /// <summary>Options for compressing to the lzip format.</summary>
 /// <remarks>The levels 0 to 9 take the dictionary size and match length of the reference <c>lzip</c> tool's levels; lc, lp and pb are fixed by the format to 3, 0 and 2.</remarks>
-[Experimental("ONECOMPRESS007", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzipOptions
 {
     /// <summary>The level used when none is set: 6, like the reference tool.</summary>
@@ -73,7 +71,6 @@ public sealed class LzipOptions
 /// <see cref="OperationStatus.Done"/>, passing <c>isFinalBlock</c> with the last input. Empty input gives one empty member. Output depends
 /// only on the input and the options, including <see cref="LzipOptions.MemberSize"/>. An instance is not thread-safe.
 /// </remarks>
-[Experimental("ONECOMPRESS007", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzipEncoder : IQueuedEncoder
 {
     private const int PumpBytes = 1 << 20;

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -12,7 +11,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// <c>maxDistance + 1 + index + (t &lt;&lt; <see cref="GetWordBits"/>(length))</c>, where <c>maxDistance</c> is the smaller of the window
 /// size and the number of bytes produced so far.
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class BrotliWords
 {
     /// <summary>The shortest word length the dictionary has (4).</summary>

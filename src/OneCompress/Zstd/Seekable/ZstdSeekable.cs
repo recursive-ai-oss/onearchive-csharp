@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -7,7 +6,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// One-call seekable Zstandard: compress into independent frames with a seek table, and decompress a range of the
 /// content. Built on <see cref="ZstdSeekableWriter"/> and <see cref="ZstdSeekableReader"/>.
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class ZstdSeekable
 {
     /// <summary>Compresses data into a seekable file.</summary>

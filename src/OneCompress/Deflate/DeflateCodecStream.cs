@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
@@ -15,7 +14,6 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// <see cref="DeflateDecompressionOptions.AllowTrailingData"/> is set.</para>
 /// <para>Writing is not supported by this version: <see cref="CanWrite"/> is false.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateCodecStream : Stream
 {
     /// <summary>The size of the buffer that holds compressed bytes read from the inner stream.</summary>

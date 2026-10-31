@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 using System.Numerics;
 
@@ -12,7 +11,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// Codes are assigned the way the format's decoder expects: by weight (rarer symbols, the longer codes, come first) and within
 /// a weight by symbol value. The table is not thread-safe and is reused by calling a build method again.
 /// </remarks>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 // Building a tree and describing it use a few KiB of stack scratch, and zeroing it cost more than the work on a small block. Every
 // stackalloc below is written before it is read, or cleared explicitly where the code counts into it.
 [System.Runtime.CompilerServices.SkipLocalsInit]

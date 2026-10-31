@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// <see cref="LzmaBinaryTreeMatchFinder"/>.
 /// </summary>
 /// <remarks>With a main hash of 3 bytes (<see cref="LzmaMatchFinderKind.HashChain3"/>) or 4 bytes (<see cref="LzmaMatchFinderKind.HashChain4"/>) plus a direct 2-byte table (and for 4 a 3-byte table) for short matches. The links live in a cyclic array of dictionary size + 1 entries.</remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzmaHashChainMatchFinder : LzmaMatchFinder
 {
     private readonly int[] _chain;

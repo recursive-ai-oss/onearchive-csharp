@@ -1,10 +1,8 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Filters;
 
 /// <summary>The instruction sets the branch, call and jump filters know.</summary>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum BranchArchitecture
 {
     /// <summary>x86 CALL and JMP (xz filter ID 0x04, "BCJ").</summary>
@@ -44,7 +42,6 @@ public enum BranchArchitecture
 /// <para>Format: the xz file format specification, section 5.3.2 (filter IDs, alignment, the 4-byte start offset), and public descriptions
 /// of each instruction set's branch encoding. An x86 filter keeps a little state about the previous opcode bytes.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BranchFilter
 {
     private static ReadOnlySpan<byte> X86MaskToBitNumber => [0, 1, 2, 2, 3, 3, 3, 3];

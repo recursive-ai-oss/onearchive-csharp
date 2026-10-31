@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
 /// <summary>The wrapper around the Deflate data (RFC 1951 compressed blocks).</summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum DeflateFormat
 {
     /// <summary>Raw Deflate (RFC 1951): a sequence of blocks with no header and no checksum.</summary>
@@ -20,7 +18,6 @@ public enum DeflateFormat
 /// Options for decompressing Deflate, zlib and gzip data. The limits protect the caller from input that asks for more
 /// output or memory than it should.
 /// </summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateDecompressionOptions
 {
     /// <summary>The default for <see cref="MaxOutputSize"/>: 1 GiB.</summary>
@@ -68,7 +65,6 @@ public sealed class DeflateDecompressionOptions
 /// The fields of a gzip member header (RFC 1952 section 2.3). The text and byte fields are owned by the decoder that produced
 /// the value and stay valid until that decoder starts its next member or is reset.
 /// </summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct GZipHeader
 {
     internal GZipHeader(byte flags, uint modificationTime, byte extraFlags, byte operatingSystem, ReadOnlyMemory<byte> extra, ReadOnlyMemory<byte> name, ReadOnlyMemory<byte> comment)

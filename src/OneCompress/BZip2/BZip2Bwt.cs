@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -11,7 +10,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// column's byte <c>i</c>, and <see cref="BuildVector"/> fills the upper 24 bits of word <c>j</c> with the row that follows
 /// row <c>j</c>. Reading the original then takes one load per byte: see <see cref="Next"/>.
 /// </remarks>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class BZip2Bwt
 {
     /// <summary>The largest block bzip2 writes, in bytes (level 9: 9 x 100 000), after the first run-length stage.</summary>

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.Intrinsics;
@@ -17,7 +16,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// state untouched, exactly as the decoder sees it. The writer is not thread-safe; it reuses its buffers, so a steady
 /// state allocates nothing.
 /// </remarks>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdBlockWriter
 {
     // Symbol-code tables for literal lengths below 64 and match lengths (minus 3) below 128.

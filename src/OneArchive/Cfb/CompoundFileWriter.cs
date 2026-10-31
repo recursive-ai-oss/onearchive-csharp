@@ -1,12 +1,10 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using RecursiveAI.OneCompress;
 
 namespace RecursiveAI.OneArchive.Cfb;
 
 /// <summary>Options for <see cref="CompoundFileWriter"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CompoundFileWriterOptions
 {
     /// <summary>The default for <see cref="MaxBufferedBytes"/>: 1 GiB.</summary>
@@ -46,7 +44,6 @@ public sealed class CompoundFileWriterOptions
 /// stream data in directory order, FAT, DIFAT. Siblings form a red-black tree in the [MS-CFB] 2.6.4 order. The same entries and options give the same bytes.</para>
 /// <para>Version 3 streams are limited to 2 GiB - 1 ([MS-CFB] 2.2). A name is 1 to 31 UTF-16 code units, without NUL, and unique within its storage ignoring case (2.6.4).</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CompoundFileWriter : ArchiveWriter
 {
     private const uint EndOfChain = 0xFFFFFFFE;

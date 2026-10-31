@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -20,7 +19,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// field of the format, the few bytes of that field; the buffers are reused by <see cref="Reset"/>. An instance is not thread-safe.
 /// After an exception the decoder refuses further calls until <see cref="Reset"/>.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class BrotliDecoder
 {
     internal const string FormatName = "brotli";

@@ -1,8 +1,6 @@
-using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Lz4;
 
 /// <summary>The maximum uncompressed size of a block in an LZ4 frame (Frame format, "Block Maximum Size"). The value is the code stored in the frame descriptor.</summary>
-[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum Lz4BlockSize
 {
     /// <summary>64 KiB.</summary>
@@ -24,7 +22,6 @@ public enum Lz4BlockSize
 /// (<see cref="Lz4"/>), <see cref="Lz4Encoder"/> and <see cref="Lz4Stream"/>.
 /// </summary>
 /// <remarks>Options are read when an encoder or stream is created; changing nothing is possible afterwards because every property is init-only.</remarks>
-[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4CompressionOptions
 {
     /// <summary>The default level: 1, the fast level.</summary>

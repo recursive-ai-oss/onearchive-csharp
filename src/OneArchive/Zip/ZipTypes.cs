@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace RecursiveAI.OneArchive.Zip;
 
 /// <summary>A zip compression method id (PKWARE APPNOTE 4.4.5). Other values may be read from an archive and are listed but not extracted.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZipMethod : ushort
 {
     /// <summary>Stored without compression.</summary>
@@ -38,7 +36,6 @@ public enum ZipMethod : ushort
 /// <summary>One record of an extra field area: a 16-bit header id and its data (APPNOTE 4.5.1).</summary>
 /// <param name="Id">The header id, for example 0x5455 for the extended timestamp.</param>
 /// <param name="Data">The record's data, without the id and size.</param>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly record struct ZipExtraField(ushort Id, ReadOnlyMemory<byte> Data);
 
 /// <summary>A zip entry with the header fields the archive carried.</summary>
@@ -47,7 +44,6 @@ public readonly record struct ZipExtraField(ushort Id, ReadOnlyMemory<byte> Data
 /// follow its data in a data descriptor, the size is not known at this point: <see cref="IsSizeKnown"/> is false and
 /// <see cref="ArchiveEntry.Size"/> is 0; the content stream still ends at the right place.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZipEntry : ArchiveEntry
 {
     private static readonly IReadOnlyList<ZipExtraField> s_noFields = [];
@@ -124,7 +120,6 @@ public sealed class ZipEntry : ArchiveEntry
 }
 
 /// <summary>Options for <see cref="ZipReader"/> and the zip part of <see cref="ArchiveOpenOptions"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZipReaderOptions
 {
     /// <summary>Gets a shared instance with every option at its default.</summary>
@@ -181,7 +176,6 @@ public sealed class ZipReaderOptions
 }
 
 /// <summary>What <see cref="ZipDamage"/> describes.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZipDamageKind
 {
     /// <summary>Bytes that are not part of any entry were skipped to reach the next local header.</summary>
@@ -203,11 +197,9 @@ public enum ZipDamageKind
 /// <param name="Length">The bytes it covers; zero when it marks a place (the end of a truncated archive, an unusable directory).</param>
 /// <param name="EntryName">The name of the damaged entry; <see langword="null"/> when no entry is involved.</param>
 /// <param name="Reason">A short description of what was expected and not found.</param>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly record struct ZipDamage(ZipDamageKind Kind, long Offset, long Length, string? EntryName, string Reason);
 
 /// <summary>When the writer uses zip64 structures.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZipZip64Mode
 {
     /// <summary>Only where a value does not fit: an entry of 3.75 GiB or more gets a zip64 field in its local header; the directory gets zip64 fields for the values that overflow; the zip64 end record is written when the entry count is 65535 or more or an offset or size overflows.</summary>
@@ -221,7 +213,6 @@ public enum ZipZip64Mode
 }
 
 /// <summary>Whether the writer puts sizes and CRC in the local header or after the data.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZipDataDescriptorMode
 {
     /// <summary>Descriptors when the output cannot seek, and local headers patched in place when it can.</summary>
@@ -235,7 +226,6 @@ public enum ZipDataDescriptorMode
 }
 
 /// <summary>Options for <see cref="ZipWriter"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZipWriterOptions
 {
     /// <summary>Gets the method for file entries with content. Default <see cref="ZipMethod.Deflate"/>. Store, Deflate, Deflate64 and Zstd can be written. Directories, links and empty files are stored.</summary>

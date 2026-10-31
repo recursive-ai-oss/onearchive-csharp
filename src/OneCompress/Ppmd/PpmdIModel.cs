@@ -11,12 +11,10 @@
 // Same layout idea as PpmdHModel: one byte array, 12-byte units, 32-bit offsets, 0 as null. A context's symbol
 // count is stored minus one in a byte, so 256 symbols fit. Variant I adds the cut-off restore method.
 
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Ppmd;
 
 /// <summary>How the variant I model recovers when its memory is full.</summary>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum PpmdRestoreMethod
 {
     /// <summary>Start over with an empty model. Zip method 98 value 0; the default.</summary>
@@ -31,7 +29,6 @@ public enum PpmdRestoreMethod
 /// This is the raw tier: <see cref="PpmdIEncoder"/> and <see cref="PpmdIDecoder"/> drive it over spans.
 /// </summary>
 /// <remarks>The freeze restore method of the original is not supported. The instance is not thread-safe.</remarks>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class PpmdIModel : IPpmdModel
 {
     /// <summary>The smallest model order. The format allows 2 to 16.</summary>

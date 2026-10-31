@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive.Cpio;
 
 /// <summary>The cpio header variants OneArchive reads and writes.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum CpioFormat
 {
     /// <summary>The portable ASCII format (<c>070707</c>, POSIX "odc"): 76-byte headers of octal fields, no padding.</summary>
@@ -23,7 +21,6 @@ public enum CpioFormat
 /// A socket is reported as <see cref="ArchiveEntryKind.Fifo"/> (it is never created either way); <see cref="RawMode"/> tells them apart.
 /// For a symbolic link the stored data is the target, reported as <see cref="ArchiveEntry.LinkTarget"/>.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CpioEntry : ArchiveEntry
 {
     /// <summary>Gets the header variant this entry was read with, or should be written with when passed to a writer that uses it.</summary>
@@ -70,7 +67,6 @@ public sealed class CpioEntry : ArchiveEntry
 }
 
 /// <summary>Options for <see cref="CpioReader"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CpioReaderOptions
 {
     /// <summary>Gets the default options.</summary>
@@ -99,7 +95,6 @@ public sealed class CpioReaderOptions
 }
 
 /// <summary>Options for <see cref="CpioWriter"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CpioWriterOptions
 {
     /// <summary>The default block size of the padding after the trailer.</summary>

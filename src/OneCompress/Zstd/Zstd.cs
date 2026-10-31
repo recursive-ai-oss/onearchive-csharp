@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -6,7 +5,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// <summary>
 /// One-call Zstandard operations. Everything here is built on <see cref="ZstdDecoder"/> and <see cref="ZstdEncoder"/>.
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Zstd
 {
     /// <summary>Compresses a buffer into one Zstandard frame.</summary>

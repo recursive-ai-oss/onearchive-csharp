@@ -17,7 +17,6 @@
 // for symbol lists and contexts, and every link is a 32-bit offset into that array (0 is null).
 // Matching the layout exactly is what makes the output byte-identical to PPMd var.H as 7-Zip writes it.
 
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Ppmd;
 
@@ -30,7 +29,6 @@ namespace RecursiveAI.OneCompress.Ppmd;
 /// <see cref="StartEncoding"/> or <see cref="StartDecoding"/>; <see cref="Reset"/> returns it to the state of a new model.
 /// The instance is not thread-safe.
 /// </remarks>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class PpmdHModel : IPpmdModel
 {
     /// <summary>The smallest model order (the longest context, in symbols). The format allows 2 to 64.</summary>

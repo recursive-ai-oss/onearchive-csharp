@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 
@@ -20,7 +19,6 @@ namespace RecursiveAI.OneArchive.Tar;
 /// <para>Data is written in the order of the calls. Directory names get a trailing slash; a missing mode becomes 0644 (0755
 /// for directories, 0777 for symbolic links); a missing time is 0.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class TarWriter : ArchiveWriter
 {
     private static readonly HashSet<string> s_modelled = new(StringComparer.Ordinal)

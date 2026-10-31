@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -15,7 +14,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// depends only on the bytes written, the options and where flushes were made.</para>
 /// <para>This type has the name of <c>System.IO.Compression.BrotliStream</c>, which is a different type; qualify or alias the name where both namespaces are imported.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BrotliStream : Stream
 {
     /// <summary>The size of the buffer that holds compressed bytes read from the inner stream.</summary>

@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
@@ -16,7 +15,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// <para>A chunk's compressed bytes are decoded in one piece: when the caller's span holds the whole chunk it is decoded from
 /// there, otherwise the chunk (at most 64 KiB) is collected in an internal buffer first.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lzma2Decoder : IStepDecoder
 {
     private const string Format = "lzma2";

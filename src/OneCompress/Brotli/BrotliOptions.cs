@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// flush is the one thing that changes it, because it ends a meta-block). The options are the two the <c>brotli</c> tool has, with its
 /// numbering and defaults.
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BrotliOptions
 {
     /// <summary>The default quality, 11, as the <c>brotli</c> tool.</summary>

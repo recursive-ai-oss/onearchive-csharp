@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive;
 
@@ -7,7 +6,6 @@ namespace RecursiveAI.OneArchive;
 /// knowingly. A limit that is hit raises <see cref="RecursiveAI.OneCompress.CompressionLimitException"/> with
 /// <c>LimitName</c> set to the property's name, never a truncated result.
 /// </summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArchiveLimits
 {
     /// <summary>The default for <see cref="MaxTotalSize"/>: 1 GiB.</summary>

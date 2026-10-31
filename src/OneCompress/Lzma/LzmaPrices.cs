@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// with the repeated-squaring method for the binary logarithm in fixed point, so no floating-point function is involved and every
 /// platform gets the same table. The price of a 1 bit is the price of a 0 bit under the complementary probability.
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class LzmaPrices
 {
     /// <summary>The number of price units that make one bit.</summary>

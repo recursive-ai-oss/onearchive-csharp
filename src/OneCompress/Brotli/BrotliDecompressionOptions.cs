@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// bound. Sizes a stream declares (the window, and the length of each meta-block) are checked against the limits before any memory
 /// is committed for them.
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BrotliDecompressionOptions
 {
     /// <summary>The default for <see cref="MaxWindowSize"/>: the largest window the format allows, 2<sup>24</sup> - 16 bytes (RFC 7932 section 9.1).</summary>

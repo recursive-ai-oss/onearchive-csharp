@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
 /// <summary>What stopped <see cref="LzmaDecoderCore.Decode"/>.</summary>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum LzmaStatus
 {
     /// <summary>The input ended inside a symbol. Nothing of that symbol was applied: pass its bytes again, followed by more.</summary>
@@ -34,7 +32,6 @@ public enum LzmaStatus
 /// short input rolls the symbol back and reports <see cref="LzmaStatus.NeedInput"/>, so any split of the input gives the same result.</para>
 /// <para>Not thread-safe. LZMA specification, "LZMA Decoding".</para>
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class LzmaDecoderCore
 {
     // One symbol reads at most about 20 bytes: 22 adaptive decisions of at most 6.05 bits each plus 26 direct bits.

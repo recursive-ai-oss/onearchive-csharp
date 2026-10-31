@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive;
 
 /// <summary>The container formats OneArchive can read or write. More members are added as containers land.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ArchiveFormat
 {
     /// <summary>The format is not known.</summary>
@@ -41,7 +39,6 @@ public enum ArchiveFormat
 }
 
 /// <summary>A compression layer wrapped around a whole archive, as in <c>.tar.zst</c>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ArchiveCompression
 {
     /// <summary>The archive is stored as is.</summary>
@@ -74,7 +71,6 @@ public enum ArchiveCompression
 }
 
 /// <summary>What kind of filesystem object an archive entry describes.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ArchiveEntryKind
 {
     /// <summary>A regular file; its data is the entry's content.</summary>

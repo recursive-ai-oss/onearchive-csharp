@@ -1,12 +1,10 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneCompress;
 
 namespace RecursiveAI.OneArchive;
 
 /// <summary>The outcome of an extraction: how many entries were created, how many were skipped and how many content bytes were written. Returned by <see cref="Archive.Extract(string, string, ArchiveExtractOptions?, System.Threading.CancellationToken)"/>; a limit or safety failure throws instead and never produces a partial result.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArchiveExtractResult
 {
     internal ArchiveExtractResult(int extracted, int skipped, long bytes)

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lz4;
 
@@ -15,7 +14,6 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// end mark are a large part of the output. Decode it with <see cref="Lz4PrefixedBlock"/>.</para>
 /// <para>An instance is not thread-safe.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4BlockEncoder
 {
     private readonly Lz4BlockCompressor _compressor;

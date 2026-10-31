@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Lzma;
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// layout (the offsets below) is this library's own: all probabilities live in one <c>ushort[]</c> of
 /// <see cref="ProbabilityCount"/> entries, the literal tables last.
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class LzmaModel
 {
     /// <summary>The number of states of the state machine.</summary>

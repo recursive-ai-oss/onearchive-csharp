@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using RecursiveAI.OneCompress.Checksums;
 using RecursiveAI.OneArchive.Internal;
@@ -24,7 +23,6 @@ namespace RecursiveAI.OneArchive.Zip;
 /// when the local header has a zip64 field. Directories, links and empty files are stored and have no descriptor.
 /// Documented in <c>docs/archive.md</c>.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZipWriter : ArchiveWriter
 {
     private const ushort VersionMadeBy = (3 << 8) | 63;

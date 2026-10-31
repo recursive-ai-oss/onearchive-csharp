@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Ppmd;
 
 /// <summary>Options for compressing with PPMd variant H, the model of the 7z "PPMD" coder.</summary>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class PpmdHOptions
 {
     /// <summary>The default for <see cref="Order"/>.</summary>
@@ -45,7 +43,6 @@ public sealed class PpmdHOptions
 }
 
 /// <summary>Options for decompressing PPMd variant H data. The model parameters are not in the stream: they must match the encoder's.</summary>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class PpmdHDecompressionOptions
 {
     /// <summary>The default for <see cref="MaxMemorySize"/>: 256 MiB.</summary>
@@ -112,7 +109,6 @@ public sealed class PpmdHDecompressionOptions
 }
 
 /// <summary>Options for compressing with PPMd variant I revision 1, the model of zip method 98.</summary>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class PpmdIOptions
 {
     /// <summary>The default for <see cref="Order"/>.</summary>
@@ -157,7 +153,6 @@ public sealed class PpmdIOptions
 }
 
 /// <summary>Options for decompressing PPMd variant I data. The model parameters are not in the stream: they must match the encoder's.</summary>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class PpmdIDecompressionOptions
 {
     /// <summary>The default for <see cref="MaxMemorySize"/>: 256 MiB, the most a zip header can ask for.</summary>

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive;
 
@@ -7,7 +6,6 @@ namespace RecursiveAI.OneArchive;
 /// reordered, and times, owners and modes are exactly what the entries say.
 /// </summary>
 /// <remarks>Disposing a writer that was not finished finishes it, unless an earlier call failed.</remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public abstract class ArchiveWriter : IDisposable, IAsyncDisposable
 {
     /// <summary>Gets the container format.</summary>

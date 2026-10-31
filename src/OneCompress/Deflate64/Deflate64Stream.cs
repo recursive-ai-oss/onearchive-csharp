@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate64;
 
@@ -16,7 +15,6 @@ namespace RecursiveAI.OneCompress.Deflate64;
 /// disposing the stream finishes the Deflate64 stream and flushes the inner stream's buffer through to it. Output depends only on the
 /// bytes written, the level and where flushes fall.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Deflate64Stream : Stream
 {
     /// <summary>The size of the buffers between this stream and the inner stream.</summary>

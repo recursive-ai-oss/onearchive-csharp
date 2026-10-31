@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate64;
 
@@ -7,7 +6,6 @@ namespace RecursiveAI.OneCompress.Deflate64;
 /// <see cref="Deflate.DeflateTables"/>: block types, the code-length alphabet, Huffman code construction and the length symbols
 /// 257 to 284. The values come from the experiments in docs/deflate64-derivation.md (facts F1 to F4).
 /// </summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Deflate64Tables
 {
     /// <summary>The history a match may reach into: 65536 bytes (the distance of the farthest match).</summary>

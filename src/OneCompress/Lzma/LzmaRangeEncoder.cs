@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Lzma;
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// bytes whose value a later carry could still change (the usual cache-and-count scheme). The first byte written is always zero, which
 /// the decoder reads as part of its five initial bytes. A stream ends with <see cref="Flush"/>.
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzmaRangeEncoder
 {
     internal RangeState State;

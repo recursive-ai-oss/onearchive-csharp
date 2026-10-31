@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Filters;
 using RecursiveAI.OneCompress.Lzma;
 
@@ -6,7 +5,6 @@ namespace RecursiveAI.OneCompress.Xz;
 
 /// <summary>A filter that runs before LZMA2 in an xz block: a branch/call/jump filter for executable code, or the delta filter.</summary>
 /// <remarks>The xz file format specification, section 5.3: filter IDs and properties. Create instances with <see cref="Branch"/> and <see cref="Delta"/>.</remarks>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class XzFilter
 {
     private readonly BranchArchitecture? _architecture;
@@ -100,7 +98,6 @@ public sealed class XzFilter
 
 /// <summary>Options for compressing to the xz format.</summary>
 /// <remarks>The output depends only on the input and these options: <see cref="BlockSize"/> cuts the input into blocks whose boundaries are fixed by it, never by buffering or threads.</remarks>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class XzCompressionOptions
 {
     /// <summary>The most filters a block may have, including LZMA2.</summary>

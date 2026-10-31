@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneCompress;
 using RecursiveAI.OneCompress.Checksums;
@@ -21,7 +20,6 @@ namespace RecursiveAI.OneArchive.SevenZip;
 /// <para>Errors: <see cref="CompressionFormatException"/> (format "7z", byte offset in the file or in the decoded
 /// header, what was expected), <see cref="CompressionLimitException"/> and <see cref="ArchiveUnsupportedException"/>.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class SevenZipReader : ArchiveReader
 {
     private static readonly byte[] s_signature = [(byte)'7', (byte)'z', 0xBC, 0xAF, 0x27, 0x1C];

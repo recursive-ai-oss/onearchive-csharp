@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// The result depends only on the counts, so the same input always gives the same code.</para>
 /// <para>A symbol that is alone in its alphabet gets length 0: a prefix code with one symbol takes no bits (RFC 7932 section 3.4).</para>
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class BrotliHuffmanCode
 {
     /// <summary>The longest code length a brotli prefix code may have (RFC 7932 section 3.2).</summary>

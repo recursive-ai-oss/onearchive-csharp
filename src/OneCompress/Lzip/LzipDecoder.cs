@@ -1,13 +1,11 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Checksums;
 using RecursiveAI.OneCompress.Lzma;
 
 namespace RecursiveAI.OneCompress.Lzip;
 
 /// <summary>Options for decompressing lzip data. The limits protect the caller from input that asks for more memory or output than it should.</summary>
-[Experimental("ONECOMPRESS007", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzipDecompressionOptions
 {
     /// <summary>The default for <see cref="MaxDictionarySize"/>: 64 MiB, above the 32 MiB dictionary of the reference tool's largest level (<c>-9</c>).</summary>
@@ -48,7 +46,6 @@ public sealed class LzipDecompressionOptions
 /// without the member size) are not supported.</para>
 /// <para><see cref="Decompress"/> returns <see cref="OperationStatus.Done"/> after each member; call it again for the next one.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS007", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzipDecoder : IStepDecoder
 {
     private const string Format = "lzip";

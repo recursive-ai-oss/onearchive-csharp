@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.Intrinsics;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// A move-to-front list over at most 256 byte values. bzip2 uses it twice: for the block's symbols (the list starts as the
 /// bytes that occur in the block, in increasing order) and for the table selectors (the list starts as 0, 1, 2, ...).
 /// </summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2MoveToFront
 {
     private static readonly Vector128<byte> ShiftUp = Vector128.Create((byte)0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14);

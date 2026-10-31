@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
 namespace RecursiveAI.OneCompress.Lzma;
@@ -16,7 +15,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// literal). The probability layout is <see cref="LzmaModel"/>'s. Two parsers choose the symbols (see <see cref="LzmaMode"/>); both only
 /// ever use integers, so the choices are the same on every platform.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class LzmaEncoderCore
 {
     /// <summary>The most bytes the normal parser looks ahead for one decision.</summary>

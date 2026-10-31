@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -9,7 +8,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// sees them, before the first run-length stage. A stream's combined CRC folds the block CRCs together with
 /// <see cref="Combine"/>.
 /// </summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class BZip2Crc
 {
     /// <summary>The value a running CRC register starts from.</summary>

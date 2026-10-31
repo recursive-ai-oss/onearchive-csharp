@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzx;
 
@@ -17,7 +16,6 @@ namespace RecursiveAI.OneCompress.Lzx;
 /// <see cref="CompressionFormatException"/> with the byte offset in the compressed stream (the sum of the frames given so far plus the
 /// position in this frame). After an error the decoder refuses further frames until <see cref="Reset"/>.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS009", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzxDecoder
 {
     /// <summary>The uncompressed size of every frame except possibly the last: 32768 bytes.</summary>

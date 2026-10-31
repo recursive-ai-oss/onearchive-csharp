@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>
@@ -6,7 +5,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// decompresses only the frames it touches (see <see cref="ZstdSeekableReader"/>, which this wraps).
 /// </summary>
 /// <remarks>Not thread-safe. For a stream that cannot seek, use <see cref="ZstdStream"/>, which decodes the file sequentially and skips the seek table.</remarks>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdSeekableStream : Stream
 {
     private readonly ZstdSeekableReader _reader;

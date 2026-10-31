@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Lzma;
 
 namespace RecursiveAI.OneArchive.SevenZip;
 
 /// <summary>The compression method a <see cref="SevenZipWriter"/> puts at the end of each folder's coder chain.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum SevenZipMethod
 {
     /// <summary>LZMA2 (method ID 21), the default.</summary>
@@ -30,7 +28,6 @@ public enum SevenZipMethod
 }
 
 /// <summary>The filter placed in front of the compression method.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum SevenZipFilter
 {
     /// <summary>Choose per folder from the first bytes of its first file: executables get the branch filter of their instruction set, everything else none. A change of choice starts a new folder.</summary>
@@ -71,7 +68,6 @@ public enum SevenZipFilter
 /// Options for <see cref="SevenZipWriter"/>. The bytes written depend only on these options and the entries.
 /// Documented in <c>docs/7z-writer.md</c>.
 /// </summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class SevenZipWriterOptions
 {
     /// <summary>The default solid block size: 2 GiB of file content per folder.</summary>

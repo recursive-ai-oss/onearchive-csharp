@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -11,7 +10,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// <remarks>
 /// A table is not thread-safe and is reused by calling <see cref="Build"/> again. Nothing here allocates after construction.
 /// </remarks>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class FseEncodingTable
 {
     /// <summary>The largest accuracy log the format allows for any table (RFC 8878 §4.1.1 limits sequence tables further).</summary>

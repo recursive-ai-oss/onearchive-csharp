@@ -6,7 +6,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](#install)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#licence)
 
-**Status: preview** (latest release 0.7.0-preview.1). Every codec and container works, is fuzzed and is covered by interop tests against the reference tools, and public types carry `[Experimental]` until the codec meets its speed target ([Preview codecs](#preview-codecs)). The speed section below shows where each codec stands today. See [CHANGELOG.md](CHANGELOG.md).
+**Status: 1.0.** Every codec and container works, is fuzzed and is covered by interop tests against the reference tools. See [Stability](#stability) for what 1.x promises, the speed section below for where each codec stands, and [CHANGELOG.md](CHANGELOG.md).
 
 ## Packages
 
@@ -69,7 +69,7 @@ uint crc = Crc32.Compute(data);
 
 ## Quick start
 
-The snippets on this page are compiled and run by `tests/OneArchive.Tests/ReadmeSnippetTests.cs`. Using the preview types needs the diagnostics opted in once, see [Preview codecs](#preview-codecs).
+The snippets on this page are compiled and run by `tests/OneArchive.Tests/ReadmeSnippetTests.cs`.
 
 **Zstandard with a trained dictionary.** Small, similar messages (game state, log lines, RPC payloads) compress far better against a dictionary trained on samples of them.
 
@@ -192,29 +192,9 @@ A hash matrix compresses fixed inputs at every level and option set of every cod
 
 [docs/README.md](docs/README.md) indexes one page per codec family and per container: what is supported, the options, the defaults and limits, and the specification sections. The pages are normative and language-neutral, so another implementation can reproduce the same bytes from them. The API reference is the XML documentation shipped in both packages; every public type and member has one. Benchmark method: [docs/bench-method.md](docs/bench-method.md).
 
-## Preview codecs
+## Stability
 
-Public types of a codec carry `[Experimental]` until the codec meets its speed target in the table below, so using one is a compiler error until you opt in per codec with the diagnostic ID, in the project file or with `#pragma warning disable`:
-
-| Codec | Diagnostic ID |
-|---|---|
-| Zstandard (including dictionary training and the seekable format) | `ONECOMPRESS001` |
-| LZ4 | `ONECOMPRESS002` |
-| Deflate, zlib, gzip and Deflate64 | `ONECOMPRESS003` |
-| bzip2 | `ONECOMPRESS004` |
-| LZMA and LZMA2 | `ONECOMPRESS005` |
-| xz and the branch and delta filters | `ONECOMPRESS006` |
-| lzip | `ONECOMPRESS007` |
-| Brotli | `ONECOMPRESS008` |
-| LZX (decoder) | `ONECOMPRESS009` |
-| PPMd (variants H and I) | `ONECOMPRESS010` |
-| OneArchive: `Archive`, the entry model, readers and writers, every container, encryption | `ONEARCHIVE001` |
-
-```xml
-<PropertyGroup>
-  <NoWarn>$(NoWarn);ONECOMPRESS001;ONEARCHIVE001</NoWarn>
-</PropertyGroup>
-```
+From 1.0 the public API follows [semantic versioning](https://semver.org/): breaking changes only in a major version. Compressed output is part of the contract: for a given input and options, each codec and level writes the same bytes on every platform and in every 1.x release, and a change to those bytes is a major version. Decoders may become faster or stricter about malformed input, never less compatible with valid streams. The 1.0 speed results against the fastest managed .NET libraries are in the table below.
 
 ## Speed against the fastest managed .NET libraries
 
@@ -225,38 +205,41 @@ Level numbers of different libraries are not comparable (one library's "level 6"
 - **x64:** AMD Ryzen 9 7950X3D (16 cores, 32 threads), Linux, .NET 10.0.402.
 - **arm64:** Apple M2 (8 cores), macOS, .NET 10.0.402.
 - **Candidates** (pinned versions): ZstdSharp.Port 0.8.8, K4os.Compression.LZ4 1.3.8, SharpCompress 1.0.0, SharpZipLib 1.4.2, DotNetZip 1.16.0, BrotliSharpLib 0.3.3, BrotliManagedFast 1.1.0, Lzma.Net 5.8.4.3, LZMA-SDK 22.1.1, System.IO.Hashing 10.0.0. Used only from `bench/`, as packages; never shipped.
-- **Measured** 2026-10-30; rows for work done since (Zstandard levels 1-18, xz presets 0-3, LZ4 dictionary decode) are remeasured as noted. Rows are refreshed at each release. Rows below 0.87 are shown as they are.
+- **Measured** 2026-10-31 on the 1.0.0 code. Rows are refreshed at each release. Rows below 0.87 are shown as they are and marked.
 
 ### Zstandard (against ZstdSharp.Port)
 
 | Row | x64 | arm64 | Size vs ZstdSharp | Notes |
 |---|---:|---:|---:|---|
-| Compress level 1 | 0.84 | 0.96 | +0.5% | x64 below the bar |
-| Compress level 2 | 0.81 | 0.93 | +0.4% | x64 below the bar |
-| Compress levels 3-4 | 0.96 | 0.92-0.94 | +0.9% | |
-| Compress levels 5-9 | 0.89-0.94 | 1.04-1.09 | -0.5% to +0.8% | |
-| Compress level 12 | 1.06 | 1.20 | +0.4% | |
-| Compress levels 13-15 | 0.98-1.10 | 0.81 (13), 0.87 (14), 0.97 (15) | within 0.5% | arm64 level 13 below the bar |
-| Compress levels 16-18 | 1.02-1.07 | 0.96-1.07 | -0.1% | |
-| Compress level 19 | 0.91 | 0.90 | +0.4% | |
-| Compress level 22 | 1.06 | 0.97 | +0.5% | |
-| Decompress, levels 1 / 3 / 19 | 0.94 / 0.91 / 1.00-1.03 | 0.97 / 1.01 / 1.01 | | |
-| Long-distance matching, level 3 | 0.85-0.91 | 0.89 | +0.7% | |
-| Two workers, level 3 | 0.94 | 0.92 | +0.8% | |
-| With a trained dictionary, small game payloads, compress (frames, level 1 / 3) | 1.65 / 1.27 | 1.52 / 1.23 | -0.4% / -0.8% | |
-| Same, snapshots, compress (level 1 / 3) | 0.95 / 0.96 | 0.76 / 0.73 | -1.2% / -1.0% | arm64 below the bar |
-| Same, decompress (frames / snapshots) | 0.94 / 0.91 | 0.94 / 0.98 | | |
+| Compress level 1 | **0.85** | 0.96 | +0.5% | **x64 below the 0.87 bar** |
+| Compress level 2 | **0.82** | 0.93 | +0.4% | **x64 below the 0.87 bar** |
+| Compress levels 3-4 | 0.96-0.97 | 0.93-0.94 | +0.7% to +0.8% | |
+| Compress levels 5, 7, 9 | 0.91-0.95 | 1.04-1.09 | -0.2% to +0.7% | |
+| Compress level 12 | 1.07 | 1.18 | +0.4% | |
+| Compress levels 13-15 | 0.97-1.10 | 0.95-1.05 | +0.4% to +0.5% | |
+| Compress levels 16-18 | 1.01-1.06 | 0.99-1.08 | +0.1% to +0.9% | |
+| Compress level 19 | 0.90 | 0.90 | +0.4% | |
+| Compress level 22 | 1.03 | 0.96 | +0.5% | |
+| Decompress, levels 1 / 3 | 0.95 / 0.92 | 0.97 / 1.01 | | |
+| Decompress level 19 | 0.87 | 1.00 | | x64 at the bar (0.84-0.88 over three runs) |
+| Long-distance matching, level 3 | 0.91 | 0.90 | +0.7% | |
+| Two workers, level 3 | 0.98 | 0.96 | +0.6% | |
+| With a trained dictionary, small game payloads, compress (frames, level 1 / 3) | 2.17 / 1.97 | 1.89 / 1.73 | +0.1% / -0.2% | |
+| Same, snapshots, compress (level 1 / 3) | 0.98 / 1.03 | 0.89 / 0.91 | -0.7% / -0.6% | |
+| Same, decompress (frames / snapshots) | 0.96 / 0.92 | 0.98 / 1.03 | | |
+
+Two rows are below the bar and are listed as they measured: Zstandard compression at level 1 (0.85) and level 2 (0.82) on x64. Their output is within 1% of ZstdSharp's (+0.5% and +0.4%), and arm64 meets both. Level 19 decompression on x64 sits at the bar: 0.87, the median of three runs that ranged from 0.84 to 0.88.
 
 ### LZ4 (against K4os.Compression.LZ4)
 
 | Row | x64 | arm64 | Size vs K4os |
 |---|---:|---:|---:|
-| Compress level 1 | 1.40 | 1.23 | 0.0% |
-| Compress level 3 | 1.31 | 1.28 | +0.2% |
-| Compress level 9 | 1.37 | 1.28 | +0.8% |
-| Compress level 12 | 2.05 | 2.38 | +0.6% |
-| Decompress | 1.13 | 1.12 | |
-| Decompress with a dictionary (game payloads) | 0.94-1.00 | 0.90-0.96 | |
+| Compress level 1 | 1.26 | 1.11 | 0.0% |
+| Compress level 3 | 1.29 | 1.27 | +0.2% |
+| Compress level 9 | 1.37 | 1.30 | +0.8% |
+| Compress level 12 | 2.04 | 2.38 | +0.6% |
+| Decompress | 1.02 | 1.04 | |
+| Decompress with a dictionary (game frames / snapshots) | 1.03 / 0.97 | 0.96 / 0.88 | |
 
 No managed library compresses with an LZ4 dictionary, so those rows have no comparison.
 
@@ -264,32 +247,30 @@ No managed library compresses with an LZ4 dictionary, so those rows have no comp
 
 | Row | x64 | arm64 | Size vs the library |
 |---|---:|---:|---:|
-| Compress level 1 | 2.62 | 2.52 | -4.3% |
-| Compress level 3 | 2.61 | 2.38 | -1.4% |
-| Compress level 6 | 3.22 | 2.60 | -1.1% |
-| Compress level 9 | 3.54 | 3.11 | -1.3% |
-| Decompress | 3.14 | 2.60 | |
-| Streaming compress level 6 (64 KiB pieces) | 3.21 | 2.56 | -1.1% |
-| Streaming decompress | 2.89 | 2.45 | |
-| Deflate64 decompress (against SharpCompress) | 3.19 | 2.73 | |
-
-For information, against the .NET base class library (zlib-ng underneath), x64: compress 0.61 (level 1), 1.01 (3), 0.91 (6), 1.35 (9) and decompress 1.28.
+| Compress level 1 | 2.55 | 2.48 | -4.3% |
+| Compress level 3 | 2.62 | 2.40 | -1.4% |
+| Compress level 6 | 3.22 | 2.57 | -1.1% |
+| Compress level 9 | 3.54 | 3.07 | -1.2% to -1.3% |
+| Decompress | 3.25 | 2.62 | |
+| Streaming compress level 6 (64 KiB pieces) | 3.23 | 2.61 | -1.1% |
+| Streaming decompress | 2.98 | 2.48 | |
+| Deflate64 decompress (against SharpCompress) | 3.18 | 2.74 | |
 
 ### Brotli (against BrotliManagedFast and BrotliSharpLib)
 
-| Row | x64 | arm64 | Size vs the fastest |
-|---|---:|---:|---:|
-| Compress quality 0 | 1.07 | 0.91 | +0.9% |
-| Compress quality 1 | 1.13 | 0.99 | +1.1% |
-| Compress quality 2 | 0.75 | 0.66 | -2.2% |
-| Compress quality 4 | 0.47 | 0.42 | -6.8% |
-| Compress quality 5 | 0.69 | 0.67 | -7.0% |
-| Compress quality 7 | 0.32 | 0.29 | -11.6% |
-| Compress quality 9 | 1.11 | 0.72 | -6.2% |
-| Compress quality 11 | 0.90 | 0.94 | +1.3% |
-| Decompress (quality 5 stream) | 0.79 | 0.89 | |
+| Row | x64 | arm64 | Size vs the fastest | Notes |
+|---|---:|---:|---:|---|
+| Compress quality 0 | 1.07 | 0.94 | +0.9% | |
+| Compress quality 1 | 1.12 | 1.04 | +0.4% | |
+| Compress quality 2 | 0.97 | 0.91 | -0.8% | |
+| Compress quality 4 | 0.60 | 0.51 | -6.6% | met by our quality 3 (1.08 / 0.91) |
+| Compress quality 5 | 0.69 | 0.66 | -7.0% | met by our quality 4 (1.03 / 0.97) |
+| Compress quality 7 | 0.32 | 0.29 | -11.6% | met by our quality 4 (1.03 / 0.95) |
+| Compress quality 9 | 1.09 | 0.73 | -6.2% | arm64 met by our quality 8 (0.91) |
+| Compress quality 11 | 0.94 | 0.99 | +0.7% | |
+| Decompress (quality 5 stream) | 0.87 | 1.01 | | |
 
-Brotli is the codec furthest from the bar. Against BrotliSharpLib, every quality is met on both machines by size-matching (for example quality 5 by our quality 5 at 1.51 / 1.46 with 2.1% smaller output), but BrotliManagedFast is faster at qualities 2 to 7 and writes larger output, so those rows are not met.
+Brotli at qualities 4 to 7 is slower than BrotliManagedFast at the same quality number but writes 7-12% smaller output; those rows are met by size matching, because a lower quality of ours is both within 1% of its size and as fast. Against BrotliSharpLib every quality is met on both machines.
 
 ### LZMA, LZMA2, xz and lzip (against Lzma.Net, SharpCompress and the LZMA SDK package)
 
@@ -297,15 +278,15 @@ Brotli is the codec furthest from the bar. Against BrotliSharpLib, every quality
 |---|---:|---:|---|
 | xz decompress (preset 6 stream) | 1.33 | 1.31 | |
 | LZMA decompress | 1.34 | 1.31 | |
-| LZMA2 decompress | 1.51 | 1.47 | against SharpCompress |
-| xz compress preset 0 | 1.06 | 1.05 | |
-| xz compress preset 1 | 0.93 | 0.87 | |
+| LZMA2 decompress | 1.49 | 1.49 | against SharpCompress |
+| xz compress preset 0 | 1.05 | 1.04 | |
+| xz compress preset 1 | 0.99 | 0.89 | +0.7% |
 | xz compress preset 3 | met by our preset 2 (0.96) | met by preset 2 (0.91) | Lzma.Net's preset 3 writes 5% larger output |
-| xz compress preset 6 | met by our preset 3 (1.24) | met by preset 3 (1.21) | our preset 6 is 14.6% smaller but 0.29 as fast |
-| xz compress preset 9 | 1.16 | 1.31 | +0.4% |
-| LZMA compress (our preset 7 vs SharpCompress) | 1.15 | 1.12 | +0.3% |
-| lzip decompress | 1.50 | 1.47 | against SharpCompress |
-| lzip compress | met by levels 5 and 6 (1.05, 0.94) | met by levels 5 and 6 (0.96, 0.92) | SharpCompress ignores the level and writes 6-10% more than our levels 5 and 6 |
+| xz compress preset 6 | met by our preset 3 (1.52) | met by preset 3 (1.38) | our preset 6 is 14.6% smaller but 0.31 / 0.25 as fast |
+| xz compress preset 9 | 1.24 | 1.38 | +0.4% |
+| LZMA compress (our preset 7 vs SharpCompress) | 1.20 | 1.17 | +0.3% |
+| lzip decompress | 1.51 | 1.47 | against SharpCompress |
+| lzip compress | met by level 6 (0.92-1.00) | met by levels 5 and 6 (0.97-1.04) | SharpCompress ignores the level and writes 6-10% more than our levels 5 and 6 |
 
 No managed library compresses LZMA2 on its own, so that row has no comparison.
 
@@ -313,14 +294,14 @@ No managed library compresses LZMA2 on its own, so that row has no comparison.
 
 | Row | x64 | arm64 | Against |
 |---|---:|---:|---|
-| bzip2 compress level 9 (+0.3%) | 2.03 | 1.83 | SharpZipLib |
-| bzip2 decompress | 1.47 | 1.39 | SharpZipLib |
-| PPMd variant I compress / decompress (same size) | 2.11 / 2.13 | 2.07 / 2.00 | SharpCompress |
-| PPMd variant H decompress | 3.81 | 3.41 | SharpCompress |
-| CRC-32 | 1.71 | 1.63 | System.IO.Hashing |
-| CRC-64 | 1.75 | 0.95 | System.IO.Hashing |
-| xxHash64 | 1.46 | 1.70 | System.IO.Hashing |
-| Adler-32 | 8.56 | 8.17 | DotNetZip |
+| bzip2 compress level 9 (+0.3%) | 2.00 | 1.87 | SharpZipLib |
+| bzip2 decompress | 1.49 | 1.40 | SharpZipLib |
+| PPMd variant I compress / decompress (same size) | 2.15 / 2.15 | 2.09 / 2.02 | SharpCompress |
+| PPMd variant H decompress | 3.85 | 3.37 | SharpCompress |
+| CRC-32 | 1.77 | 1.64 | System.IO.Hashing |
+| CRC-64 | 1.72 | 0.94 | System.IO.Hashing |
+| xxHash64 | 1.49 | 1.66 | System.IO.Hashing |
+| Adler-32 | 9.42 | 8.40 | DotNetZip |
 
 No managed implementation exists for PPMd variant H compression, CRC-32C, LZX, MSZIP or the Zstandard seekable format, so those pass by being the only ones.
 

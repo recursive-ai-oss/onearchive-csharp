@@ -1,17 +1,14 @@
-using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>Receives the payload of a skippable frame (RFC 8878 §3.1.2).</summary>
 /// <param name="variant">The low four bits of the frame's magic number, 0 to 15.</param>
 /// <param name="data">The frame's user data. It is valid only during the call.</param>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public delegate void ZstdSkippableFrameHandler(int variant, ReadOnlySpan<byte> data);
 
 /// <summary>
 /// Options for decompressing Zstandard data. The limits protect the caller from input that asks for more
 /// memory than it should; they are checked before anything is allocated.
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdDecompressionOptions
 {
     /// <summary>The default for <see cref="MaxWindowSize"/>: 8 MiB, the size every decoder is advised to support.</summary>

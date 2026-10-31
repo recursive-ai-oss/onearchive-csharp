@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Lzma;
@@ -10,7 +9,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// length after a group of decisions.
 /// </summary>
 /// <remarks>LZMA specification, "Range Decoder" and "The Bit Decoding with Probability Model". The value is a mutable struct.</remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public struct LzmaRangeDecoder
 {
     /// <summary>The value an adaptive probability starts at: one half of 2^11.</summary>

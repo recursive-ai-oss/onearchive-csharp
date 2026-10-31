@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
 /// <summary>Options for decompressing LZMA and LZMA2 data. The limits protect the caller from headers that ask for more memory or output than it should.</summary>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzmaDecompressionOptions
 {
     /// <summary>The default for <see cref="MaxDictionarySize"/>: 64 MiB, the dictionary of the largest preset of the reference tool (<c>-9</c>).</summary>

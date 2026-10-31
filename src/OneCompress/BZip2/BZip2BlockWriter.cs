@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -6,7 +5,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// Turns a sorted block into its bits: the symbol map, move-to-front and zero-run coding (RUNA and RUNB), the tables and selectors from
 /// <see cref="BZip2TableChooser"/>, and the Huffman-coded symbols (derivation note, facts F4 to F9; layout in docs/bzip2-decoder.md).
 /// </summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2BlockWriter
 {
     private const long BlockMagic = 0x314159265359;

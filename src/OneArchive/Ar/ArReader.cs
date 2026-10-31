@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneCompress;
@@ -20,7 +19,6 @@ namespace RecursiveAI.OneArchive.Ar;
 /// <para>Errors: <see cref="CompressionFormatException"/> names the offset; limits raise <see cref="CompressionLimitException"/> before the
 /// memory is allocated.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArReader : ArchiveReader
 {
     internal const string Name = "ar";

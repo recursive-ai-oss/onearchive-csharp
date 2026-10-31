@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 
@@ -17,7 +16,6 @@ namespace RecursiveAI.OneArchive.Ar;
 /// stream. <see cref="SetSymbolTable"/> stores a caller-built <c>/</c> symbol table (GNU variant only); the writer never builds one.</para>
 /// <para>Limits of the fields (size 10 digits, uid and gid 6, time 12, mode 8 octal) raise <see cref="ArchiveUnsupportedException"/> naming the entry.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArWriter : ArchiveWriter
 {
     private const long MaxSize = 9_999_999_999;

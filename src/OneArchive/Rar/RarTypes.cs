@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive.Rar;
 
 /// <summary>The operating system that created an entry (RAR 5.0 technote, "File header and service header", Host OS).</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum RarHostOs
 {
     /// <summary>Windows; <see cref="RarEntry.Attributes"/> holds DOS-style attribute bits.</summary>
@@ -14,7 +12,6 @@ public enum RarHostOs
 }
 
 /// <summary>The file-system redirection an entry carries (technote, "File system redirection record").</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum RarRedirectionType
 {
     /// <summary>The entry has no redirection.</summary>
@@ -37,7 +34,6 @@ public enum RarRedirectionType
 }
 
 /// <summary>Why a RAR archive or entry cannot be read yet.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum RarUnsupportedKind
 {
     /// <summary>The entry is compressed (method 1 to 5); only stored entries can be extracted.</summary>
@@ -58,7 +54,6 @@ public enum RarUnsupportedKind
 /// The entry model and the reader are complete for listing; only the decompressor for methods 1 to 5, the RAR 4 container and
 /// AES-256 encryption are missing. Catch <see cref="ArchiveUnsupportedException"/> to handle all unsupported features alike.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class RarUnsupportedException : ArchiveUnsupportedException
 {
     /// <summary>Creates the error.</summary>
@@ -115,7 +110,6 @@ public sealed class RarUnsupportedException : ArchiveUnsupportedException
 /// The archive-level header of a RAR 5 archive (technote, "Main archive header") and what its extra area and the optional
 /// comment service header add.
 /// </summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class RarArchiveHeader
 {
     /// <summary>Gets the offset of the archive signature from the start of the stream; non-zero when a self-extracting module precedes it.</summary>
@@ -167,7 +161,6 @@ public sealed class RarArchiveHeader
 /// <see cref="Blake2sp"/> are <see langword="null"/>: the stored values cover only that volume's data, and the value for the whole
 /// file is in the header of the last part.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class RarEntry : ArchiveEntry
 {
     /// <summary>Gets the operating system that created the entry; it decides how <see cref="Attributes"/> and the name are read.</summary>
@@ -235,11 +228,9 @@ public sealed class RarEntry : ArchiveEntry
 /// <param name="volumeNumber">The zero-based number of the volume wanted; the first volume (0) is the one the reader was given.</param>
 /// <returns>A readable stream positioned at the start of the volume, or <see langword="null"/> when the set has no such part.
 /// The reader owns the stream and disposes it when it moves on.</returns>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public delegate Stream? RarVolumeProvider(int volumeNumber);
 
 /// <summary>Options for <see cref="RarReader"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class RarReaderOptions
 {
     /// <summary>Gets the shared default options.</summary>

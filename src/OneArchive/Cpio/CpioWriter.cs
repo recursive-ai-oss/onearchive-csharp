@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace RecursiveAI.OneArchive.Cpio;
@@ -21,7 +20,6 @@ namespace RecursiveAI.OneArchive.Cpio;
 /// <para>Limits of the fields (odc: 18-bit device, inode, mode, uid, gid, link count; 33-bit size and time; newc: 32 bits) raise
 /// <see cref="ArchiveUnsupportedException"/> naming the entry.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CpioWriter : ArchiveWriter
 {
     private readonly Stream _stream;

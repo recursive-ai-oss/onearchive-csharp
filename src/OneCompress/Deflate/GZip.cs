@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
 /// <summary>
 /// One-call compression and decompression of a gzip file (RFC 1952), one or more members. Everything here is built on <see cref="DeflateDecoder"/>.
 /// </summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class GZip
 {
     /// <summary>Decompresses a buffer holding a gzip file (RFC 1952), one or more members. Concatenated members are decoded one after the other and their output is joined, as the gzip tool does.</summary>

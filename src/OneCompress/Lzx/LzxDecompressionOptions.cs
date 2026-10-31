@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzx;
 
 /// <summary>Limits for LZX decompression.</summary>
-[Experimental("ONECOMPRESS009", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzxDecompressionOptions
 {
     /// <summary>The default for <see cref="MaxOutputSize"/>: 1 GiB.</summary>

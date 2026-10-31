@@ -2,7 +2,7 @@
 
 Compression codecs for .NET, written from first principles in managed code: no native libraries, and the same compressed bytes on every operating system, CPU, runtime and thread count, WebAssembly included. The only runtime dependency is the .NET base class library.
 
-**Preview.** Public types carry `[Experimental]` until their codec meets its speed target; opt in per codec with its diagnostic ID (`ONECOMPRESS001` to `ONECOMPRESS010`, listed in the [README](https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs)).
+**Stable from 1.0:** semantic versioning, and compressed bytes per codec and level stay the same within 1.x (see the [README](https://github.com/recursive-ai-oss/onearchive-csharp#stability)).
 
 - **Zstandard:** every level, dictionaries and dictionary training (COVER, fast-COVER), long-distance matching, multithreaded compression in fixed-size jobs, the seekable format.
 - **LZ4:** block and frame, with dictionaries. **Deflate, zlib, gzip and Deflate64.** **Brotli** with its built-in dictionary.

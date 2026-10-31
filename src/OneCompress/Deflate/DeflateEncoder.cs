@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Deflate;
@@ -15,7 +14,6 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// so steady-state calls allocate nothing. An instance is not thread-safe.</para>
 /// <para>Output depends only on the bytes given, where flushes fall, and the <see cref="DeflateOptions"/>.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class DeflateEncoder
 {
     /// <summary>The size of the buffer the encoder fills before it parses: the 32 KiB window plus room for new input.</summary>

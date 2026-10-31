@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// first code after the previous length's last code. A table must not be oversubscribed (Kraft sum above 1); a table with a Kraft
 /// sum below 1 is accepted, and the unassigned codes are invalid when they are met.
 /// </summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2HuffmanTable
 {
     /// <summary>The longest code length (20 bits).</summary>

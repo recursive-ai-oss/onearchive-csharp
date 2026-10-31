@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
 /// <summary>The elementary transform of a brotli word transformation (RFC 7932 section 8).</summary>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum BrotliTransformKind
 {
     /// <summary>The word unchanged.</summary>
@@ -26,7 +24,6 @@ public enum BrotliTransformKind
 /// The 121 word transformations that apply to a static dictionary word (RFC 7932 section 8 and Appendix B): each is a prefix, an
 /// elementary transform of the word and a suffix.
 /// </summary>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class BrotliTransforms
 {
     /// <summary>The number of transformations (121).</summary>

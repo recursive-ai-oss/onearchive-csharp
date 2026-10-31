@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
 /// <summary>How the encoder turns the matches a match finder reports into symbols.</summary>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum LzmaMode
 {
     /// <summary>Greedy parsing with one step of lazy matching: fast, a few percent larger output.</summary>
@@ -14,7 +12,6 @@ public enum LzmaMode
 }
 
 /// <summary>The match finders. The number is how many bytes the main hash covers.</summary>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum LzmaMatchFinderKind
 {
     /// <summary>Hash chains, with a 2-byte table for short matches and a main hash of 3 bytes. Smallest memory, fastest.</summary>
@@ -43,7 +40,6 @@ public enum LzmaMatchFinderKind
 /// for 4 to 9. The nice lengths and depths are in <c>docs/lzma-encoder.md</c>.</para>
 /// <para>The compressed bytes depend only on the input and these options.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzmaOptions
 {
     /// <summary>The preset used when none is set: 6, like the reference tool.</summary>
@@ -126,7 +122,6 @@ public sealed class LzmaOptions
 }
 
 /// <summary>The values an LZMA encoder runs with after <see cref="LzmaOptions.Resolve"/>.</summary>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct LzmaEncoderSettings
 {
     // Dictionary sizes of presets 0 to 9 (the xz preset table).

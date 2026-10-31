@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
@@ -9,7 +8,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// other three in the first chunk that needs them.
 /// </summary>
 /// <remarks>LZMA specification, "lzma file format" and "The new scheme to encode LZMA properties".</remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct LzmaProperties : IEquatable<LzmaProperties>
 {
     /// <summary>The smallest dictionary the format uses: a smaller declared size is read as this one.</summary>
