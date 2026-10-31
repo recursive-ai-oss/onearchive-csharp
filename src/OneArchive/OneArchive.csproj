@@ -4,7 +4,8 @@
     <AssemblyName>$(PackagePrefix).$(ArchiveName)</AssemblyName>
     <RootNamespace>$(PackagePrefix).$(ArchiveName)</RootNamespace>
     <PackageId>$(PackagePrefix).$(ArchiveName)</PackageId>
-    <Description>Archive and container formats (zip, tar, 7z and more) with safe extraction by default.</Description>
+    <Description>Archive and container formats in managed code, with safe extraction by default: zip (zip64, AES), tar, 7z, cpio, ar, ISO 9660, cab, RAR 5 listing, Microsoft compound files and single compressed streams, behind one Archive API.</Description>
+    <PackageTags>archive;zip;tar;7z;7zip;cpio;ar;iso;iso9660;cab;rar;cfb;ole;targz;tarzst;extract;zip-slip;compression;nativeaot;sharpcompress-alternative;sharpziplib-alternative</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

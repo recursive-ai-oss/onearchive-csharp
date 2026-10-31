@@ -19,7 +19,10 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <Deterministic>true</Deterministic>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- Deterministic source paths in the shipped binaries; src/ only, because tests use [CallerFilePath]. -->
+    <_ProjectDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)'))</_ProjectDir>
+    <_SrcDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'src'))</_SrcDir>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' and $(_ProjectDir.StartsWith('$(_SrcDir)'))">true</ContinuousIntegrationBuild>
     <Configurations>Debug;Release;Checked</Configurations>
   </PropertyGroup>
 

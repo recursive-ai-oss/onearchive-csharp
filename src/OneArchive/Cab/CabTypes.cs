@@ -101,7 +101,7 @@ public sealed class CabHeader
     /// <summary>Gets the number of file entries (<c>cFiles</c>).</summary>
     public int FileCount { get; init; }
 
-    /// <summary>Gets the header flags.</summary>
+    /// <summary>Gets the cabinet header flags ([MS-CAB] 2.1): whether the cabinet continues from a previous one, continues in a next one, or has reserved header space.</summary>
     public CabHeaderFeatures Flags { get; init; }
 
     /// <summary>Gets the identifier shared by the cabinets of a set (<c>setID</c>).</summary>

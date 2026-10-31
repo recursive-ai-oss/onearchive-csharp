@@ -7,18 +7,30 @@
     <IsPackable>true</IsPackable>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageProjectUrl>https://github.com/recursive-ai-oss/onearchive-csharp</PackageProjectUrl>
+    <!-- Every public type and member carries an XML doc comment; a missing one fails the build. -->
+    <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
+    <PackageReadmeFile>PACKAGE.md</PackageReadmeFile>
+    <PackageReleaseNotes>See CHANGELOG.md in the repository.</PackageReleaseNotes>
+    <PackageProjectUrl>https://recursiveai.org/onearchive/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/recursive-ai-oss/onearchive-csharp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <!-- Source Link ships in the SDK; it only adds repository metadata to the package, no runtime dependency. -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <!-- Symbols ship as .snupkg beside each package; the release workflow pushes both. -->
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- A pack fails on a breaking change against the last published version. Intentional changes are
+         listed with a reason in CompatibilitySuppressions.xml beside each project. -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>0.7.0-preview.1</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(MSBuildProjectDirectory)/PACKAGE.md" Pack="true" PackagePath="/" />
+    <None Include="$(MSBuildThisFileDirectory)../LICENSE-MIT" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../LICENSE-APACHE" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 
 </Project>

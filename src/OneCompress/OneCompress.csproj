@@ -4,7 +4,8 @@
     <AssemblyName>$(PackagePrefix).$(CompressName)</AssemblyName>
     <RootNamespace>$(PackagePrefix).$(CompressName)</RootNamespace>
     <PackageId>$(PackagePrefix).$(CompressName)</PackageId>
-    <Description>Compression codecs written in managed code: no native dependencies, identical output on every platform.</Description>
+    <Description>Compression codecs written in managed code, with no native dependencies and identical output on every platform: Zstandard (dictionaries, training, long-distance matching, seekable format), LZ4, Deflate, zlib, gzip, Deflate64, Brotli, LZMA, LZMA2, xz, lzip, bzip2, PPMd, LZX, and the CRC32, CRC32C, CRC64, Adler-32 and xxHash checksums.</Description>
+    <PackageTags>compression;zstd;zstandard;lz4;deflate;zlib;gzip;brotli;lzma;lzma2;xz;lzip;bzip2;ppmd;deflate64;lzx;crc32;xxhash;dictionary;nativeaot;deterministic;managed;sharpcompress-alternative;zstdsharp-alternative</PackageTags>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
