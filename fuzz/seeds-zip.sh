@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seeds for the zip-read, zip-roundtrip and single-stream-read targets: archives written by Info-ZIP zip, bsdtar and 7-Zip
+# Seeds for the zip-read, zip-recover, zip-roundtrip and single-stream-read targets: archives written by Info-ZIP zip, bsdtar and 7-Zip
 # (run as black boxes, when they are on PATH) over a small tree, streamed and zip64 variants, compressed single files from
 # gzip, zstd and lz4, plus the hostile archives from testdata/zip/make-hostile.py.
 #
@@ -8,7 +8,7 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$here/.."
 out="${1:?usage: seeds-zip.sh OUT PAYLOADS}"; payloads="${2:?}"
-mkdir -p "$out/zip-read" "$out/zip-roundtrip" "$out/single-stream-read"
+mkdir -p "$out/zip-read" "$out/zip-recover" "$out/zip-roundtrip" "$out/single-stream-read"
 tree="$out/.ziptree"; rm -rf "$tree"; mkdir -p "$tree/dir/sub" "$tree/empty"
 for p in "$payloads"/*; do head -c 3000 "$p" > "$tree/dir/$(basename "$p")"; done
 printf 'hello\n' > "$tree/hello.txt"; printf 'x' > "$tree/sub-x"; : > "$tree/dir/sub/zero"
@@ -36,6 +36,14 @@ for p in "$payloads"/*; do
   if command -v gzip >/dev/null; then head -c 8000 "$p" | gzip -9 > "$out/single-stream-read/gz-$b"; fi
   if command -v zstd >/dev/null; then head -c 8000 "$p" | zstd -q -3 > "$out/single-stream-read/zst-$b"; fi
   if command -v lz4 >/dev/null; then head -c 8000 "$p" | lz4 -q > "$out/single-stream-read/lz4-$b"; fi
+done
+# Recovery seeds: the archives above, each as it is, cut in half, and with 50 bytes of text spliced in after the first 40 bytes.
+for f in "$out"/zip-read/*; do
+  b=$(basename "$f"); sz=$(stat -c %s "$f")
+  [ "$sz" -le 60000 ] || continue
+  cp "$f" "$out/zip-recover/$b"
+  head -c $((sz / 2)) "$f" > "$out/zip-recover/cut-$b"
+  { head -c 40 "$f"; printf 'damage damage damage damage damage damage damage'; tail -c +41 "$f"; } > "$out/zip-recover/spliced-$b"
 done
 # Round-trip seeds: option byte, entry count byte, then payload.
 for n in 1 2 3 4 5 6 7 8; do head -c $((2 + 600 * n)) /dev/urandom > "$out/zip-roundtrip/rand$n"; done

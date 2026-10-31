@@ -61,7 +61,9 @@ Also covered: `cpio-read`, `cpio-roundtrip`, `ar-read`, `ar-roundtrip`, `iso-rea
 
 `zip-read` (the zip reader through the central directory, with entries re-opened out of order, and forward-only in odd pieces;
 every entry read must have the length it declares), `zip-roundtrip` (entries built from the input are written with an option
-mix - store or zstd, zip64, data descriptors, seekable or not - and read back both ways) and `single-stream-read`
+mix - store or zstd, zip64, data descriptors, seekable or not - and read back both ways), `zip-recover` (the reader in recovery mode on a seekable
+and a forward-only stream: damage records must lie inside the input, a failed entry must be in the damage list, and an archive the strict reader
+accepts must come out of recovery with the same entries and no damage; seeds are the `zip-read` archives whole, cut in half and with text spliced in) and `single-stream-read`
 (`Archive.Extract` over compressed single files and everything else, then the same nothing-outside check). Seeds come from
 `seeds-zip.sh`: Info-ZIP, bsdtar and 7-Zip archives (streamed and zip64 variants too), gzip, zstd and lz4 files, and the hostile
 set from `testdata/zip/make-hostile.py`.

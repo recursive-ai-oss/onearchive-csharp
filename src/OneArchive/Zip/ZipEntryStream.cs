@@ -36,6 +36,16 @@ internal sealed class ZipInputBuffer : IDisposable
 
     public int Available => _end - _start;
 
+    /// <summary>Gets a value indicating whether <see cref="SeekTo"/> works.</summary>
+    public bool CanSeek => _seekable;
+
+    /// <summary>Drops the buffered bytes and continues reading at <paramref name="offset"/> (an archive offset). Only for seekable sources.</summary>
+    public void SeekTo(long offset)
+    {
+        _start = _end = 0;
+        _fetchPos = offset;
+    }
+
     public ReadOnlySpan<byte> Span => _buf.AsSpan(_start, _end - _start);
 
     public void Consume(int n) => _start += n;

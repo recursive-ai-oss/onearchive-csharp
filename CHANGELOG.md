@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- Zip recovery mode (`ZipReaderOptions.Recovery`, `MaxRecoveryBytes`, `ZipReader.Damage`, `ZipDamage`, `ZipDamageKind`): resynchronises on the next local header after garbage or a damaged header, falls back to the local headers when the end record or central directory is missing or inconsistent, and reports skipped ranges and damaged or truncated entries. Off by default; reading is unchanged without it. The `zip-recover` fuzz target covers it.
+
 ## [0.7.0-preview.1] - 2026-10-29
 
 Everything is still preview and carries `[Experimental]`. No codec changed since 0.5.1-preview.1, so the README measurements stand. Version 0.6 is reserved for RAR compressed entries.
