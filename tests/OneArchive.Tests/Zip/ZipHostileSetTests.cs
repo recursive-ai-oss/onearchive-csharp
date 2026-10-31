@@ -5,9 +5,9 @@ namespace RecursiveAI.OneArchive.Tests;
 /// <summary>Runs every archive of the generated hostile zip set through extraction, seekable and forward-only.</summary>
 public class ZipHostileSetTests
 {
-    private static string Script() => Path.Combine(AppContext.BaseDirectory, "testdata", "make-hostile.py");
+    internal static string Script() => Path.Combine(AppContext.BaseDirectory, "testdata", "make-hostile.py");
 
-    private static string? FindPython()
+    internal static string? FindPython()
     {
         foreach (string candidate in s_pythons)
         {

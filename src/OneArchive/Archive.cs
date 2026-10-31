@@ -309,7 +309,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
         {
             case ArchiveFormat.Zip:
                 ZipReaderOptions zip = options.Zip is { } z
-                    ? new ZipReaderOptions { Limits = options.Limits, VerifyChecksum = z.VerifyChecksum, ForceStreaming = z.ForceStreaming, LegacyNameEncoding = z.LegacyNameEncoding, MaxCentralDirectorySize = z.MaxCentralDirectorySize, Recovery = z.Recovery, MaxRecoveryBytes = z.MaxRecoveryBytes, Password = options.Password.IsEmpty ? z.Password : options.Password }
+                    ? new ZipReaderOptions { Limits = options.Limits, VerifyChecksum = z.VerifyChecksum, ForceStreaming = z.ForceStreaming, LazyDirectory = z.LazyDirectory, LegacyNameEncoding = z.LegacyNameEncoding, MaxCentralDirectorySize = z.MaxCentralDirectorySize, Recovery = z.Recovery, MaxRecoveryBytes = z.MaxRecoveryBytes, Password = options.Password.IsEmpty ? z.Password : options.Password }
                     : new ZipReaderOptions { Limits = options.Limits, Password = options.Password };
                 return new ZipReader(stream, zip, leaveOpen: !ownsTop);
             case ArchiveFormat.SevenZip:

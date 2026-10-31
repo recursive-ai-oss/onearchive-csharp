@@ -247,6 +247,9 @@ are those of PKWARE's APPNOTE 6.3.10; its text is not reproduced here.
   before the directory; no two entries share a local header offset; the entry's compressed size fits between its local header
   and the next entry (or the directory). Together these make overlapping entries - one stored blob claimed by many names,
   data running into the next entry - impossible, so the total compressed bytes read never exceed the file's size.
+- **Lazy directory** (`ZipReaderOptions.LazyDirectory`, default off; also reachable through `ArchiveOpenOptions.Zip`): the same
+  checks, the same entries in the same order, but the directory is read from the stream as entries are asked for and never
+  held. See `zip.md`.
 - **Opening an entry** reads its local header and requires it to agree with the directory: same method, same name bytes, same
   encryption flag, and (when bit 3 is clear) the same sizes and CRC-32 where the local header states them. The data must end
   before the entry's boundary. A stored entry's compressed size must equal its size.

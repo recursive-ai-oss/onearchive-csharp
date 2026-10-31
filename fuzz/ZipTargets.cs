@@ -12,6 +12,9 @@ namespace RecursiveAI.Fuzz;
 /// <item><c>zip-read</c>: the zip reader over the input, through the central directory (with entries opened out of order) and
 /// forward-only in odd pieces; each must end normally or in one of the library's exceptions, every entry that is read must have
 /// the length it declares, and sequential and random-access reads of one entry must agree.</item>
+/// <item><c>zip-read-lazy</c>: the reader with <c>LazyDirectory</c> against the default reader over the same input: both must list the same
+/// entries (or both refuse the directory), entries opened out of order must agree with the default mode's, and a lazy reader that has
+/// consumed the whole directory must still open the entries it returned.</item>
 /// <item><c>zip-recover</c>: the reader in recovery mode over the input, seekable and forward-only. Each must end normally or in one of
 /// the library's exceptions; every damage record must lie inside the input, skipped ranges must not run backwards past the start,
 /// an entry that fails to read must appear in the damage list, and the entries read from an intact archive must match a strict read.</item>
@@ -36,6 +39,8 @@ internal static class ZipTargets
     };
 
     public static FuzzTarget Read { get; } = new("zip-read", static data => CheckRead(data.ToArray(), null), static ex => ex is CompressionException);
+
+    public static FuzzTarget ReadLazy { get; } = new("zip-read-lazy", static data => CheckLazy(data.ToArray()), static ex => ex is CompressionException);
 
     public static FuzzTarget Recover { get; } = new("zip-recover", static data => CheckRecover(data.ToArray()), static ex => ex is CompressionException);
 
@@ -175,6 +180,97 @@ internal static class ZipTargets
         }
         catch (CompressionException)
         {
+        }
+    }
+
+    private static string Line(ZipEntry e) => $"{e.Name}|{e.Kind}|{e.Size}|{e.Method}|{e.Flags}|{e.Crc32}|{e.CompressedSize}|{e.LocalHeaderOffset}|{e.LinkTarget}|{e.ExternalAttributes}";
+
+    private static void CheckLazy(byte[] data)
+    {
+        // Both modes list the same entries; where the default mode refuses the directory, so does the lazy one, before any entry.
+        var eager = new List<(ZipEntry Entry, string Line)>();
+        bool eagerRefused = false;
+        try
+        {
+            using var reader = new ZipReader(new MemoryStream(data), new ZipReaderOptions { Limits = s_limits });
+            while (reader.GetNextEntry() is { } e)
+            {
+                eager.Add((e, Line(e)));
+            }
+        }
+        catch (CompressionException) when (eager.Count == 0)
+        {
+            eagerRefused = true;
+        }
+        catch (CompressionException)
+        {
+            // A link target that failed to read while resolving: the default mode refuses the whole directory too.
+            eagerRefused = true;
+            eager.Clear();
+        }
+
+        var lazy = new List<(ZipEntry Entry, string Line)>();
+        try
+        {
+            using var reader = new ZipReader(new MemoryStream(data), new ZipReaderOptions { Limits = s_limits, LazyDirectory = true });
+            while (reader.GetNextEntry() is { } e)
+            {
+                lazy.Add((e, Line(e)));
+            }
+
+            if (eagerRefused)
+            {
+                throw new InvalidOperationException("the default reader refused the directory and the lazy reader listed it");
+            }
+
+            if (!eager.Select(x => x.Line).SequenceEqual(lazy.Select(x => x.Line)))
+            {
+                throw new InvalidOperationException("the lazy and default readers list different entries");
+            }
+
+            // Entries opened out of order, with the walk finished, give what the default mode gives.
+            using var other = new ZipReader(new MemoryStream(data), new ZipReaderOptions { Limits = s_limits });
+            var kept = new List<ZipEntry>();
+            while (other.GetNextEntry() is { } e)
+            {
+                kept.Add(e);
+            }
+
+            for (int i = lazy.Count - 1; i >= 0; i -= 3)
+            {
+                string a, b;
+                try
+                {
+                    using Stream s = reader.OpenEntryStream(lazy[i].Entry);
+                    a = HashOf(s, -1, lazy[i].Entry.Name);
+                }
+                catch (Exception ex) when (ex is CompressionException or ArchiveUnsupportedException or ArchivePasswordException)
+                {
+                    a = ex.GetType().Name;
+                }
+
+                try
+                {
+                    using Stream s = other.OpenEntryStream(kept[i]);
+                    b = HashOf(s, -1, kept[i].Name);
+                }
+                catch (Exception ex) when (ex is CompressionException or ArchiveUnsupportedException or ArchivePasswordException)
+                {
+                    b = ex.GetType().Name;
+                }
+
+                if (a != b)
+                {
+                    throw new InvalidOperationException($"entry '{lazy[i].Entry.Name}' reads differently in the lazy and default modes");
+                }
+            }
+        }
+        catch (CompressionException)
+        {
+            if (!eagerRefused && lazy.Count == 0 && eager.Count > 0)
+            {
+                throw new InvalidOperationException("the lazy reader refused a directory the default reader accepted");
+            }
         }
     }
 

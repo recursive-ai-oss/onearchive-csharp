@@ -16,6 +16,8 @@ namespace RecursiveAI.OneArchive.Zip;
 /// seek (or <see cref="ZipReaderOptions.ForceStreaming"/>) is read forward through the local headers; then the central
 /// directory is never read, symbolic links and Unix modes are not known, and an entry whose sizes follow its data
 /// (bit 3) reports <see cref="ZipEntry.IsSizeKnown"/> false.</para>
+/// <para>With <see cref="ZipReaderOptions.LazyDirectory"/> the directory is checked the same way but is not kept: entries are produced one at a
+/// time and the reader's memory does not depend on how many there are.</para>
 /// <para>With <see cref="ZipReaderOptions.Recovery"/> the reader resynchronises on damage instead of throwing, and lists what it skipped or found damaged in <see cref="Damage"/>.</para>
 /// <para>Offsets in errors count bytes from where the reader started. Spanned (multi-disk) archives are not supported.
 /// Entry streams are forward-only.</para>
@@ -48,6 +50,8 @@ public sealed partial class ZipReader : ArchiveReader
     private Dictionary<long, ZipEntry>? _byOffset;
     private int _next;
     private string _comment = string.Empty;
+    private readonly object _token = new();
+    private LazyDirectory? _lazy;
 
     // Forward-only mode.
     private ZipInputBuffer? _buf;
@@ -142,12 +146,18 @@ public sealed partial class ZipReader : ArchiveReader
             throw new NotSupportedException("The zip stream is read forward-only, so entries can only be read in order.");
         }
 
-        if (entry is not ZipEntry zip || _byOffset is null || !_byOffset.TryGetValue(zip.LocalHeaderOffset, out ZipEntry? known) || !ReferenceEquals(known, zip))
+        // The lazy mode keeps no table of entries: an entry is this reader's if it carries the reader's token, and every
+        // field the open needs is on the entry itself.
+        bool mine = entry is ZipEntry z
+            && (_options.LazyDirectory
+                ? ReferenceEquals(z.Owner, _token)
+                : _byOffset is not null && _byOffset.TryGetValue(z.LocalHeaderOffset, out ZipEntry? known) && ReferenceEquals(known, z));
+        if (!mine)
         {
             throw new ArgumentException("The entry was not read by this ZipReader.", nameof(entry));
         }
 
-        return OpenDirectoryEntry(zip);
+        return OpenDirectoryEntry((ZipEntry)entry);
     }
 
     private Stream OpenDirectoryEntry(ZipEntry entry)
@@ -184,6 +194,7 @@ public sealed partial class ZipReader : ArchiveReader
         {
             _entryStream?.Invalidate();
             _buf?.Dispose();
+            _lazy?.Buf.Dispose();
             if (!_leaveOpen)
             {
                 _stream.Dispose();
@@ -200,6 +211,7 @@ public sealed partial class ZipReader : ArchiveReader
         {
             _entryStream?.Invalidate();
             _buf?.Dispose();
+            _lazy?.Buf.Dispose();
             if (!_leaveOpen)
             {
                 await _stream.DisposeAsync().ConfigureAwait(false);
@@ -214,12 +226,12 @@ public sealed partial class ZipReader : ArchiveReader
     {
         if (_useDirectory)
         {
-            if (_entries is null)
+            if (_entries is null && _lazy is null)
             {
                 try
                 {
                     await LoadDirectoryAsync(async, cancellationToken).ConfigureAwait(false);
-                    if (_options.Recovery)
+                    if (_options.Recovery && _lazy is null)
                     {
                         await VerifyLocalSignaturesAsync(async, cancellationToken).ConfigureAwait(false);
                     }
@@ -232,6 +244,11 @@ public sealed partial class ZipReader : ArchiveReader
 
             if (_useDirectory)
             {
+                if (_lazy is not null)
+                {
+                    return await ReadNextLazyAsync(async, cancellationToken).ConfigureAwait(false);
+                }
+
                 return _next < _entries!.Count ? _entries[_next++] : null;
             }
         }
@@ -376,7 +393,8 @@ public sealed partial class ZipReader : ArchiveReader
             throw ZipFormat.Bad(endPos, $"a central directory of {dirSize} bytes that fits before the end record and holds {total} entries");
         }
 
-        if (dirSize > (ulong)_options.MaxCentralDirectorySize)
+        // The limit bounds the memory the directory takes; the lazy mode never holds it.
+        if (!_options.LazyDirectory && dirSize > (ulong)_options.MaxCentralDirectorySize)
         {
             throw new CompressionLimitException(ZipFormat.Name, nameof(ZipReaderOptions.MaxCentralDirectorySize), _options.MaxCentralDirectorySize, (long)dirSize);
         }
@@ -399,6 +417,12 @@ public sealed partial class ZipReader : ArchiveReader
         }
 
         long dirStart = (long)dirOffset + adjust;
+        if (_options.LazyDirectory)
+        {
+            await StartLazyDirectoryAsync(total, dirStart, (long)dirSize, adjust, async, ct).ConfigureAwait(false);
+            return;
+        }
+
         var raws = new List<Rec>((int)total);
         using (var buf = new ZipInputBuffer(_stream, _origin, dirStart))
         {
@@ -417,7 +441,7 @@ public sealed partial class ZipReader : ArchiveReader
         await ResolveLinksAsync(async, ct).ConfigureAwait(false);
     }
 
-    private async ValueTask<Rec> ReadDirectoryRecordAsync(ZipInputBuffer buf, long adjust, long dirStart, bool async, CancellationToken ct)
+    private async ValueTask<Rec> ReadDirectoryRecordAsync(ZipInputBuffer buf, long adjust, long dirStart, bool async, CancellationToken ct, bool decode = true)
     {
         long at = buf.Offset;
         if (!await buf.EnsureAsync(ZipFormat.CentralHeaderSize, async, ct).ConfigureAwait(false))
@@ -454,9 +478,9 @@ public sealed partial class ZipReader : ArchiveReader
 
         byte[] name = new byte[nameLen];
         byte[] extra = new byte[extraLen];
-        byte[] comment = new byte[commentLen];
+        byte[] comment = decode ? new byte[commentLen] : [];
         if (!await buf.ReadExactAsync(name, async, ct).ConfigureAwait(false) || !await buf.ReadExactAsync(extra, async, ct).ConfigureAwait(false)
-            || !await buf.ReadExactAsync(comment, async, ct).ConfigureAwait(false))
+            || !(decode ? await buf.ReadExactAsync(comment, async, ct).ConfigureAwait(false) : await buf.SkipAsync(commentLen, async, ct).ConfigureAwait(false)))
         {
             throw ZipFormat.Bad(at, "the name, extra field and comment of a central directory header (the archive ended inside them)", truncated: true);
         }
@@ -524,6 +548,11 @@ public sealed partial class ZipReader : ArchiveReader
             throw ZipFormat.Bad(at, "a local header offset before the central directory");
         }
 
+        if (!decode)
+        {
+            return r;
+        }
+
         r.Modified = ZipFormat.FromDos(dosDate, dosTime);
         ZipFormat.ReadTimes(r.Extra, ref r.Modified, ref r.Accessed, ref r.Changed);
         r.Name = ZipFormat.DecodeName(name, r.Flags, ZipFormat.Find(r.Extra, ZipFormat.ExtraUnicodePath), _options.LegacyNameEncoding);
@@ -585,7 +614,7 @@ public sealed partial class ZipReader : ArchiveReader
 
     private static bool IsUnixHost(ushort versionMadeBy) => (versionMadeBy >> 8) is 3 or 19;
 
-    private static ZipEntry Make(Rec r, string? linkTarget)
+    private static ZipEntry Make(Rec r, string? linkTarget, object? owner = null)
     {
         string name = r.Name;
         bool slash = name.Length > 0 && (name[^1] is '/' or '\\');
@@ -647,10 +676,12 @@ public sealed partial class ZipReader : ArchiveReader
             IsSizeKnown = r.SizeKnown,
             Boundary = r.Boundary,
             DeclaredSize = r.Size,
+            Owner = owner,
         };
     }
 
-    // A symbolic link's target is the entry's data. It is read when the directory is loaded so that the entry is complete.
+    // A symbolic link's target is the entry's data. It is read when the directory is loaded (or, in the lazy mode, when the
+    // entry is handed out) so that the entry is complete.
     private async ValueTask ResolveLinksAsync(bool async, CancellationToken ct)
     {
         for (int i = 0; i < _entries!.Count; i++)
@@ -661,40 +692,45 @@ public sealed partial class ZipReader : ArchiveReader
                 continue;
             }
 
-            string target = string.Empty;
-            long cap = (long)Limits.MaxPathLength * 4;
-            if (e.DeclaredSize > cap)
-            {
-                throw new CompressionLimitException(ZipFormat.Name, nameof(ArchiveLimits.MaxPathLength), Limits.MaxPathLength, e.DeclaredSize);
-            }
-
-            try
-            {
-                using Stream s = await OpenFromDirectoryAsync(e, async, ct).ConfigureAwait(false);
-                byte[] data = new byte[e.DeclaredSize];
-                int got = 0;
-                while (got < data.Length)
-                {
-                    int n = async ? await s.ReadAsync(data.AsMemory(got), ct).ConfigureAwait(false) : s.Read(data, got, data.Length - got);
-                    if (n == 0)
-                    {
-                        break;
-                    }
-
-                    got += n;
-                }
-
-                target = PathRules.DecodeName(data.AsSpan(0, got));
-            }
-            catch (Exception ex) when (ex is ArchiveUnsupportedException or ArchivePasswordException)
-            {
-                // An encrypted (without or with the wrong password) or unsupported link is listed with an empty target, which extraction refuses.
-            }
-
-            ZipEntry linked = Make(RecFrom(e), target);
+            ZipEntry linked = await ResolveLinkAsync(e, async, ct).ConfigureAwait(false);
             _entries[i] = linked;
             _byOffset![linked.LocalHeaderOffset] = linked;
         }
+    }
+
+    private async ValueTask<ZipEntry> ResolveLinkAsync(ZipEntry e, bool async, CancellationToken ct)
+    {
+        string target = string.Empty;
+        long cap = (long)Limits.MaxPathLength * 4;
+        if (e.DeclaredSize > cap)
+        {
+            throw new CompressionLimitException(ZipFormat.Name, nameof(ArchiveLimits.MaxPathLength), Limits.MaxPathLength, e.DeclaredSize);
+        }
+
+        try
+        {
+            using Stream s = await OpenFromDirectoryAsync(e, async, ct).ConfigureAwait(false);
+            byte[] data = new byte[e.DeclaredSize];
+            int got = 0;
+            while (got < data.Length)
+            {
+                int n = async ? await s.ReadAsync(data.AsMemory(got), ct).ConfigureAwait(false) : s.Read(data, got, data.Length - got);
+                if (n == 0)
+                {
+                    break;
+                }
+
+                got += n;
+            }
+
+            target = PathRules.DecodeName(data.AsSpan(0, got));
+        }
+        catch (Exception ex) when (ex is ArchiveUnsupportedException or ArchivePasswordException)
+        {
+            // An encrypted (without or with the wrong password) or unsupported link is listed with an empty target, which extraction refuses.
+        }
+
+        return Make(RecFrom(e), target, e.Owner);
     }
 
     private static Rec RecFrom(ZipEntry e) => new()
