@@ -113,6 +113,11 @@ public sealed partial class LzmaEncoderCore
         Reset();
     }
 
+    // True while the encoder drains for a flush: the stream goes on, so the bytes after the end of the window are not known yet.
+    // Positions too close to the end to be compared in full are then left out of the match finder (see MinimumLookaheadToRecord)
+    // and recorded later, when their bytes are all there. At the end of a stream there is nothing to wait for, and they are recorded as usual.
+    internal bool InputContinues { get; set; }
+
     /// <summary>Gets the stream properties: lc, lp, pb and the dictionary size the settings ask for.</summary>
     public LzmaProperties Properties { get; }
 
@@ -284,6 +289,11 @@ public sealed partial class LzmaEncoderCore
 
     private void AdvanceFinder(int target)
     {
+        if (InputContinues)
+        {
+            target = Math.Min(target, _bufEnd - _finder.MinimumLookaheadToRecord + 1);
+        }
+
         if (_finderPos < target)
         {
             _finder.SkipRange(_buf, _finderPos, target - _finderPos, _bufEnd);
@@ -303,6 +313,20 @@ public sealed partial class LzmaEncoderCore
         }
 
         _cacheCount = -1;
+        return FindMatchesAt(p, destination);
+    }
+
+    // Records position p in the match finder and returns its matches. Positions before p that were held back by a flush are recorded
+    // first, so the finder always sees positions in order. While a flush drains, a position that is too close to the end of the data
+    // is not recorded and has no matches.
+    private int FindMatchesAt(int p, LzmaMatch[] destination)
+    {
+        if (InputContinues && _bufEnd - p < _finder.MinimumLookaheadToRecord)
+        {
+            return 0;
+        }
+
+        AdvanceFinder(p);
         int count = _finder.FindMatches(_buf, p, _bufEnd - p, destination);
         _finderPos = p + 1;
         return count;
@@ -313,9 +337,14 @@ public sealed partial class LzmaEncoderCore
     {
         if (_cacheCount < 0 || _cachePos != p + 1)
         {
-            _cacheCount = _finder.FindMatches(_buf, p + 1, _bufEnd - p - 1, _matchesNext);
+            if (InputContinues && _bufEnd - p - 1 < _finder.MinimumLookaheadToRecord)
+            {
+                _cacheCount = -1;
+                return 0;
+            }
+
+            _cacheCount = FindMatchesAt(p + 1, _matchesNext);
             _cachePos = p + 1;
-            _finderPos = p + 2;
         }
 
         return _cacheCount;
