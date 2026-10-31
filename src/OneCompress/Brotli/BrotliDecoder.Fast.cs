@@ -410,7 +410,13 @@ public sealed partial class BrotliDecoder
             int symbol = FastSymbol(arena, icOffset, ref buf, ref cnt);
             ulong info = BrotliDecRaw.At(s_commandInfo, symbol);
             int insert = (int)(info & 0xFFFF) + FastTake(ref buf, ref cnt, (int)(info >> 16) & 31);
-            FastRefill(src, ref ip, ref buf, ref cnt);
+            // The refill above left at least 56 bits; the symbol took at most 15 and the insert extra bits at most 24, so 17 remain. The copy
+            // extra bits need up to 24: the refill is skipped when the bits already there cover them, which is nearly always.
+            if (cnt < 24)
+            {
+                FastRefill(src, ref ip, ref buf, ref cnt);
+            }
+
             int copy = (int)((info >> 21) & 0xFFFF) + FastTake(ref buf, ref cnt, (int)(info >> 37) & 31);
             icLeft--;
             bool implicitDistance = (info & (1UL << 42)) != 0;
@@ -483,7 +489,12 @@ public sealed partial class BrotliDecoder
                 }
 
                 distLeft--;
-                FastRefill(src, ref ip, ref buf, ref cnt);
+                // A distance symbol takes at most 15 bits and its extra bits at most 24.
+                if (cnt < 39)
+                {
+                    FastRefill(src, ref ip, ref buf, ref cnt);
+                }
+
                 int code = FastSymbol(arena, BrotliDecRaw.At64(distanceOffsets, Math.Min(copy, 5) - 2), ref buf, ref cnt);
                 ulong distanceInfo = BrotliDecRaw.At(distanceTable, code);
                 int extra = FastTake(ref buf, ref cnt, (int)(distanceInfo >> 32) & 31);
