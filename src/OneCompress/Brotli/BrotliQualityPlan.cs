@@ -102,7 +102,10 @@ internal sealed class BrotliQualityPlan
 
 
     /// <summary>True for the qualities whose parse hands the writer a <see cref="BrotliFastBlock"/>.</summary>
-    internal bool UsesFastBlock => Quality <= 2;
+    internal bool UsesFastBlock => Quality <= 3;
+
+    /// <summary>For the fast qualities, how many positions a hash bucket keeps and the parse compares: 1 (quality 0 and 1), 2 or 4.</summary>
+    internal int Ways = 1;
 
     internal static BrotliQualityPlan For(int quality)
     {
@@ -118,46 +121,39 @@ internal sealed class BrotliQualityPlan
                 break;
             case 1:
                 p.BlockSize = 1 << 17;
-                p.HashBits = 17;
+                p.HashBits = 18;
                 p.ChainDepth = 1;
                 p.SkipShift = 6;
                 p.FastHashLength = 6;
                 break;
             case 2:
                 p.BlockSize = 1 << 17;
-                p.HashBits = 16;
-                p.BucketBits = 2;
+                p.HashBits = 17;
+                p.Ways = 2;
                 p.ChainDepth = 2;
+                p.SkipShift = 6;
+                p.SparseInsert = 16;
+                p.FastHashLength = 7;
+                break;
+            case 3:
+                p.BlockSize = 1 << 17;
+                p.HashBits = 17;
+                p.Ways = 4;
+                p.ChainDepth = 4;
                 p.SkipShift = 6;
                 p.SparseInsert = 32;
                 p.FastHashLength = 5;
                 break;
-            case 3:
-                p.BlockSize = 1 << 18;
-                p.HashBits = 15;
-                p.ChainDepth = 4;
-                p.BucketBits = 3;
-                p.HashLength = 6;
-                p.SkipShift = 5;
-                p.Lazy = 1;
-                p.LiteralContexts = true;
-                p.SparseInsert = 32;
-                break;
             case 4:
-                p.BlockSize = 1 << 20;
-                p.HashBits = 15;
-                p.ChainDepth = 8;
+                p.BlockSize = 1 << 18;
+                p.HashBits = 16;
+                p.ChainDepth = 6;
                 p.BucketBits = 3;
                 p.HashLength = 6;
                 p.SkipShift = 5;
                 p.Lazy = 1;
                 p.LiteralContexts = true;
-                p.SplitBlocks = true;
-                p.LiteralSegmentMin = 1024;
-                p.LiteralSegmentMax = 128;
-                p.SplitPairwiseLimit = 64;
-                p.CommandSegmentMax = 32;
-                p.CommandPairwiseLimit = 16;
+                p.SparseInsert = 16;
                 break;
             case 5:
                 p.HashBits = 16;
@@ -250,9 +246,11 @@ internal sealed class BrotliQualityPlan
                 p.BlockSize = 1 << 20;
                 p.HashBits = 20;
                 p.ChainDepth = quality == 10 ? 64 : 128;
-                p.NiceLength = 128;
+                p.NiceLength = quality == 10 ? 128 : 256;
+                p.LiteralSegmentMin = 64;
+                p.LiteralSegmentMax = 8192;
                 p.Optimal = true;
-                p.OptimalPasses = quality == 10 ? 2 : 3;
+                p.OptimalPasses = quality == 10 ? 2 : 4;
                 p.LiteralContexts = true;
                 p.SplitBlocks = true;
                 p.SearchContextMode = true;

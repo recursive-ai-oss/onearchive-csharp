@@ -117,6 +117,7 @@ public sealed partial class BrotliDecoder
             _distanceContextOffset[i] = _distanceCodeOffset[_distanceContextMap[i]];
         }
 
+        Array.Clear(_utf8Valid);
         BuildDistanceInfo();
     }
 
@@ -177,32 +178,89 @@ public sealed partial class BrotliDecoder
     private interface ILiteralContext
     {
         static abstract int Of(byte[] lut, int p1, int p2);
+
+        // True when the offsets are a table made for this mode (see Utf8TableContext) rather than the 64 offsets of the block type.
+        static abstract bool UsesTable { get; }
     }
 
     // A literal block type that has one prefix code for every context.
     private struct SingleTreeContext : ILiteralContext
     {
         public static int Of(byte[] lut, int p1, int p2) => 0;
+
+        public static bool UsesTable => false;
     }
 
     private struct Lsb6Context : ILiteralContext
     {
         public static int Of(byte[] lut, int p1, int p2) => p1 & 63;
+
+        public static bool UsesTable => false;
     }
 
     private struct Msb6Context : ILiteralContext
     {
         public static int Of(byte[] lut, int p1, int p2) => p1 >> 2;
+
+        public static bool UsesTable => false;
     }
 
     private struct Utf8Context : ILiteralContext
     {
         public static int Of(byte[] lut, int p1, int p2) => (BrotliDecRaw.At768(lut, p1) | BrotliDecRaw.At768(lut, 256 + p2)) & 63;
+
+        public static bool UsesTable => false;
     }
 
     private struct SignedContext : ILiteralContext
     {
         public static int Of(byte[] lut, int p1, int p2) => ((BrotliDecRaw.At768(lut, 512 + p1) << 3) | BrotliDecRaw.At768(lut, 512 + p2)) & 63;
+
+        public static bool UsesTable => false;
+    }
+
+    // The UTF8 mode with the second lookup folded away. The context is (Lut0[p1] | Lut1[p2]) & 63, and Lut1 holds values below 4, so a
+    // table of the prefix code offsets indexed by (p1 << 2) | Lut1[p2] gives the offset in one read from the byte just decoded. The
+    // read of Lut1[p2] depends on an older byte and is off the critical path. Lut0 is below 64, so the mask changes nothing.
+    private struct Utf8TableContext : ILiteralContext
+    {
+        public static int Of(byte[] lut, int p1, int p2) => (p1 << 2) | BrotliDecRaw.At768(lut, 256 + p2);
+
+        public static bool UsesTable => true;
+    }
+
+    // A meta-block shorter than this is not worth building a 1024-entry table for.
+    private const int TableMinimumLength = 4096;
+
+    // The tables are kept between meta-blocks and streams so that decoding allocates nothing in the steady state; the flag says whether
+    // the table of a type belongs to the current meta-block.
+    private readonly int[]?[] _utf8Table = new int[]?[256];
+    private readonly bool[] _utf8Valid = new bool[256];
+
+    // The offsets of Utf8TableContext for a literal block type, built on first use in the meta-block.
+    private int[] Utf8Table(int type)
+    {
+        int[]? table = _utf8Table[type];
+        if (table != null && _utf8Valid[type])
+        {
+            return table;
+        }
+
+        table ??= new int[1024];
+        int[] offsets = _literalContextOffset;
+        int baseIndex = type << 6;
+        for (int p1 = 0; p1 < 256; p1++)
+        {
+            int a = BrotliContextTables.Lut0[p1];
+            for (int b = 0; b < 4; b++)
+            {
+                table[(p1 << 2) | b] = offsets[baseIndex + ((a | b) & 63)];
+            }
+        }
+
+        _utf8Table[type] = table;
+        _utf8Valid[type] = true;
+        return table;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -241,7 +299,15 @@ public sealed partial class BrotliDecoder
                 RunFast<Msb6Context>(ref br, dest);
                 break;
             case 2:
-                RunFast<Utf8Context>(ref br, dest);
+                if (_metaRemaining >= TableMinimumLength)
+                {
+                    RunFast<Utf8TableContext>(ref br, dest);
+                }
+                else
+                {
+                    RunFast<Utf8Context>(ref br, dest);
+                }
+
                 break;
             default:
                 RunFast<SignedContext>(ref br, dest);
@@ -316,10 +382,17 @@ public sealed partial class BrotliDecoder
         int p2 = _p2;
         int litType = _blockType[Literals];
         int litLeft = _blockLeft[Literals];
+        int icLeft = _blockLeft[InsertAndCopy];
+        int distLeft = _blockLeft[Distances];
+        ulong[] distanceTable = _distanceInfo;
+        int postfix = _postfixBits;
+        int window = _window;
+        int cap = _cap;
         int icOffset = _insertCodeOffset[_blockType[InsertAndCopy]];
         int dType = _blockType[Distances];
+        ReadOnlySpan<int> distanceOffsets = _distanceContextOffset.AsSpan(dType << 2, 4);
         uint[] arena = _arena;
-        ReadOnlySpan<int> literalOffsets = _literalContextOffset.AsSpan(litType << 6, 64);
+        ReadOnlySpan<int> literalOffsets = TContext.UsesTable ? Utf8Table(litType) : _literalContextOffset.AsSpan(litType << 6, 64);
         Span<int> last = stackalloc int[4];
         last[0] = _d1;
         last[1] = _d2;
@@ -330,16 +403,22 @@ public sealed partial class BrotliDecoder
         int bailCopy = 0;
         bool bailImplicit = false;
 
-        while (pos < end && ip <= limit && _blockLeft[InsertAndCopy] > 0)
+        while (pos < end && ip <= limit && icLeft > 0)
         {
             // RFC 7932 section 5: the insert-and-copy length code.
             FastRefill(src, ref ip, ref buf, ref cnt);
             int symbol = FastSymbol(arena, icOffset, ref buf, ref cnt);
             ulong info = BrotliDecRaw.At(s_commandInfo, symbol);
             int insert = (int)(info & 0xFFFF) + FastTake(ref buf, ref cnt, (int)(info >> 16) & 31);
-            FastRefill(src, ref ip, ref buf, ref cnt);
+            // The refill above left at least 56 bits; the symbol took at most 15 and the insert extra bits at most 24, so 17 remain. The copy
+            // extra bits need up to 24: the refill is skipped when the bits already there cover them, which is nearly always.
+            if (cnt < 24)
+            {
+                FastRefill(src, ref ip, ref buf, ref cnt);
+            }
+
             int copy = (int)((info >> 21) & 0xFFFF) + FastTake(ref buf, ref cnt, (int)(info >> 37) & 31);
-            _blockLeft[InsertAndCopy]--;
+            icLeft--;
             bool implicitDistance = (info & (1UL << 42)) != 0;
             if (pos + insert + copy > end || litLeft < insert)
             {
@@ -400,7 +479,7 @@ public sealed partial class BrotliDecoder
             }
             else
             {
-                if (ip > limit || _blockLeft[Distances] == 0)
+                if (ip > limit || distLeft == 0)
                 {
                     bailInsert = 0;
                     bailCopy = copy;
@@ -409,13 +488,18 @@ public sealed partial class BrotliDecoder
                     break;
                 }
 
-                _blockLeft[Distances]--;
-                FastRefill(src, ref ip, ref buf, ref cnt);
-                int code = FastSymbol(arena, _distanceContextOffset[(dType << 2) + Math.Min(copy, 5) - 2], ref buf, ref cnt);
-                ulong distanceInfo = BrotliDecRaw.At(_distanceInfo, code);
+                distLeft--;
+                // A distance symbol takes at most 15 bits and its extra bits at most 24.
+                if (cnt < 39)
+                {
+                    FastRefill(src, ref ip, ref buf, ref cnt);
+                }
+
+                int code = FastSymbol(arena, BrotliDecRaw.At64(distanceOffsets, Math.Min(copy, 5) - 2), ref buf, ref cnt);
+                ulong distanceInfo = BrotliDecRaw.At(distanceTable, code);
                 int extra = FastTake(ref buf, ref cnt, (int)(distanceInfo >> 32) & 31);
                 int lastMask = -(int)((distanceInfo >> 39) & 1);
-                distance = (last[(int)(distanceInfo >> 37) & 3] & lastMask) + (int)distanceInfo + (extra << _postfixBits);
+                distance = (last[(int)(distanceInfo >> 37) & 3] & lastMask) + (int)distanceInfo + (extra << postfix);
                 pushes = code != 0;
             }
 
@@ -425,7 +509,7 @@ public sealed partial class BrotliDecoder
                 throw Error(br, "a distance above zero");
             }
 
-            int maxDistance = Math.Min(_window, windowFull ? int.MaxValue : pos);
+            int maxDistance = Math.Min(window, windowFull ? int.MaxValue : pos);
             if (distance > maxDistance)
             {
                 // A static dictionary word (RFC 7932 section 8).
@@ -463,8 +547,8 @@ public sealed partial class BrotliDecoder
             {
                 // The source lies at the far end of the ring, a whole window behind. It is ahead of the destination, so a plain
                 // move copies it correctly. A source that runs over the end of the ring is left to the general path.
-                int source = pos - distance + _cap;
-                if (source + copy > _cap)
+                int source = pos - distance + cap;
+                if (source + copy > cap)
                 {
                     bailCopy = copy;
                     exitCmd = Cmd.Copy;
@@ -496,6 +580,8 @@ public sealed partial class BrotliDecoder
         _totalOut += produced;
         _metaRemaining -= produced;
         _blockLeft[Literals] = litLeft;
+        _blockLeft[InsertAndCopy] = icLeft;
+        _blockLeft[Distances] = distLeft;
         _d1 = last[0];
         _d2 = last[1];
         _d3 = last[2];

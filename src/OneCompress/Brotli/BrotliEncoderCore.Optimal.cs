@@ -10,6 +10,10 @@ internal sealed partial class BrotliEncoderCore
 
     private bool _collecting;
 
+    // A position whose tree match is this long or longer is not searched for dictionary words: a word would have to beat a long match, and
+    // the search is the largest cost of the parse. Eight rather than a longer length costs 0.1% of size and a fifth of the time.
+    private const int DictionarySkipLength = 8;
+
     // Match candidates of every position of the block, as found by the binary tree: lists of (length, distance, bytes covered, dictionary).
     private int[] _candStart = [];
     private int[] _candLength = [];
@@ -30,6 +34,12 @@ internal sealed partial class BrotliEncoderCore
     private int[] _nodeRing = [];
 
     private readonly int[] _literalCost = new int[256];
+
+    // Literal prices per context (RFC 7932 section 7.1): a literal's context depends only on the two bytes before it, which are input
+    // whatever path is taken, so the price of a literal at a position is known before the path is. _literalContext holds each position's
+    // context of the block; the prices are the 64 contexts of 256 bytes each, in 1/256 bit. Without literal contexts all of them are 0.
+    private readonly int[] _contextCost = new int[64 * 256];
+    private byte[] _literalContext = [];
     private readonly int[] _commandCost = new int[704];
     private readonly int[] _distanceCost = new int[BrotliDistanceCoding.AlphabetSize(0, 0)];
 
@@ -72,8 +82,10 @@ internal sealed partial class BrotliEncoderCore
         for (int b = 0; b < 256; b++)
         {
             _literalCost[b] = CostOf(end - start, histogram[b], 3);
+            _contextCost[b] = _literalCost[b];
         }
 
+        Array.Clear(_literalContext, 0, end - start);
         Array.Fill(_commandCost, 9 * CostBit);
         for (int s = 0; s < _distanceCost.Length; s++)
         {
@@ -87,6 +99,7 @@ internal sealed partial class BrotliEncoderCore
         var lit = new int[256];
         var cmd = new int[704];
         var dist = new int[_distanceCost.Length];
+        int[]? contextCounts = _plan.LiteralContexts ? new int[64 * 256] : null;
         Span<int> ring = stackalloc int[4];
         _ring.AsSpan(0, 4).CopyTo(ring);
         int pos = start;
@@ -99,6 +112,11 @@ internal sealed partial class BrotliEncoderCore
             {
                 lit[_buffer[pos + k]]++;
                 litTotal++;
+            }
+
+            if (contextCounts != null)
+            {
+                CountLiteralContexts(contextCounts, pos, _commands.Insert[j]);
             }
 
             pos += _commands.Insert[j] + _commands.Covered[j];
@@ -135,6 +153,12 @@ internal sealed partial class BrotliEncoderCore
         for (int b = 0; b < 256; b++)
         {
             _literalCost[b] = CostOf(litTotal, lit[b], 4);
+            _contextCost[b] = _literalCost[b];
+        }
+
+        if (contextCounts != null && litTotal > 0)
+        {
+            SetContextCosts(contextCounts, lit, litTotal);
         }
 
         for (int s = 0; s < 704; s++)
@@ -145,6 +169,66 @@ internal sealed partial class BrotliEncoderCore
         for (int s = 0; s < dist.Length; s++)
         {
             _distanceCost[s] = CostOf(distTotal, dist[s], 3);
+        }
+    }
+
+    // RFC 7932 section 7.1: the UTF8 context mode, which is the mode the writer picks for almost all of the literals this parse codes, so
+    // literals are priced in the contexts they will be coded in.
+    private static int ContextOf(int p1, int p2) => (BrotliContextTables.Lut0[p1] | BrotliContextTables.Lut1[p2]) & 63;
+
+    // Counts the literals of one command by context and byte.
+    private void CountLiteralContexts(int[] contextCounts, int pos, int count)
+    {
+        for (int k = 0; k < count; k++)
+        {
+            int at = pos + k;
+            int p1 = at > 0 ? _buffer[at - 1] : 0;
+            int p2 = at > 1 ? _buffer[at - 2] : 0;
+            contextCounts[(ContextOf(p1, p2) << 8) | _buffer[at]]++;
+        }
+    }
+
+    // Prices each byte in each context from that context's counts, blended with the block-wide counts so that a context seen only a few
+    // times does not look cheaper than it is. The weight of the block-wide counts is large because the writer clusters the 64 contexts
+    // into a few codes, which smooths them toward each other.
+    private void SetContextCosts(int[] contextCounts, int[] blockCounts, int blockTotal)
+    {
+        const int Blend = 1024;
+        long blockDenominator = blockTotal + 256L;
+        for (int c = 0; c < 64; c++)
+        {
+            ReadOnlySpan<int> h = contextCounts.AsSpan(c << 8, 256);
+            int total = 0;
+            foreach (int v in h)
+            {
+                total += v;
+            }
+
+            long logDenominator = Log2Long((total + (long)Blend) * blockDenominator);
+            for (int b = 0; b < 256; b++)
+            {
+                long numerator = ((long)h[b] * blockDenominator) + ((long)Blend * (blockCounts[b] + 1));
+                int bits16 = (int)(logDenominator - Log2Long(numerator));
+                _contextCost[(c << 8) + b] = Math.Max(CostBit / 8, bits16 >> 8);
+            }
+        }
+    }
+
+    // log2(x) in 16.16 fixed point for a positive 64-bit x.
+    private static long Log2Long(long x)
+    {
+        int shift = Math.Max(0, 64 - System.Numerics.BitOperations.LeadingZeroCount((ulong)x) - 32);
+        return BrotliEncodeTables.Log2((uint)(x >> shift)) + ((long)shift << 16);
+    }
+
+    // The context of every position of the block.
+    private void FillLiteralContexts(int start, int end)
+    {
+        for (int pos = start; pos < end; pos++)
+        {
+            int p1 = pos > 0 ? _buffer[pos - 1] : 0;
+            int p2 = pos > 1 ? _buffer[pos - 2] : 0;
+            _literalContext[pos - start] = (byte)ContextOf(p1, p2);
         }
     }
 
@@ -192,6 +276,7 @@ internal sealed partial class BrotliEncoderCore
         _nodeInsert = new int[size];
         _nodeRing = new int[size * 4];
         _candStart = new int[size + 1];
+        _literalContext = new byte[size];
     }
 
     private void ParseOptimal(int start, int end)
@@ -208,6 +293,10 @@ internal sealed partial class BrotliEncoderCore
             if (pass + 1 < _plan.OptimalPasses)
             {
                 SetCostsFromCommands(start);
+                if (_plan.LiteralContexts)
+                {
+                    FillLiteralContexts(start, end);
+                }
             }
         }
     }
@@ -234,7 +323,7 @@ internal sealed partial class BrotliEncoderCore
             }
 
             // As in the greedy parse, a long match found by the tree makes a dictionary word unlikely to pay.
-            bool searchWords = _plan.Dictionary && (_candCount == _candStart[pos - start] || _candLength[_candCount - 1] < 12);
+            bool searchWords = _plan.Dictionary && (_candCount == _candStart[pos - start] || _candLength[_candCount - 1] < DictionarySkipLength);
             if (searchWords)
             {
                 int maxDistance = (int)Math.Min(_window, _streamBase + pos);
@@ -292,7 +381,7 @@ internal sealed partial class BrotliEncoderCore
             }
 
             // A literal.
-            long literalCost = cost + _literalCost[buffer[pos]];
+            long literalCost = cost + _contextCost[(_literalContext[i] << 8) | buffer[pos]];
             if (literalCost < _nodeCost[i + 1])
             {
                 _nodeCost[i + 1] = literalCost;
