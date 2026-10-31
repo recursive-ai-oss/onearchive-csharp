@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace RecursiveAI.OneArchive.Rar;
@@ -9,7 +8,6 @@ namespace RecursiveAI.OneArchive.Rar;
 /// first name, so <c>part01</c> is followed by <c>part02</c>). Old-style sets are <c>name.rar</c>, <c>name.r00</c>, <c>name.r01</c>, ...
 /// <c>name.r99</c>, <c>name.s00</c>, ... The scheme is read from the first file's name.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class RarVolumes
 {
     /// <summary>Gets the path of volume <paramref name="volumeNumber"/> of the set whose first volume is <paramref name="firstVolumePath"/>.</summary>

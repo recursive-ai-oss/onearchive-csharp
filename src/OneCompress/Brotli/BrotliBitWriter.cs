@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -12,7 +11,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// <see cref="Drain"/> while the bits of an unfinished byte stay inside. Prefix codes are written with
 /// <see cref="BrotliHuffmanCode"/>, which hands this writer the code bits already in stream order.
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class BrotliBitWriter
 {
     private byte[] _buffer = new byte[4096];

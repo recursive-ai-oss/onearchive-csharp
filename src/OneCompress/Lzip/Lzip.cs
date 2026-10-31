@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Lzma;
 
 namespace RecursiveAI.OneCompress.Lzip;
 
 /// <summary>One-call decompression of lzip data. Everything here is built on <see cref="LzipDecoder"/>. A buffer may hold several members one after the other; their outputs are joined.</summary>
-[Experimental("ONECOMPRESS007", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static partial class Lzip
 {
     /// <summary>Decompresses a buffer holding one or more lzip members.</summary>
@@ -40,7 +38,6 @@ public static partial class Lzip
 /// of the data only after a complete stream: an inner stream that ends inside one, or is empty, raises
 /// <see cref="CompressionFormatException"/> with <see cref="CompressionFormatException.IsTruncated"/> set. Bytes after the last member that do not start another one raise it unless <see cref="LzipDecompressionOptions.AllowTrailingData"/> is set. Writing is not supported.
 /// </remarks>
-[Experimental("ONECOMPRESS007", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzipStream : Stream
 {
     /// <summary>The size of the buffer that holds compressed bytes read from the inner stream.</summary>

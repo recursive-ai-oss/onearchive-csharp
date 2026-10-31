@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -9,7 +8,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// A Huffman decoding table for Zstandard literals (RFC 8878 §4.2): a single-level lookup indexed by the
 /// next <see cref="MaxBits"/> bits of the stream. An instance can be rebuilt many times without allocating.
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class HuffmanDecodingTable
 {
     /// <summary>The longest code length the format allows.</summary>

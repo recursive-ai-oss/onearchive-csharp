@@ -12,7 +12,6 @@ using RecursiveAI.OneCompress.Deflate;
 //   Decompresses a stream written by another tool and prints the best MB/s.
 // DeflateBench bz2dec <file.bz2> [--reps N]
 //   Decompresses a bzip2 stream and prints the best MB/s (the bzip2 decoder bar rows).
-#pragma warning disable ONECOMPRESS003, ONECOMPRESS004
 static int Usage()
 {
     Console.Error.WriteLine("usage: DeflateBench enc|dec <file> [level] [--format raw|zlib|gzip] [--stream] [--strategy name] [--reps N] [--seconds S]");

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -19,7 +18,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// depends on the block alone.</para>
 /// <para>Memory: two 32-bit words and two 64-bit words per block byte (the sort keys and the radix scratch), kept between calls.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2BlockSorter
 {
     private const int KeyBytes = 5;

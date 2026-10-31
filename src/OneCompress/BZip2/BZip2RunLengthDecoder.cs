@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -9,7 +8,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// The state lives in the struct, so a block can be fed and drained in pieces. Runs never continue across blocks: call
 /// <see cref="Reset"/> at the start of each block.
 /// </summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public struct BZip2RunLengthDecoder
 {
     private int _run;        // length of the current run of equal bytes, 0 to 4

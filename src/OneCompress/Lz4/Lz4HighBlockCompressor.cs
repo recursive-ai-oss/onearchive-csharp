@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Lz4;
@@ -34,7 +33,6 @@ internal readonly struct WideChain : IChainMode
 /// <para>A dictionary is placed in front of the first block and its chains are copied from a snapshot built once, so a block
 /// with a dictionary costs a copy of the tables instead of re-indexing the dictionary.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4HighBlockCompressor : Lz4BlockCompressor
 {
     internal const int HashLog = 16;

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzx;
 
@@ -12,7 +11,6 @@ namespace RecursiveAI.OneCompress.Lzx;
 /// <para>A window of 2<sup>n</sup> bytes uses the first <see cref="GetSlotCount"/> slots (30 for 2<sup>15</sup> up to 50 for
 /// 2<sup>21</sup>, the range cabinets use).</para>
 /// </remarks>
-[Experimental("ONECOMPRESS009", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class LzxPositionSlots
 {
     /// <summary>The smallest window size exponent of a cabinet: 2<sup>15</sup> bytes.</summary>

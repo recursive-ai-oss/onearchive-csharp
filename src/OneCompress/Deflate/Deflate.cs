@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
 /// <summary>
 /// One-call compression and decompression of raw Deflate data (RFC 1951). Everything here is built on <see cref="DeflateDecoder"/>.
 /// </summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Deflate
 {
     /// <summary>Decompresses a buffer holding raw Deflate data (RFC 1951).</summary>

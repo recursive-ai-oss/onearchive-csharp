@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -16,7 +15,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// level 9) and the symbols; all are allocated when first needed and kept for the next block.</para>
 /// <para>Format choices the specification leaves open are written down in docs/bzip2-encoder.md.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2Encoder
 {
     private const long EndMagic = 0x177245385090;

@@ -1,7 +1,5 @@
-using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Zstd;
 
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public partial struct ZstdRepeatOffsets
 {
     /// <summary>

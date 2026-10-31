@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
 /// <summary>Options for decompressing bzip2 data. The limits protect the caller from input that asks for more output than it should.</summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2DecompressionOptions
 {
     /// <summary>The default for <see cref="MaxOutputSize"/>: 1 GiB.</summary>
@@ -35,7 +33,6 @@ public sealed class BZip2DecompressionOptions
 }
 
 /// <summary>Options for compressing to bzip2.</summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2Options
 {
     /// <summary>The default level: 9, as the <c>bzip2</c> tool.</summary>

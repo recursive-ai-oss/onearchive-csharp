@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive.SevenZip;
 
 /// <summary>One coder (compression method or filter) of a 7z folder, as stored in the header.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class SevenZipCoder
 {
     internal SevenZipCoder(ulong methodId, int numInStreams, int numOutStreams, byte[] properties)
@@ -30,14 +28,12 @@ public sealed class SevenZipCoder
 /// <summary>Connects the output stream of one coder to the input stream of another inside a folder.</summary>
 /// <param name="InIndex">The index of the input stream (counted over all coders of the folder, in order) that is fed by the output.</param>
 /// <param name="OutIndex">The index of the output stream (counted over all coders of the folder) that feeds the input.</param>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly record struct SevenZipBindPair(int InIndex, int OutIndex);
 
 /// <summary>
 /// A folder: a graph of coders that turns one or more packed streams into one unpacked stream, which holds the data
 /// of one or more files back to back (a solid block when it holds several).
 /// </summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class SevenZipFolder
 {
     internal SevenZipFolder(SevenZipCoder[] coders, SevenZipBindPair[] bindPairs, int[] packedStreams, int mainOutStream)
@@ -97,7 +93,6 @@ public sealed class SevenZipFolder
 }
 
 /// <summary>An entry of a 7z archive with the header fields that <see cref="ArchiveEntry"/> has no property for.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class SevenZipEntry : ArchiveEntry
 {
     /// <summary>Gets the position of the entry in the header's file list, anti-items included.</summary>
@@ -126,7 +121,6 @@ public sealed class SevenZipEntry : ArchiveEntry
 }
 
 /// <summary>Options for <see cref="SevenZipReader"/> and the 7z part of <see cref="ArchiveOpenOptions"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class SevenZipReaderOptions
 {
     /// <summary>The default for <see cref="MaxHeaderSize"/>: 64 MiB.</summary>

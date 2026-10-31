@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lz4;
 
@@ -10,7 +9,6 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// it saves the 11 fixed bytes of a frame for payloads too small to pay for them.
 /// </summary>
 /// <remarks>The declared length is checked against what the block really decodes to; a mismatch is a <see cref="CompressionFormatException"/>.</remarks>
-[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Lz4PrefixedBlock
 {
     private const string Name = "lz4 length-prefixed block";

@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Ppmd;
 
@@ -7,7 +6,6 @@ namespace RecursiveAI.OneCompress.Ppmd;
 /// One-call PPMd H compression and decompression of raw coder output: the stream a 7z PPMD coder holds.
 /// Everything here is built on <see cref="PpmdHEncoder"/> and <see cref="PpmdHDecoder"/>.
 /// </summary>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class PpmdH
 {
     /// <summary>Compresses a buffer.</summary>
@@ -92,7 +90,6 @@ public static class PpmdH
 /// Compresses to raw PPMd H coder output with the span-based shape of <c>BrotliEncoder</c>. The first call allocates the model
 /// (<see cref="PpmdHOptions.MemorySize"/> bytes); one instance compresses one stream.
 /// </summary>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class PpmdHEncoder
 {
     private readonly PpmdHModel _model;
@@ -127,7 +124,6 @@ public sealed class PpmdHEncoder
 /// <summary>
 /// Decompresses raw PPMd H coder output with the span-based shape of <c>BrotliDecoder</c>. The constructor allocates the model.
 /// </summary>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class PpmdHDecoder
 {
     private readonly PpmdHModel _model;

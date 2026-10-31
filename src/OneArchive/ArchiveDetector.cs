@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Tar;
 
 namespace RecursiveAI.OneArchive;
@@ -11,7 +10,6 @@ namespace RecursiveAI.OneArchive;
 /// Detecting a container inside a compressed file needs the decompressed bytes, so <see cref="Archive.Open(Stream, ArchiveOpenOptions?)"/>
 /// decompresses the first block itself; this class only looks at the bytes it is given.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class ArchiveDetector
 {
     /// <summary>The number of bytes needed to recognise every container (a tar header is one 512-byte block).</summary>

@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>One row of an FSE decoding table (RFC 8878 §4.1).</summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public struct FseEntry
 {
     /// <summary>The value added to the bits read to form the next state.</summary>
@@ -50,7 +48,6 @@ internal readonly struct SequenceEntry
 /// (RFC 8878 §4.1). An instance can be rebuilt many times, so a decoder keeps one per symbol type and
 /// allocates nothing per block.
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class FseDecodingTable
 {
     /// <summary>The largest accuracy log any Zstandard table uses (RFC 8878 §3.1.1.3.2.1).</summary>

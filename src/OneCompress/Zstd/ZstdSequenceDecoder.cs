@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -9,7 +8,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// value. Call <see cref="Next"/> once per sequence, passing <c>false</c> for <c>updateStates</c> on the
 /// last one, and check <see cref="IsFinished"/> afterwards.
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public ref struct ZstdSequenceDecoder
 {
     private ZstdReverseBitReader _bits;

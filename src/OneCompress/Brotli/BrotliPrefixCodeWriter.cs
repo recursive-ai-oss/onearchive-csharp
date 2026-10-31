@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
 namespace RecursiveAI.OneCompress.Brotli;
@@ -14,7 +13,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// more copies of the previous non-zero length becomes code 16. The code that codes the lengths has at most 5 bits per symbol and is
 /// always written with at least two symbols, so that the stream never depends on a reader's treatment of a one-symbol length code.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class BrotliPrefixCodeWriter
 {
     // RFC 7932 section 3.5: the order in which the code length code lengths are stored.

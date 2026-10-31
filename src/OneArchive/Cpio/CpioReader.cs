@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneCompress;
@@ -21,7 +20,6 @@ namespace RecursiveAI.OneArchive.Cpio;
 /// <para>Errors: malformed data raises <see cref="CompressionFormatException"/> naming the offset; limits raise <see cref="CompressionLimitException"/>
 /// before any memory is allocated for the value.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CpioReader : ArchiveReader
 {
     private readonly ForwardCursor _cursor;

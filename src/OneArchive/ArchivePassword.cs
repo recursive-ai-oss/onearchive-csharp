@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneArchive;
 /// the caller once the archive is done. The text is never copied into messages, logs or <see cref="ToString"/>.
 /// Zip encodes it as UTF-8 and 7z as UTF-16, as the formats' other tools do.
 /// </summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct ArchivePassword
 {
     private readonly ReadOnlyMemory<char> _chars;

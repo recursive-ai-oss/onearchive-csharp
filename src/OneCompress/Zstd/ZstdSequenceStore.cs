@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -11,7 +10,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// <see cref="Offset"/> is the real distance (at least 1), never a repeat code: the block writer decides which matches can be
 /// written as repeat offsets, so a match finder is free to use the repeat offsets it is given without encoding them itself.
 /// </remarks>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public struct ZstdSequence
 {
     /// <summary>The number of literal bytes before the match; they are taken in order from the store's literals.</summary>
@@ -28,7 +26,6 @@ public struct ZstdSequence
 /// What a match finder produces for one block: the literals in order, and the sequences that interleave them with matches.
 /// Literals after the last sequence are the literals the block ends with. The store is reused from block to block.
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdSequenceStore
 {
     private byte[] _literals;

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cfb;
@@ -23,7 +22,6 @@ namespace RecursiveAI.OneArchive;
 /// <para>File content is read when <see cref="Save"/> runs; a file whose size changed since it was added makes
 /// <see cref="Save"/> throw.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArchiveBuilder
 {
     private const int MaxDirectoryDepth = 128;

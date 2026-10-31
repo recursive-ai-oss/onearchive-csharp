@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
@@ -6,7 +5,6 @@ using System.Runtime.Intrinsics;
 namespace RecursiveAI.OneCompress.Lzma;
 
 /// <summary>A match a <see cref="LzmaMatchFinder"/> reports: the bytes at the current position repeat the bytes <see cref="Distance"/> positions earlier for <see cref="Length"/> bytes.</summary>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public struct LzmaMatch
 {
     /// <summary>The number of matching bytes, 2 to 273.</summary>
@@ -29,7 +27,6 @@ public struct LzmaMatch
 /// at the nice length or after <c>depth</c> candidates. The results depend only on the bytes, the positions' order and the constructor's
 /// parameters: never on where the caller's buffer slides.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public abstract class LzmaMatchFinder
 {
     /// <summary>The number of spare bytes the caller's buffer must keep after its last valid byte.</summary>

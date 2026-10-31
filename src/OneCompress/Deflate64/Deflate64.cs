@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate64;
 
@@ -7,7 +6,6 @@ namespace RecursiveAI.OneCompress.Deflate64;
 /// One-call compression and decompression of raw Deflate64 data (zip method 9). Everything here is built on
 /// <see cref="Deflate64Decoder"/> and <see cref="Deflate64Encoder"/>.
 /// </summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Deflate64
 {
     /// <summary>Gets the most bytes <see cref="Compress"/> can produce for input of <paramref name="inputLength"/> bytes.</summary>

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress;
 
 namespace RecursiveAI.OneArchive;
@@ -7,7 +6,6 @@ namespace RecursiveAI.OneArchive;
 /// Extraction refused an entry because it would break a safety rule: a path that leaves the target directory, a link
 /// that escapes or is written through, or a device or FIFO entry. Nothing is written for the entry.
 /// </summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public class ArchiveSafetyException : CompressionException
 {
     /// <summary>Creates a safety error.</summary>
@@ -79,7 +77,6 @@ public class ArchiveSafetyException : CompressionException
 /// The archive uses a feature, method or format that is recognised but not supported: a compression layer such as gzip
 /// that has not landed yet, a multi-volume tar, or an entry type that cannot be created on this platform.
 /// </summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public class ArchiveUnsupportedException : CompressionException
 {
     /// <summary>Creates an unsupported-feature error.</summary>
@@ -147,7 +144,6 @@ public class ArchiveUnsupportedException : CompressionException
 }
 
 /// <summary>Why <see cref="ArchivePasswordException"/> was raised.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ArchivePasswordProblem
 {
     /// <summary>The data is encrypted and no password was supplied.</summary>
@@ -162,7 +158,6 @@ public enum ArchivePasswordProblem
 /// corruption (<see cref="CompressionFormatException"/>), although 7z cannot always tell the two apart: it stores no
 /// password check, so a wrong password shows up as data that fails its CRC. The message never contains the password.
 /// </summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public class ArchivePasswordException : CompressionException
 {
     /// <summary>Creates a password error.</summary>

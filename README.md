@@ -6,7 +6,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](#install)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#licence)
 
-**Status: preview** (latest release 0.7.0-preview.1). Every codec and container works, is fuzzed and is covered by interop tests against the reference tools, and public types carry `[Experimental]` until the codec meets its speed target ([Preview codecs](#preview-codecs)). The speed section below shows where each codec stands today. See [CHANGELOG.md](CHANGELOG.md).
+**Status: 1.0.** Every codec and container works, is fuzzed and is covered by interop tests against the reference tools. See [Stability](#stability) for what 1.x promises, the speed section below for where each codec stands, and [CHANGELOG.md](CHANGELOG.md).
 
 ## Packages
 
@@ -69,7 +69,7 @@ uint crc = Crc32.Compute(data);
 
 ## Quick start
 
-The snippets on this page are compiled and run by `tests/OneArchive.Tests/ReadmeSnippetTests.cs`. Using the preview types needs the diagnostics opted in once, see [Preview codecs](#preview-codecs).
+The snippets on this page are compiled and run by `tests/OneArchive.Tests/ReadmeSnippetTests.cs`.
 
 **Zstandard with a trained dictionary.** Small, similar messages (game state, log lines, RPC payloads) compress far better against a dictionary trained on samples of them.
 
@@ -192,29 +192,9 @@ A hash matrix compresses fixed inputs at every level and option set of every cod
 
 [docs/README.md](docs/README.md) indexes one page per codec family and per container: what is supported, the options, the defaults and limits, and the specification sections. The pages are normative and language-neutral, so another implementation can reproduce the same bytes from them. The API reference is the XML documentation shipped in both packages; every public type and member has one. Benchmark method: [docs/bench-method.md](docs/bench-method.md).
 
-## Preview codecs
+## Stability
 
-Public types of a codec carry `[Experimental]` until the codec meets its speed target in the table below, so using one is a compiler error until you opt in per codec with the diagnostic ID, in the project file or with `#pragma warning disable`:
-
-| Codec | Diagnostic ID |
-|---|---|
-| Zstandard (including dictionary training and the seekable format) | `ONECOMPRESS001` |
-| LZ4 | `ONECOMPRESS002` |
-| Deflate, zlib, gzip and Deflate64 | `ONECOMPRESS003` |
-| bzip2 | `ONECOMPRESS004` |
-| LZMA and LZMA2 | `ONECOMPRESS005` |
-| xz and the branch and delta filters | `ONECOMPRESS006` |
-| lzip | `ONECOMPRESS007` |
-| Brotli | `ONECOMPRESS008` |
-| LZX (decoder) | `ONECOMPRESS009` |
-| PPMd (variants H and I) | `ONECOMPRESS010` |
-| OneArchive: `Archive`, the entry model, readers and writers, every container, encryption | `ONEARCHIVE001` |
-
-```xml
-<PropertyGroup>
-  <NoWarn>$(NoWarn);ONECOMPRESS001;ONEARCHIVE001</NoWarn>
-</PropertyGroup>
-```
+From 1.0 the public API follows [semantic versioning](https://semver.org/): breaking changes only in a major version. Compressed output is part of the contract: for a given input and options, each codec and level writes the same bytes on every platform and in every 1.x release, and a change to those bytes is a major version. Decoders may become faster or stricter about malformed input, never less compatible with valid streams. The 1.0 speed results against the fastest managed .NET libraries are in the table below.
 
 ## Speed against the fastest managed .NET libraries
 

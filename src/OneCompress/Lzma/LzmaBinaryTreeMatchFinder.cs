@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// nodes onto the new node's two sides, which keeps every tree a valid search tree without rotations (the technique of the LZ77
 /// literature on tree-based match finders).
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzmaBinaryTreeMatchFinder : LzmaMatchFinder
 {
     private readonly int[] _son;

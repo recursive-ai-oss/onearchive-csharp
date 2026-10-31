@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// <see cref="BrotliDecompressionOptions.MaxOutputSize"/> before memory is committed for it. The class has the name of its namespace as
 /// the other codecs' do; the BCL's <c>System.IO.Compression.BrotliDecoder</c> and <c>BrotliStream</c> are different types.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Brotli
 {
     /// <summary>Compresses data to a complete brotli stream.</summary>

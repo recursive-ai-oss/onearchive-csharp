@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzx;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneCompress.Lzx;
 /// where the next begins. LZX does not store the uncompressed size or the window size, so both are arguments. Built on
 /// <see cref="LzxDecoder"/>.
 /// </remarks>
-[Experimental("ONECOMPRESS009", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Lzx
 {
     /// <summary>Decompresses an LZX stream.</summary>

@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Zip;
@@ -21,7 +20,6 @@ namespace RecursiveAI.OneArchive.Cab;
 /// (the folder's LZX window against <see cref="ArchiveLimits.MaxWindowSize"/>, the expansion ratio, the entry limits);
 /// Quantum folders and files that span cabinets raise <see cref="ArchiveUnsupportedException"/>.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CabReader : ArchiveReader
 {
     internal const string Name = "cab";

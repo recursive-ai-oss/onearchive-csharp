@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using RecursiveAI.OneCompress.Checksums;
 using RecursiveAI.OneCompress.Lzma;
@@ -18,7 +17,6 @@ namespace RecursiveAI.OneCompress.Xz;
 /// streams. Output depends only on the input and the options, including <see cref="XzCompressionOptions.BlockSize"/>, never on how the
 /// input was split into calls. An instance is not thread-safe.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class XzEncoder : IQueuedEncoder
 {
     private const int StageSize = 1 << 16;

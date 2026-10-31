@@ -1,8 +1,6 @@
-using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>Which segment-selection algorithm picks a trained dictionary's content.</summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZstdTrainingAlgorithm
 {
     /// <summary>
@@ -17,7 +15,6 @@ public enum ZstdTrainingAlgorithm
 }
 
 /// <summary>How a segment's d-mer frequencies are combined into its score.</summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZstdSegmentScore
 {
     /// <summary>The sum of the frequencies of the segment's distinct d-mers (the paper's ℓ1 norm).</summary>
@@ -31,7 +28,6 @@ public enum ZstdSegmentScore
 }
 
 /// <summary>How <see cref="ZstdDictionaryTrainingOptions.Optimize"/> walks the candidate parameters.</summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZstdTrainingSearch
 {
     /// <summary>
@@ -49,7 +45,6 @@ public enum ZstdTrainingSearch
 /// Options for training a Zstandard dictionary (<see cref="ZstdDictionary.Train"/>). The same samples and options always give the same
 /// dictionary bytes, on every platform and with any <see cref="MaxDegreeOfParallelism"/>.
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdDictionaryTrainingOptions
 {
     /// <summary>Gets the default options: FastCover with parameter search, 110 KiB.</summary>

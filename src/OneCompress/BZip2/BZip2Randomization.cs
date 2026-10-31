@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// lowest bit flipped. The schedule is cyclic: 512 gaps between flips, the first flip at the first gap minus 2. The gap table is
 /// not published anywhere; it was measured from the behaviour of the bzip2 tool (see <c>tools/bzip2</c>).
 /// </summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static partial class BZip2Randomization
 {
     /// <summary>The number of gaps in the cycle.</summary>

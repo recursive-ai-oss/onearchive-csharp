@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
@@ -6,7 +5,6 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// The constant tables of RFC 1951: how length and distance codes map to value ranges, and the order in which the
 /// code-length code's lengths are transmitted. They are shared by the decoder and, later, the encoder.
 /// </summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class DeflateTables
 {
     /// <summary>The largest code length a Huffman code may have (RFC 1951 section 3.2.7).</summary>

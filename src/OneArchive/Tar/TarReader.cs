@@ -1,5 +1,4 @@
 using RecursiveAI.OneArchive.Internal;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress;
 
 namespace RecursiveAI.OneArchive.Tar;
@@ -14,7 +13,6 @@ namespace RecursiveAI.OneArchive.Tar;
 /// against <see cref="TarReaderOptions"/> and <see cref="ArchiveLimits"/> first.</para>
 /// <para>When the stream can seek, entries can also be opened out of order with <see cref="OpenEntryStream(ArchiveEntry)"/>.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class TarReader : ArchiveReader
 {
     private readonly Stream _stream;

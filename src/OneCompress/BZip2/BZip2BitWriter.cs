@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -6,7 +5,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// Writes bits most significant bit first, the order bzip2 uses, into a growing byte buffer. Complete bytes are available through
 /// <see cref="Bytes"/>; the bits that do not yet fill a byte wait in the writer.
 /// </summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2BitWriter
 {
     private byte[] _buffer = new byte[4096];

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Filters;
 
@@ -8,7 +7,6 @@ namespace RecursiveAI.OneCompress.Filters;
 /// the size.
 /// </summary>
 /// <remarks>The xz file format specification, section 5.3.3: the distance is 1 to 256 and the history starts as zeros. Any split of the data gives the same bytes as one call.</remarks>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeltaFilter
 {
     private readonly byte[] _history = new byte[256];

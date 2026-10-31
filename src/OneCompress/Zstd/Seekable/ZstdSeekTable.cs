@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 using System.Buffers.Binary;
 
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>One entry of a <see cref="ZstdSeekTable"/>: where a frame lies in the compressed file and in the content.</summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct ZstdSeekFrame
 {
     internal ZstdSeekFrame(long compressedOffset, long compressedSize, long decompressedOffset, long decompressedSize, uint checksum, bool hasChecksum)
@@ -38,7 +36,6 @@ public readonly struct ZstdSeekFrame
 }
 
 /// <summary>The decoded footer of a seek table, which says how large the table is before it is read.</summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct ZstdSeekTableFooter
 {
     internal ZstdSeekTableFooter(int frameCount, bool hasChecksums, byte descriptor)
@@ -70,7 +67,6 @@ public readonly struct ZstdSeekTableFooter
 /// skippable frame of the file; its layout is in the Zstandard seekable format document (version 0.1.0).
 /// </summary>
 /// <remarks>Instances are immutable and may be shared between threads.</remarks>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdSeekTable
 {
     /// <summary>The format name used in exceptions.</summary>
@@ -329,7 +325,6 @@ public sealed class ZstdSeekTable
 /// Builds the encoded seek table frame one entry at a time. It keeps the entries in their encoded form, so a table of a
 /// million frames costs 8 or 12 MB and nothing else.
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdSeekTableBuilder
 {
     private byte[] _entries = new byte[256];

@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -16,7 +15,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// when it is full or the stream is disposed, so output appears in steps of up to a block (about <c>level × 100 000</c> input bytes). <see cref="Flush()"/> passes on what is already coded
 /// and does not end the block, because a bzip2 block cannot be ended early without changing the output; disposing finishes the stream. Output depends only on the bytes written and the level.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2Stream : Stream
 {
     /// <summary>The size of the buffer that holds compressed bytes read from the inner stream.</summary>

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive;
 
@@ -12,7 +11,6 @@ namespace RecursiveAI.OneArchive;
 /// anything else. Extraction applies the path rules (see <see cref="ArchiveExtractOptions"/>).
 /// Properties a format cannot store are <see langword="null"/> (or zero) when read and are left out when written.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public class ArchiveEntry
 {
     private static readonly IReadOnlyDictionary<string, string> s_noExtras = new Dictionary<string, string>();

@@ -28,7 +28,6 @@ using RecursiveAI.OneCompress.Tests.Lzx;
 //   lzx-mkcab <file> --out <cab>      builds a one-file cabinet with an LZX folder (window 2^21) using the test compressor
 //   lzx-dec <cab>                     reads the cabinet's file through CabReader into a null sink; prints rates
 // Timing: one warm-up pass (kept as a rep when it takes 8 s or more), then --reps passes; rates are in MB of uncompressed data.
-#pragma warning disable ONECOMPRESS001, ONECOMPRESS002, ONECOMPRESS003, ONECOMPRESS004, ONECOMPRESS005, ONECOMPRESS006, ONECOMPRESS007, ONECOMPRESS008, ONEARCHIVE001
 static int Usage()
 {
     Console.Error.WriteLine("usage: Bar04Bench brotli-dec|brotli-enc|bz2-enc|d64-enc|d64-dec|d64-zip|d64-payload|ppmd-enc|ppmd-dec|ppmd-7z|lzx-mkcab|lzx-dec <file> [level] [--reps N] [--out f] [--size n]");

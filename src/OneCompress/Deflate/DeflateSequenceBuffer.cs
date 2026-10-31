@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 using System.Runtime.CompilerServices;
 
@@ -12,7 +11,6 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// Each entry is one 32-bit word: bits 0-8 hold the match length (0 for a literal) and bits 9 and up hold the literal byte, or the
 /// match distance minus one. Counts for the end-of-block symbol (256) are included, as a block always ends with one.
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateSequenceBuffer
 {
     /// <summary>The number of literal/length symbols a block can use (RFC 1951 section 3.2.5: 257..285 plus the 256 literals and end of block).</summary>
@@ -174,7 +172,6 @@ public sealed class DeflateSequenceBuffer
 /// differs enough that a new Huffman code would pay for its header.
 /// </summary>
 /// <remarks>The measure is integer arithmetic on counts, so the decision depends only on the counts given.</remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateBlockSplitter
 {
     private const int ClassCount = 11;

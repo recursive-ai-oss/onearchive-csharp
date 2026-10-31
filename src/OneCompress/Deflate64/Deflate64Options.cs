@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate64;
 
 /// <summary>Limits for decompressing Deflate64 data.</summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Deflate64DecompressionOptions
 {
     /// <summary>The default for <see cref="MaxOutputSize"/>: 1 GiB.</summary>
@@ -26,7 +24,6 @@ public sealed class Deflate64DecompressionOptions
 }
 
 /// <summary>Options for compressing to Deflate64.</summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Deflate64Options
 {
     /// <summary>The default level: 6.</summary>

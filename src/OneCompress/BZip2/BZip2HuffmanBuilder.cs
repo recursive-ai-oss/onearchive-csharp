@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -11,7 +10,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// depends only on the frequencies. When the tree is deeper than the limit the frequencies are halved (rounding up, so none reaches 0) and the tree
 /// is rebuilt; this ends because equal frequencies give a balanced tree, at most 9 deep for 258 symbols.
 /// </remarks>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2HuffmanBuilder
 {
     /// <summary>The longest length the encoder writes by default: the longest the reference compressor was seen to write.</summary>

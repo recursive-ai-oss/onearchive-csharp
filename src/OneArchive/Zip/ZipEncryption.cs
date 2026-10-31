@@ -1,13 +1,11 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace RecursiveAI.OneArchive.Zip;
 
 /// <summary>How a zip entry's data is encrypted.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZipEncryption
 {
     /// <summary>Not encrypted.</summary>
@@ -30,7 +28,6 @@ public enum ZipEncryption
 }
 
 /// <summary>The key size of WinZip AES encryption.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZipAesStrength
 {
     /// <summary>256-bit key (the default).</summary>
@@ -44,7 +41,6 @@ public enum ZipAesStrength
 }
 
 /// <summary>The WinZip AES format version, which differs only in how the CRC-32 is stored.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ZipAesVersion
 {
     /// <summary>AE-2 (the default): the header CRC-32 is zero and the authentication code alone detects damage.</summary>

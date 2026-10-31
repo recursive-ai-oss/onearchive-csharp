@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneCompress;
 
@@ -21,7 +20,6 @@ namespace RecursiveAI.OneArchive.Zip;
 /// <para>Offsets in errors count bytes from where the reader started. Spanned (multi-disk) archives are not supported.
 /// Entry streams are forward-only.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class ZipReader : ArchiveReader
 {
     private sealed class Rec

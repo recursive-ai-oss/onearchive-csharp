@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Xz;
 
 /// <summary>The integrity check an xz stream carries for each block.</summary>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum XzCheck
 {
     /// <summary>No check (4 bytes saved per block).</summary>
@@ -20,7 +18,6 @@ public enum XzCheck
 }
 
 /// <summary>Options for decompressing xz data. The limits protect the caller from input that asks for more memory or output than it should.</summary>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class XzDecompressionOptions
 {
     /// <summary>The default for <see cref="MaxDictionarySize"/>: 64 MiB, the dictionary of the largest preset of the reference tool (<c>-9</c>).</summary>

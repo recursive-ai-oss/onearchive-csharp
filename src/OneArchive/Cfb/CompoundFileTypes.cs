@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive.Cfb;
 
 /// <summary>The kind of a compound file directory entry ([MS-CFB] 2.6.1, Object Type). Unallocated entries are never returned.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum CfbObjectType : byte
 {
     /// <summary>A storage object: a directory that holds other objects.</summary>
@@ -17,7 +15,6 @@ public enum CfbObjectType : byte
 }
 
 /// <summary>The color of a directory entry in its sibling red-black tree ([MS-CFB] 2.6.1, Color Flag).</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum CfbColor : byte
 {
     /// <summary>Red.</summary>
@@ -28,7 +25,6 @@ public enum CfbColor : byte
 }
 
 /// <summary>The fields of a compound file header ([MS-CFB] 2.2), as stored.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CompoundFileHeader
 {
     /// <summary>Gets the major version: 3 (512-byte sectors) or 4 (4096-byte sectors).</summary>
@@ -85,7 +81,6 @@ public sealed class CompoundFileHeader
 /// <see cref="ArchiveEntry.Name"/> is the full path from the root, built from the stored names by
 /// <see cref="CompoundFileReader.SanitizeName(string)"/> so that it is safe to extract. <see cref="RawName"/> is the entry's own stored name.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CfbEntry : ArchiveEntry
 {
     /// <summary>Gets the stream ID: the entry's index in the directory array (0 is the root storage).</summary>
@@ -137,7 +132,6 @@ public sealed class CfbEntry : ArchiveEntry
 }
 
 /// <summary>Options for reading compound files.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CompoundFileReaderOptions
 {
     /// <summary>The default for <see cref="MaxDirectoryEntries"/>: 262,144 (32 MiB of directory).</summary>

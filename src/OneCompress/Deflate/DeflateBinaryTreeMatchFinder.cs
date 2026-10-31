@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
@@ -12,7 +11,6 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// multiplicative hash of 4 bytes, and a second table keeps the latest position for each 3-byte hash, which is where 3-byte matches
 /// come from. The walk depends only on the data and the arguments. Not thread-safe.
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateBinaryTreeMatchFinder
 {
     /// <summary>The number of matches a single search can report: one per length from 3 to 258.</summary>

@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Ppmd;
 
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneCompress.Ppmd;
 /// <para>Writing: bytes are modelled as they arrive; disposing flushes the range coder and finishes the stream. <see cref="Flush()"/> passes on the bytes
 /// coded so far but cannot end the stream early, so the output depends only on the bytes written and the options.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS010", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class PpmdStream : Stream
 {
     /// <summary>The size of the buffers between the stream and the inner stream.</summary>

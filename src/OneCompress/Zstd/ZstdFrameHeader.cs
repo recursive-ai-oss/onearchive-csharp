@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -6,7 +5,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// <summary>
 /// The parsed header of a Zstandard frame or skippable frame (RFC 8878 §3.1.1.1 and §3.1.2).
 /// </summary>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct ZstdFrameHeader
 {
     internal ZstdFrameHeader(

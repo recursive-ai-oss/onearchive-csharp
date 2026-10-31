@@ -14,7 +14,6 @@ using RecursiveAI.OneCompress.Xz;
 //   Decompresses a stream written by any tool into a preallocated buffer and prints the best, median and slowest rate.
 // LzmaBench sevenz <file> <level> --out <file>
 //   Writes the file as a one-entry 7z archive (LZMA2, solid, header compressed) at the given level and prints the size.
-#pragma warning disable ONECOMPRESS001, ONECOMPRESS002, ONECOMPRESS003, ONECOMPRESS004, ONECOMPRESS005, ONECOMPRESS006, ONECOMPRESS007, ONECOMPRESS008, ONEARCHIVE001
 static int Usage()
 {
     Console.Error.WriteLine("usage: LzmaBench enc xz|lzip <file> <level> [--reps N] [--out f] | dec xz|lzip <file> [--reps N] | sevenz <file> <level> --out f");

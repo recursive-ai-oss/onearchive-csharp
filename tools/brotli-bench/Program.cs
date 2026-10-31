@@ -6,7 +6,6 @@ using RecursiveAI.OneCompress.Brotli;
 //   Compresses the file in memory with one call and prints the size and the best and median rate in MB/s. With --tool the same file
 //   is compressed by the brotli command-line tool (file to file, timed end to end, with its start-up time measured on an empty file
 //   and subtracted) and its size and rates are printed on a second line. With --out our bytes are written for decoding elsewhere.
-#pragma warning disable ONECOMPRESS008
 if (args.Length < 2)
 {
     Console.Error.WriteLine("usage: BrotliBench <file> <quality> [--reps N] [--window W] [--tool path] [--out file]");

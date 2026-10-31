@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Checksums;
 
 namespace RecursiveAI.OneCompress.Deflate;
@@ -19,7 +18,6 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// Deflate and zlib the next stream. Concatenated gzip members are therefore decoded by calling again with the bytes
 /// not consumed. A decoder is not thread-safe. Memory is allocated on first need (tables, window) and reused afterwards.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class DeflateDecoder
 {
     private const int WindowKeep = DeflateTables.WindowSize;

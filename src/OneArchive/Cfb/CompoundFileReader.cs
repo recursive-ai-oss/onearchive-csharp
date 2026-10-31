@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using RecursiveAI.OneCompress;
 
@@ -20,7 +19,6 @@ namespace RecursiveAI.OneArchive.Cfb;
 /// <para>Errors: <see cref="CompressionFormatException"/> names the byte offset and what was expected; a limit raises
 /// <see cref="CompressionLimitException"/>. A reader is not thread-safe.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class CompoundFileReader : ArchiveReader
 {
     internal const string Name = "cfb";

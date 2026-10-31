@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress;
 
 namespace RecursiveAI.OneArchive;
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneArchive;
 /// <para>Errors: malformed data raises <see cref="CompressionFormatException"/> (format, byte offset, what was expected),
 /// a limit raises <see cref="CompressionLimitException"/>, and an unsupported feature raises <see cref="ArchiveUnsupportedException"/>.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public abstract class ArchiveReader : IDisposable, IAsyncDisposable
 {
     private readonly ArchiveLimits _limits;

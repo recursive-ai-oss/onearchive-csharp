@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
@@ -17,7 +16,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// <para>The chunks depend only on the input, the settings and where <see cref="WriteChunks"/> was told to drain, never on how the input
 /// was split into <see cref="Append"/> calls.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lzma2Chunker
 {
     /// <summary>The most uncompressed bytes in one LZMA chunk: 2 MiB.</summary>

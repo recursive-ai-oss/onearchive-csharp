@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -11,7 +10,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// blocks: when the block is full the run so far is written with its count, and the next block starts a new run (derivation note,
 /// facts F2 and F3). A unit (a literal, or a run with its count byte) that would not fit is not started, so a block never passes the capacity.
 /// </remarks>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2RunLengthEncoder
 {
     /// <summary>The longest run written as one unit (four bytes and a count of 251).</summary>

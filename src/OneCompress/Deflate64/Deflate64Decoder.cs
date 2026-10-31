@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Deflate;
 
 namespace RecursiveAI.OneCompress.Deflate64;
@@ -14,7 +13,6 @@ namespace RecursiveAI.OneCompress.Deflate64;
 /// <see cref="CompressionFormatException"/> with format "deflate64" and the byte offset in the compressed input; after one the decoder
 /// refuses calls until <see cref="Reset"/>.
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Deflate64Decoder
 {
     private const string Name = "deflate64";

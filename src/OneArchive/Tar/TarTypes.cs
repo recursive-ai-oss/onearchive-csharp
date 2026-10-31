@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive.Tar;
 
 /// <summary>The tar header dialect of an entry (when read) or of the archive (when written).</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum TarFormat
 {
     /// <summary>Version 7: no magic. Read only.</summary>
@@ -20,7 +18,6 @@ public enum TarFormat
 }
 
 /// <summary>How a sparse file's holes were described in the archive.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum TarSparseFormat
 {
     /// <summary>The entry is not sparse.</summary>
@@ -42,11 +39,9 @@ public enum TarSparseFormat
 /// <summary>A run of stored data in a sparse file: <see cref="Length"/> bytes that belong at <see cref="Offset"/> of the full file.</summary>
 /// <param name="Offset">Where the data belongs in the full file.</param>
 /// <param name="Length">How many bytes are stored.</param>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly record struct TarSparseRegion(long Offset, long Length);
 
 /// <summary>A tar entry with every header field the archive carried.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class TarEntry : ArchiveEntry
 {
     private static readonly IReadOnlyList<TarSparseRegion> s_noRegions = [];
@@ -102,7 +97,6 @@ public sealed class TarEntry : ArchiveEntry
 }
 
 /// <summary>Options for <see cref="TarReader"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class TarReaderOptions
 {
     /// <summary>The default for <see cref="MaxExtendedHeaderSize"/>: 1 MiB.</summary>
@@ -138,7 +132,6 @@ public sealed class TarReaderOptions
 }
 
 /// <summary>Options for <see cref="TarWriter"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class TarWriterOptions
 {
     /// <summary>The default record size: 10240 bytes (a blocking factor of 20).</summary>

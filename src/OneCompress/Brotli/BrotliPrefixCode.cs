@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Brotli;
 
@@ -11,7 +10,6 @@ namespace RecursiveAI.OneCompress.Brotli;
 /// Bits are given in the order the stream carries them: the first bit of a code is the least significant bit of the value passed to
 /// <see cref="Decode"/>, which is why the table is indexed by the bit-reversed code (RFC 7932 section 1.5.1).
 /// </remarks>
-[Experimental("ONECOMPRESS008", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BrotliPrefixCode
 {
     /// <summary>The longest code a brotli stream may use, in bits (15).</summary>

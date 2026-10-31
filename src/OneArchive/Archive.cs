@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cpio;
@@ -25,7 +24,6 @@ namespace RecursiveAI.OneArchive;
 /// entry. A source that cannot seek can be read once, in order, with <see cref="OpenReader"/> or <see cref="Extract(string, ArchiveExtractOptions?, CancellationToken)"/>.</para>
 /// <para>An <see cref="Archive"/> is not thread-safe.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Archive : IDisposable, IAsyncDisposable
 {
     private readonly Stream _source;

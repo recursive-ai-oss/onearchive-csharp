@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
@@ -14,7 +13,6 @@ namespace RecursiveAI.OneCompress.Lzma;
 /// size) and is reused with <see cref="Reset"/>. It is not thread-safe.</para>
 /// <para>Output depends only on the input, the options and where flushes fall.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lzma2Encoder : IQueuedEncoder
 {
     private readonly Lzma2Chunker _chunker;
@@ -100,7 +98,6 @@ public sealed class Lzma2Encoder : IQueuedEncoder
 /// is set; the caller must then supply exactly that many bytes. Without it the header says "unknown" and an end marker always follows.
 /// Shaped like <see cref="Lzma2Encoder"/>.
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzmaEncoder : IQueuedEncoder
 {
     private const int PumpBytes = 1 << 20;

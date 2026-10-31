@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive.Ar;
 
 /// <summary>The ar variants OneArchive writes.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ArFormat
 {
     /// <summary>
@@ -21,7 +19,6 @@ public enum ArFormat
 }
 
 /// <summary>What an ar member is.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ArMemberKind
 {
     /// <summary>An ordinary file.</summary>
@@ -35,7 +32,6 @@ public enum ArMemberKind
 }
 
 /// <summary>How a member's name was stored.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ArNameStyle
 {
     /// <summary>In the 16-byte header field (trailing spaces, and for the GNU variant a closing <c>/</c>, removed).</summary>
@@ -54,7 +50,6 @@ public enum ArNameStyle
 /// <see cref="ArchiveEntry.Mode"/> keeps the twelve permission bits; <see cref="RawMode"/> is the octal field as stored.
 /// ar has no directories: every entry is a regular file.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArEntry : ArchiveEntry
 {
     /// <summary>Gets what the member is.</summary>
@@ -77,7 +72,6 @@ public sealed class ArEntry : ArchiveEntry
 }
 
 /// <summary>Options for <see cref="ArReader"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArReaderOptions
 {
     /// <summary>The default most bytes of long-name table that are read into memory.</summary>
@@ -104,7 +98,6 @@ public sealed class ArReaderOptions
 }
 
 /// <summary>Options for <see cref="ArWriter"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArWriterOptions
 {
     /// <summary>The default amount of output the GNU variant holds in memory before it moves to a temporary file.</summary>

@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Deflate;
@@ -17,7 +16,6 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// <see cref="Refill"/> excepted), so between fields it holds fewer than 8 bits and <see cref="AlignToByte"/> never
 /// discards a whole byte.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public ref struct DeflateBitReader
 {
     private readonly ReadOnlySpan<byte> _source;

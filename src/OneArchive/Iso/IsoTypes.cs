@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneArchive.Iso;
 
 /// <summary>Which directory hierarchy of an ISO 9660 image a reader lists or an entry came from.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum IsoTree
 {
     /// <summary>
@@ -20,7 +18,6 @@ public enum IsoTree
 }
 
 /// <summary>The flags of an ISO 9660 directory record (ECMA-119 clause 9.1.6).</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 [Flags]
 public enum IsoRecordAttributes : byte
 {
@@ -49,11 +46,9 @@ public enum IsoRecordAttributes : byte
 /// <summary>One extent of a file: a run of whole logical blocks (the last one may be partly used).</summary>
 /// <param name="Location">The logical block number of the first block of data.</param>
 /// <param name="Length">The number of data bytes in the extent.</param>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly record struct IsoExtent(long Location, long Length);
 
 /// <summary>The Rock Ridge (IEEE P1282) attributes of a directory record, as stored.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class IsoRockRidge
 {
     /// <summary>Gets the whole POSIX file mode of the <c>PX</c> entry: file type bits and permission bits.</summary>
@@ -98,7 +93,6 @@ public sealed class IsoRockRidge
 /// <see cref="Tree"/> says which hierarchy it is. <see cref="ArchiveEntry.Size"/> is the file's size (the sum of its extents);
 /// symbolic links, devices and directories have size zero.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class IsoEntry : ArchiveEntry
 {
     /// <summary>Gets the hierarchy this entry was read from.</summary>
@@ -133,7 +127,6 @@ public sealed class IsoEntry : ArchiveEntry
 }
 
 /// <summary>What the volume descriptors of an image say.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class IsoVolumeInfo
 {
     /// <summary>Gets the volume identifier.</summary>
@@ -180,7 +173,6 @@ public sealed class IsoVolumeInfo
 }
 
 /// <summary>Options for reading ISO 9660 images.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class IsoReaderOptions
 {
     /// <summary>The options with every default.</summary>
@@ -216,7 +208,6 @@ public sealed class IsoReaderOptions
 /// The image depends only on the entries and these options: no clock is read. Volume dates are written as "not specified"
 /// unless <see cref="VolumeTime"/> is set, and an entry without a modification time gets <see cref="DefaultTime"/>.
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class IsoWriterOptions
 {
     /// <summary>The options with every default.</summary>

@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzx;
 
@@ -7,7 +6,6 @@ namespace RecursiveAI.OneCompress.Lzx;
 /// The x86 call translation of LZX ([MS-PATCH] 2.2.2): the compressor turns the relative operand of each <c>E8</c> (call) byte into
 /// an absolute one so that repeated calls to the same target look alike, and the decompressor turns it back.
 /// </summary>
-[Experimental("ONECOMPRESS009", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class LzxCallTranslation
 {
     /// <summary>The size of a frame, the unit translation works on.</summary>

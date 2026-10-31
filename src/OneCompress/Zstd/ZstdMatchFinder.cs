@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Zstd;
 
 /// <summary>
@@ -12,7 +11,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// calls <see cref="Slide"/>, so stored positions stay right.</para>
 /// <para>A finder must make its choices from the input and parameters alone, never from timing, thread count or processor features.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public abstract class ZstdMatchFinder
 {
     /// <summary>

@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace RecursiveAI.OneArchive.Iso;
@@ -27,7 +26,6 @@ namespace RecursiveAI.OneArchive.Iso;
 /// data of the file they name, which must have been written earlier. Symbolic links, devices and FIFOs need Rock Ridge.
 /// Boot catalogs and hybrid partition tables are not written.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class IsoWriter : ArchiveWriter
 {
     private const long ChunkSize = 0xFFFFF800L;

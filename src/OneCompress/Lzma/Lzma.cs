@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
 /// <summary>One-call decompression of the <c>.lzma</c> format ("LZMA alone"). Everything here is built on <see cref="LzmaDecoder"/>.</summary>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static partial class Lzma
 {
     /// <summary>Decompresses a buffer holding one <c>.lzma</c> stream.</summary>
@@ -34,7 +32,6 @@ public static partial class Lzma
 }
 
 /// <summary>One-call decompression of a raw LZMA2 stream, as stored inside xz, 7z and zip. Everything here is built on <see cref="Lzma2Decoder"/>.</summary>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static partial class Lzma2
 {
     /// <summary>Decompresses a buffer holding one raw LZMA2 stream.</summary>
@@ -58,7 +55,6 @@ public static partial class Lzma2
 /// of the data only after a complete stream: an inner stream that ends inside one, or is empty, raises
 /// <see cref="CompressionFormatException"/> with <see cref="CompressionFormatException.IsTruncated"/> set. Writing is not supported.
 /// </remarks>
-[Experimental("ONECOMPRESS005", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class LzmaStream : Stream
 {
     /// <summary>The size of the buffer that holds compressed bytes read from the inner stream.</summary>

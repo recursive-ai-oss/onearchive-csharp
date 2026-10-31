@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Internal;
 using RecursiveAI.OneCompress;
 using RecursiveAI.OneCompress.Checksums;
@@ -31,7 +30,6 @@ namespace RecursiveAI.OneArchive.Rar;
 /// 2 MiB, a vint longer than 64 bits, an extra-area record that runs past its area, a data area past the end of the volume.
 /// Limits raise <see cref="CompressionLimitException"/>.</para>
 /// </remarks>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class RarReader : ArchiveReader
 {
     internal const string Name = "rar";

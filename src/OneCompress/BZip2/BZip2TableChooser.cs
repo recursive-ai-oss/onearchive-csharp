@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -9,7 +8,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// bits, and each table's lengths are rebuilt from the groups it received, for a fixed number of passes. All arithmetic is integer and ties go to the lower table, so the result depends
 /// only on the symbols.
 /// </summary>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class BZip2TableChooser
 {
     /// <summary>The number of symbols in a group that shares a table.</summary>

@@ -1,9 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
 /// <summary>How a Deflate encoder chooses the blocks it writes, beyond the level.</summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum DeflateStrategy
 {
     /// <summary>Normal compression: matches and literals, dynamic or fixed or stored blocks, whichever is smallest.</summary>
@@ -20,7 +18,6 @@ public enum DeflateStrategy
 }
 
 /// <summary>How much a call to the encoder forces out (the flush modes of RFC 1951-based streams).</summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum DeflateFlush
 {
     /// <summary>No flush: the encoder buffers input and writes blocks when it chooses.</summary>
@@ -43,7 +40,6 @@ public enum DeflateFlush
 /// <para>Levels 1 to 9 line up with the levels of the common tools and 10 to 12 add an optimal parser, so "level N" compares to
 /// the reference at level N. See <c>docs/deflate-encoder.md</c> for what each level does.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateOptions
 {
     /// <summary>The default for <see cref="Level"/>: 6.</summary>

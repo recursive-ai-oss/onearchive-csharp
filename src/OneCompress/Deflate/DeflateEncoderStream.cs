@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
@@ -13,7 +12,6 @@ namespace RecursiveAI.OneCompress.Deflate;
 /// <see cref="Flush(DeflateFlush)"/> chooses the mode.</para>
 /// <para>The output is the same as <see cref="DeflateEncoder"/> gives for the same writes and flushes.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateEncoderStream : Stream
 {
     private const int OutputBufferSize = 64 * 1024;

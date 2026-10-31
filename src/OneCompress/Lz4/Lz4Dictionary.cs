@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 namespace RecursiveAI.OneCompress.Lz4;
 
 /// <summary>
@@ -11,7 +10,6 @@ namespace RecursiveAI.OneCompress.Lz4;
 /// that); its entropy tables are of no use to LZ4 and are dropped.</para>
 /// </remarks>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "This is the LZ4 format's own term; the type is not a collection.")]
-[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class Lz4Dictionary
 {
     /// <summary>The most dictionary content a match can reach: 64 KiB.</summary>

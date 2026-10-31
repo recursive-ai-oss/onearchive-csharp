@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using RecursiveAI.OneCompress.Checksums;
 using RecursiveAI.OneCompress.Filters;
@@ -19,7 +18,6 @@ namespace RecursiveAI.OneCompress.Xz;
 /// dictionaries over <see cref="XzDecompressionOptions.MaxDictionarySize"/> raise errors before any work is done for them.</para>
 /// <para><see cref="Decompress"/> returns <see cref="OperationStatus.Done"/> after each stream; call it again for the next one.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class XzDecoder : IStepDecoder
 {
     private const string Format = "xz";

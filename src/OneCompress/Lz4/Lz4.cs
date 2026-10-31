@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers;
 
 namespace RecursiveAI.OneCompress.Lz4;
 
 /// <summary>One-call compression and decompression of LZ4 frames (LZ4 Frame Format), including concatenated, skippable and legacy frames when decoding. For raw blocks use <see cref="Lz4Block"/>.</summary>
-[Experimental("ONECOMPRESS002", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public static class Lz4
 {
     /// <summary>Compresses <paramref name="source"/> into one frame in a new array.</summary>

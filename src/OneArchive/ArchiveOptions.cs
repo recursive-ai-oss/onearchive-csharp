@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneArchive.Tar;
 using RecursiveAI.OneArchive.Ar;
 using RecursiveAI.OneArchive.Cab;
@@ -12,7 +11,6 @@ using RecursiveAI.OneArchive.Zip;
 namespace RecursiveAI.OneArchive;
 
 /// <summary>Options for <see cref="Archive.Open(string, ArchiveOpenOptions?)"/> and everything built on it.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public class ArchiveOpenOptions
 {
     /// <summary>Gets the limits applied while reading. Default: <see cref="ArchiveLimits.Default"/>.</summary>
@@ -68,7 +66,6 @@ public class ArchiveOpenOptions
 }
 
 /// <summary>What to do with an entry whose path is absolute, contains <c>..</c>, a drive letter or other unsafe parts.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum UnsafePathHandling
 {
     /// <summary>Throw <see cref="ArchiveSafetyException"/>. The default.</summary>
@@ -82,7 +79,6 @@ public enum UnsafePathHandling
 }
 
 /// <summary>What to do with link entries.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum LinkPolicy
 {
     /// <summary>
@@ -104,7 +100,6 @@ public enum LinkPolicy
 }
 
 /// <summary>What to do with device, FIFO and other special entries.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum SpecialFilePolicy
 {
     /// <summary>Throw <see cref="ArchiveSafetyException"/>. The default.</summary>
@@ -115,7 +110,6 @@ public enum SpecialFilePolicy
 }
 
 /// <summary>What to do when an entry's destination already exists.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum ExistingFilePolicy
 {
     /// <summary>Throw <see cref="ArchiveSafetyException"/> (rule <c>existing-file</c>). The default. Directories may already exist.</summary>
@@ -132,7 +126,6 @@ public enum ExistingFilePolicy
 /// Options for extraction. Everything that could write outside the target directory is refused unless an option here
 /// says otherwise; the defaults are the safe ones.
 /// </summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArchiveExtractOptions : ArchiveOpenOptions
 {
     /// <summary>Gets how unsafe paths are handled. Default <see cref="UnsafePathHandling.Reject"/>.</summary>
@@ -170,7 +163,6 @@ public sealed class ArchiveExtractOptions : ArchiveOpenOptions
 }
 
 /// <summary>Options for <see cref="Archive.Create(string, ArchiveCreateOptions?)"/>.</summary>
-[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ArchiveCreateOptions
 {
     /// <summary>Gets the container format. Default <see langword="null"/>: from the file extension, else tar.</summary>

@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace RecursiveAI.OneCompress.Deflate;
 
 /// <summary>What a decoded Huffman code stands for in a <see cref="DeflateHuffmanTable"/>.</summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum DeflateSymbolKind : byte
 {
     /// <summary>No code has these bits, or the symbol is one RFC 1951 forbids (literal/length 286 and 287, distance 30 and 31).</summary>
@@ -33,7 +31,6 @@ public enum DeflateSymbolKind : byte
 /// One decoded entry of a <see cref="DeflateHuffmanTable"/>: the code's length, and for the alphabet the table was
 /// built for, what the code means, already translated through RFC 1951's base and extra-bit tables.
 /// </summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public readonly struct DeflateHuffmanEntry
 {
     internal const int KindShift = 12;
@@ -69,7 +66,6 @@ public readonly struct DeflateHuffmanEntry
 }
 
 /// <summary>The alphabet a <see cref="DeflateHuffmanTable"/> decodes (RFC 1951 sections 3.2.5 to 3.2.7).</summary>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public enum DeflateAlphabet
 {
     /// <summary>Literals 0 to 255, end-of-block (256) and length codes 257 to 285; 286 and 287 are accepted in a code but invalid when decoded.</summary>
@@ -96,7 +92,6 @@ public enum DeflateAlphabet
 /// distance alphabet and which zlib also accepts for the literal/length alphabet. Over-subscribed and other incomplete
 /// codes are refused.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS003", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class DeflateHuffmanTable
 {
     private readonly int _primaryBits;

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using RecursiveAI.OneCompress.Lzma;
 
 namespace RecursiveAI.OneCompress.Xz;
@@ -12,7 +11,6 @@ namespace RecursiveAI.OneCompress.Xz;
 /// the inner stream: it does not end a chunk or block, because that would cost ratio. Output is the same as XzEncoder gives for the same
 /// input, however the writes are cut.
 /// </remarks>
-[Experimental("ONECOMPRESS006", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class XzEncoderStream : Stream
 {
     private readonly EncoderPump<XzEncoder> _pump;

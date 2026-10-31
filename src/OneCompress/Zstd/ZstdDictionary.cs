@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Buffers.Binary;
 
 namespace RecursiveAI.OneCompress.Zstd;
@@ -10,7 +9,6 @@ namespace RecursiveAI.OneCompress.Zstd;
 /// reserved by the format (RFC 8878 §5); IDs for your own dictionaries belong in 32768 to 2^31-1, and 0 means no ID.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "This is the Zstandard format's own term; the type is not a collection.")]
-[Experimental("ONECOMPRESS001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed class ZstdDictionary
 {
     private readonly byte[] _content;

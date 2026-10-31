@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace RecursiveAI.OneCompress.BZip2;
 
@@ -17,7 +16,6 @@ namespace RecursiveAI.OneCompress.BZip2;
 /// <para>Memory: one transformation vector of 4 bytes per byte of the block size level (at most 3.6 MB), a 64 KiB staging
 /// buffer for block headers, and a few small tables. They are allocated when first needed and reused for every block and stream.</para>
 /// </remarks>
-[Experimental("ONECOMPRESS004", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
 public sealed partial class BZip2Decoder
 {
     private const string Name = "bzip2";
