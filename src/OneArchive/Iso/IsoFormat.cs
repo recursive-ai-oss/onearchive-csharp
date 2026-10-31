@@ -104,7 +104,15 @@ internal static class IsoFormat
             return null;
         }
 
-        return new DateTimeOffset(year, month, day, hour, minute, second, TimeSpan.FromMinutes(offset * 15)).AddMilliseconds(centi * 10);
+        // Year 1 or 9999 with an offset can fall outside the representable range as UTC.
+        try
+        {
+            return new DateTimeOffset(year, month, day, hour, minute, second, TimeSpan.FromMinutes(offset * 15)).AddMilliseconds(centi * 10);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     public static void WriteDate7(Span<byte> b, DateTimeOffset time)
