@@ -198,6 +198,14 @@ sides (for the brotli encoder, around the tool inside `BrotliBench` and from the
 
 `bench/Managed/run.sh` compares our codecs with the fastest implementations written entirely in managed code (ZstdSharp, K4os, SharpCompress, SharpZipLib, DotNetZip, BrotliSharpLib and others, as packages used only from `bench/`). It is single-threaded (except one two-worker Zstandard row), memory to memory, best of three interleaved runs, and decodes each candidate's compressed output with our decoder to prove it is a real stream. Rows give speed and size of each candidate; the native tool is shown for information. It is not part of the pass rule above.
 
+**Size-matched rows.** Level numbers of different libraries are not comparable, so each compression row also runs a sweep of our neighbouring levels (and, for xz preset 0, a few cheaper settings) on the same data. A managed library at one level is *met* when some level of ours writes at most 1.01 times its bytes at no less than 0.87 times its speed; the table names the smallest such level with its size delta and speed ratio. When none qualifies it names the nearest level on each side: the best-speed level that is small enough, and the smallest level that is fast enough. Decode, checksum and other speed-only rows are met at a ratio of 0.87 against every managed library. Rows with no managed library are shown as such.
+
+**Small payloads.** The `game:` rows compress or decode each payload of the generated game corpus on its own (seed 2: `frames`, up to 250,000 payloads, and `snapshots`, up to 12,000), with a Zstandard dictionary trained by our trainer on seed 1 (16 KiB for frames, 64 KiB for snapshots). Both sides load the same dictionary and reuse one encoder or decoder. Throughput is input bytes per second over the whole set. The LZ4 dictionary is the last 64 KiB of that Zstandard dictionary's content.
+
+**Checksum rows** time one pass over silesia.tar and compare values across candidates where the variant is the same (CRC-32, xxHash64, Adler-32); `System.IO.Hashing.Crc64` is a different CRC-64, so only its speed is compared.
+
+To run the table in pieces of at most thirty minutes, run `--only` groups into separate detail files, concatenate them (keeping one header) and run `table` over the result.
+
 ## Running
 
 ```
