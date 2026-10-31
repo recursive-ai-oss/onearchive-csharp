@@ -116,6 +116,28 @@ public class Lz4AllocationTests
         });
     }
 
+    [Fact]
+    public void DictionaryBlockDecodeAllocatesNothingPerBlock()
+    {
+        var rng = new Random(7);
+        byte[] dictBytes = new byte[16384];
+        rng.NextBytes(dictBytes);
+        var dictionary = new Lz4Dictionary(dictBytes);
+        byte[] payload = new byte[200];
+        dictBytes.AsSpan(1000, 120).CopyTo(payload);
+        dictBytes.AsSpan(9000, 80).CopyTo(payload.AsSpan(120));
+        byte[] block = Lz4Block.Compress(payload, new Lz4CompressionOptions { Level = 9, Dictionary = dictionary });
+        var options = new Lz4BlockOptions { Dictionary = dictionary };
+        byte[] output = new byte[payload.Length];
+        AssertSteadyStateAllocatesNothing(() =>
+        {
+            if (Lz4Block.Decompress(block, output, options) != payload.Length || !output.AsSpan().SequenceEqual(payload))
+            {
+                throw new InvalidOperationException("wrong result");
+            }
+        });
+    }
+
     // Frame: magic, FLG, BD, [content size], HC, then the first block's size and bytes.
     private static byte[] ExtractFirstBlock(byte[] frame)
     {

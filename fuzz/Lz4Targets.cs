@@ -81,6 +81,11 @@ internal static class Lz4Targets
                 {
                     throw new InvalidOperationException("decode succeeded where measuring failed");
                 }
+
+                if (history > 0 && Lz4Block.TryDecompress(block, new byte[1 << 16], out _, new Lz4BlockOptions { Dictionary = new Lz4Dictionary(s_dictionary.Content[..history]) }))
+                {
+                    throw new InvalidOperationException("dictionary decode succeeded where measuring failed");
+                }
             }
             catch (CompressionFormatException)
             {
@@ -111,6 +116,22 @@ internal static class Lz4Targets
         if (size > 0 && Lz4BlockDecoder.TryDecode(block, new byte[history + (int)size - 1], history, out _))
         {
             throw new InvalidOperationException("decode succeeded in a buffer one byte too small");
+        }
+
+        // The public block API reads the dictionary in place instead of next to the output; it must give the same bytes.
+        if (history > 0)
+        {
+            var options = new Lz4BlockOptions { Dictionary = new Lz4Dictionary(s_dictionary.Content[..history]) };
+            byte[] direct = new byte[(int)size];
+            if (!Lz4Block.TryDecompress(block, direct, out written, options) || written != size || !direct.AsSpan().SequenceEqual(exact.AsSpan(history)))
+            {
+                throw new InvalidOperationException("decode with the dictionary in place differs");
+            }
+
+            if (size > 0 && Lz4Block.TryDecompress(block, new byte[(int)size - 1], out _, options))
+            {
+                throw new InvalidOperationException("dictionary decode succeeded in a buffer one byte too small");
+            }
         }
     }, IsExpected);
 

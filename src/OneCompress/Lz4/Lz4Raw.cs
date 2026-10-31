@@ -41,6 +41,41 @@ internal static class Lz4Raw
 #endif
     }
 
+    /// <summary>
+    /// Copies exactly <paramref name="length"/> bytes, 0 to 16, with no surplus read or write: the two halves overlap instead.
+    /// Both ranges must lie inside their spans, and when the spans are the same the ranges must not overlap.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void CopyUpTo16(Span<byte> destination, nint destinationIndex, ReadOnlySpan<byte> source, nint sourceIndex, nint length)
+    {
+#if CHECKED
+        source.Slice((int)sourceIndex, (int)length).CopyTo(destination.Slice((int)destinationIndex, (int)length));
+#else
+        if (length >= 8)
+        {
+            // Both halves are read before the second is written, so a 9 to 16 byte copy is exact.
+            ulong head = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetReference(source), sourceIndex));
+            ulong tail = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetReference(source), sourceIndex + length - 8));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(destination), destinationIndex), head);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(destination), destinationIndex + length - 8), tail);
+        }
+        else if (length >= 4)
+        {
+            uint head = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(source), sourceIndex));
+            uint tail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetReference(source), sourceIndex + length - 4));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(destination), destinationIndex), head);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(destination), destinationIndex + length - 4), tail);
+        }
+        else
+        {
+            for (nint k = 0; k < length; k++)
+            {
+                Unsafe.Add(ref MemoryMarshal.GetReference(destination), destinationIndex + k) = Unsafe.Add(ref MemoryMarshal.GetReference(source), sourceIndex + k);
+            }
+        }
+#endif
+    }
+
     /// <summary>Reads two bytes at <paramref name="index"/> as a little-endian integer. The caller guarantees <c>index + 2 &lt;= span.Length</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int ReadUInt16(ReadOnlySpan<byte> span, nint index)
