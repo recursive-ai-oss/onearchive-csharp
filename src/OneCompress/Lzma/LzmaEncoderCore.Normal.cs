@@ -60,8 +60,7 @@ public sealed partial class LzmaEncoderCore
     {
         int p0 = _pos;
         int maxLen0 = Math.Min(Math.Min(_bufEnd - p0, LzmaModel.MaxMatchLength), horizon);
-        int n = _finder.FindMatches(_buf, p0, _bufEnd - p0, _matches);
-        _finderPos = p0 + 1;
+        int n = FindMatchesAt(p0, _matches);
         if (maxLen0 < 2)
         {
             EmitLiteralOrShortRep(p0);
@@ -126,8 +125,7 @@ public sealed partial class LzmaEncoderCore
             {
                 int p = p0 + cur;
                 int maxLen = Math.Min(Math.Min(_bufEnd - p, LzmaModel.MaxMatchLength), horizon - cur);
-                n = _finder.FindMatches(_buf, p, _bufEnd - p, _matches);
-                _finderPos = p + 1;
+                n = FindMatchesAt(p, _matches);
                 if (Expand(cur, p, n, maxLen, Math.Min(_settings.NiceLength, maxLen)))
                 {
                     break;

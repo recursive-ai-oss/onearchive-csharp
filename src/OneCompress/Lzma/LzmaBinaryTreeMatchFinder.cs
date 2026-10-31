@@ -80,6 +80,10 @@ public sealed class LzmaBinaryTreeMatchFinder : LzmaMatchFinder
         Walk(buffer, position, cp, cur, lenLimit, int.MaxValue, default, ref count, record: false);
     }
 
+    // A search stops at the nice length and hangs the node it reached below the new one; with fewer bytes than that to compare, the two
+    // strings only look equal because the data ends.
+    internal override int MinimumLookaheadToRecord => _niceLength;
+
     private protected override void ResetLinks() => Array.Clear(_son);
 
     private protected override void RebaseLinks(int delta) => Rebase(_son, delta);

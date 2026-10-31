@@ -120,6 +120,12 @@ public abstract class LzmaMatchFinder
     /// <param name="available">The number of valid bytes from <paramref name="position"/> on.</param>
     public abstract void Skip(byte[] buffer, int position, int available);
 
+    // The fewest valid bytes a position must have behind it to be recorded while more input may still follow. A finder that compares
+    // strings and reuses what earlier comparisons showed (the binary tree) must not record a position whose comparison was cut short by
+    // the end of the data: once the bytes after the cut arrive, the tree no longer orders its strings, and a later search that trusts
+    // the ordering reports matches that are not there. A finder that checks every candidate against the data itself needs no such rule.
+    internal virtual int MinimumLookaheadToRecord => 0;
+
     // Skip for `count` consecutive positions starting at `position`, where `bufEnd` is the end of the valid data. Finders override it to
     // do the same work without a call per position; the result must equal calling Skip for each position.
     internal virtual void SkipRange(byte[] buffer, int position, int count, int bufEnd)

@@ -55,6 +55,13 @@ public sealed class Lzma2Chunker
     /// <summary>Gets the number of bytes appended but not yet written as chunks.</summary>
     public int Buffered => _core.Buffered;
 
+    // True while a flush drains: more input follows, so see LzmaEncoderCore.InputContinues. A drain that is not a flush ends the input.
+    internal bool InputContinues
+    {
+        get => _core.InputContinues;
+        set => _core.InputContinues = value;
+    }
+
     /// <summary>Gets the symbol encoder the chunks are produced with.</summary>
     public LzmaEncoderCore Core => _core;
 
@@ -93,7 +100,7 @@ public sealed class Lzma2Chunker
 
     /// <summary>Encodes buffered input and writes the chunks that are complete.</summary>
     /// <param name="output">Receives the chunks.</param>
-    /// <param name="drain">True to encode everything buffered and close the chunk in progress (a flush); false to keep the last <see cref="LzmaEncoderCore.LookaheadLength"/> bytes back and leave a chunk open until it is full.</param>
+    /// <param name="drain">True to encode everything buffered and close the chunk in progress (the input has ended; <see cref="Lzma2Encoder.Flush"/> is the supported way to end chunks in the middle of a stream); false to keep the last <see cref="LzmaEncoderCore.LookaheadLength"/> bytes back and leave a chunk open until it is full.</param>
     /// <param name="maxChunks">The most chunks to write.</param>
     /// <returns>The number of input bytes that were encoded.</returns>
     public int WriteChunks(IBufferWriter<byte> output, bool drain, int maxChunks = int.MaxValue)

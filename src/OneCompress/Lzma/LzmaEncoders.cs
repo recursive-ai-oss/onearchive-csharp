@@ -58,7 +58,19 @@ public sealed class Lzma2Encoder : IQueuedEncoder
     /// <param name="destination">Receives compressed bytes.</param>
     /// <param name="written">The number of bytes written.</param>
     /// <returns><see cref="OperationStatus.Done"/> when all output was written; <see cref="OperationStatus.DestinationTooSmall"/> when more is waiting (call again).</returns>
-    public OperationStatus Flush(Span<byte> destination, out int written) => EncodeLoop.Flush(this, destination, out written);
+    public OperationStatus Flush(Span<byte> destination, out int written)
+    {
+        // More input may follow, so the match finder must not record positions whose comparisons the end of the data cut short.
+        _chunker.InputContinues = true;
+        try
+        {
+            return EncodeLoop.Flush(this, destination, out written);
+        }
+        finally
+        {
+            _chunker.InputContinues = false;
+        }
+    }
 
     /// <summary>Starts a new stream, keeping the allocated window and tables.</summary>
     public void Reset()
