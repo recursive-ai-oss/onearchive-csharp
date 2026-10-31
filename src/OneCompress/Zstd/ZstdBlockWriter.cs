@@ -687,7 +687,7 @@ public sealed class ZstdBlockWriter
     }
 
     // Adds the counters of `extra` into `counters` (the first 56 of them: codes are at most 52) and returns a bit for each counter that
-    // is not zero. Eight counters at a time where the hardware has 256-bit vectors; the loop for other hardware gives the same words.
+    // is not zero. Eight counters at a time where the hardware has 256-bit vectors, four with 128-bit ones; the plain loop gives the same words.
     private static ulong MergeAndFindPresent(uint[] counters, uint[] extra)
     {
         ulong present = 0;
@@ -698,6 +698,18 @@ public sealed class ZstdBlockWriter
                 Vector256<uint> sum = Vector256.Create(new ReadOnlySpan<uint>(counters, c, 8)) + Vector256.Create(new ReadOnlySpan<uint>(extra, c, 8));
                 sum.CopyTo(counters, c);
                 present |= (ulong)(~Vector256.Equals(sum, Vector256<uint>.Zero).ExtractMostSignificantBits() & 0xFFu) << c;
+            }
+
+            return present;
+        }
+
+        if (Vector128.IsHardwareAccelerated)
+        {
+            for (int c = 0; c < 56; c += 4)
+            {
+                Vector128<uint> sum = Vector128.Create(new ReadOnlySpan<uint>(counters, c, 4)) + Vector128.Create(new ReadOnlySpan<uint>(extra, c, 4));
+                sum.CopyTo(counters, c);
+                present |= (ulong)(~Vector128.Equals(sum, Vector128<uint>.Zero).ExtractMostSignificantBits() & 0xFu) << c;
             }
 
             return present;
