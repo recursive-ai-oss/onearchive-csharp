@@ -135,6 +135,24 @@ public sealed class ZstdSequenceStore
         _offsetValues[_sequenceCount++] = offsetValue;
     }
 
+    // Fills an empty store with the sequences firstSequence..endSequence of `source` and the literals firstLiteral..endLiteral, in bulk, together
+    // with the offset values the sequences were coded with (indexed like the source's sequences); used to cut a block's store into
+    // several blocks. The caller then starts tracking and records the end offsets.
+    internal void CopySegment(ZstdSequenceStore source, int firstSequence, int endSequence, int firstLiteral, int endLiteral, ReadOnlySpan<uint> offsetValues)
+    {
+        int count = endSequence - firstSequence;
+        while (_sequences.Length < count)
+        {
+            Grow();
+        }
+
+        source._sequences.AsSpan(firstSequence, count).CopyTo(_sequences);
+        offsetValues.Slice(firstSequence, count).CopyTo(_offsetValues);
+        source._literals.AsSpan(firstLiteral, endLiteral - firstLiteral).CopyTo(_literals);
+        _sequenceCount = count;
+        _literalCount = endLiteral - firstLiteral;
+    }
+
     // Appends a sequence together with its literals and the offset value the sequence was coded with (see AppendTracked);
     // used to cut a block's store into several blocks.
     internal void AppendCopied(ReadOnlySpan<byte> literals, uint literalLength, uint matchLength, uint offset, uint offsetValue)

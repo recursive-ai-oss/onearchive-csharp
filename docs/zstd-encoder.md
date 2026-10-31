@@ -249,8 +249,8 @@ sees them. Because every part may cost three header bytes more than the single b
 allows 32 parts per 128 KiB.
 
 **Long-distance matching** with a strategy below btopt writes each block at most in two parts (`ZstdBlockSplitter.PlanHalf`): the block's
-literals are halved at their middle, every fourth literal of each half is counted, and when coding the halves with codes of their own is
-estimated to save more than 1,600 bits (the headers and tables of the second block), the block is cut before the first sequence whose
+literals are halved at their middle, every eighth literal of each half is counted, and when coding the halves with codes of their own is
+estimated to save more than 3,000 bits (more than the headers and tables of the second block cost, so that marginal cuts are left out), the block is cut before the first sequence whose
 literals start at or after the middle. The parts are written as for the optimal strategies. Blocks with fewer than 64 sequences or 6,144
 literals are never cut.
 

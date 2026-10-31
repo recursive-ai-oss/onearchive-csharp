@@ -60,12 +60,12 @@ internal sealed class ZstdBlockSplitter
     /// <summary>The offset value (repeat code or offset + 3) the sequence <paramref name="index"/> is coded with.</summary>
     public uint OffsetValue(int index) => _offsetValues[index];
 
-    // The quick plan looks at the literals only: every fourth one of each half goes into a histogram, and the block is cut in two when
+    // The quick plan looks at the literals only: every eighth one of each half goes into a histogram, and the block is cut in two when
     // coding the halves with codes of their own is estimated to save more than the second block's headers and tables cost.
     private const int QuickMinimumLiterals = 6144;
     private const int QuickMinimumSequences = 64;
-    private const int QuickSampleStep = 4;
-    private const long QuickThreshold = 1600L * ZstdCost.Bit;
+    private const int QuickSampleStep = 8;
+    private const long QuickThreshold = 3000L * ZstdCost.Bit;
     private readonly uint[] _quickA = new uint[256];
     private readonly uint[] _quickB = new uint[256];
 
@@ -401,26 +401,12 @@ internal sealed class ZstdBlockSplitter
         }
 
         _subStore ??= new ZstdSequenceStore();
-        ReadOnlySpan<ZstdSequence> sequences = store.Sequences;
-        ReadOnlySpan<byte> literals = store.Literals;
         int written = 0;
         for (int s = 0; s < segments; s++)
         {
             _subStore.Clear();
             _subStore.BeginTracking(splitter.Reps[s]);
-            int literalPosition = splitter.LiteralStart[s];
-            for (int i = splitter.SequenceStart[s]; i < splitter.SequenceStart[s + 1]; i++)
-            {
-                ZstdSequence q = sequences[i];
-                _subStore.AppendCopied(literals.Slice(literalPosition, (int)q.LiteralLength), q.LiteralLength, q.MatchLength, q.Offset, splitter.OffsetValue(i));
-                literalPosition += (int)q.LiteralLength;
-            }
-
-            if (s == segments - 1)
-            {
-                _subStore.AppendLiterals(literals[literalPosition..]);
-            }
-
+            _subStore.CopySegment(store, splitter.SequenceStart[s], splitter.SequenceStart[s + 1], splitter.LiteralStart[s], splitter.LiteralStart[s + 1], _offsetValues);
             ZstdRepeatOffsets end = splitter.Reps[s + 1];
             _subStore.SetTrackedEnd(end.Offset1, end.Offset2, end.Offset3);
             int byteEnd = s == segments - 1 ? block.Length : splitter.ByteStart[s + 1];
