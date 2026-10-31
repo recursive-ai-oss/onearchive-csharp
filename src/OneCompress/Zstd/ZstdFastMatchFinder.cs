@@ -266,10 +266,10 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         // Bounds: b + 16 <= limit <= window.Length for the vector read, and a < b.
         if (b + 16 <= limit)
         {
-            uint differ = Raw.DifferMask16(window, a, b);
-            if (differ != 0)
+            int equal = Raw.CommonPrefix16(window, a, b);
+            if (equal < 16)
             {
-                return BitOperations.TrailingZeroCount(differ);
+                return equal;
             }
 
             return 16 + CountFrom(window, a + 16, b + 16, limit);
@@ -286,10 +286,10 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
         nint n = 0;
         while (n + 16 <= max)
         {
-            uint differ = Raw.DifferMask16(window, a + n, b + n);
-            if (differ != 0)
+            int equal = Raw.CommonPrefix16(window, a + n, b + n);
+            if (equal < 16)
             {
-                return (int)n + BitOperations.TrailingZeroCount(differ);
+                return (int)n + equal;
             }
 
             n += 16;
@@ -1028,9 +1028,14 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
             nint b = ip - 2;
             if (b <= limit && b > 0)
             {
+                // The long table gets the position two before the match's end, the short one the position just before it, as that is the
+                // one a later short match is most likely to start from (measured: smaller output than entering the same position in both).
                 ulong v = Raw.ReadUInt64(window, b);
                 Raw.Set(longTable, (nuint)((v * HashPrime) >> longShift), (uint)b);
-                Raw.Set(shortTable, (nuint)((v * shortMultiplier) >> shortShift), (uint)b);
+                nint b1 = b + 1;
+                ulong v1 = b1 <= limit ? Raw.ReadUInt64(window, b1) : v;
+                nint at = b1 <= limit ? b1 : b;
+                Raw.Set(shortTable, (nuint)((v1 * shortMultiplier) >> shortShift), (uint)at);
             }
 
             while (ip <= limit)

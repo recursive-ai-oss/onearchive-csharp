@@ -254,7 +254,7 @@ public sealed partial class ZstdEncoder
     {
         int n = end - start;
         ReadOnlySpan<byte> block = window[start..end];
-        int needed = n + 3 + OutputSlack + (_split ? 3 * (ZstdBlockSplitter.MaxSegments - 1) : 0);
+        int needed = n + 3 + OutputSlack + (_split || _ldm is not null ? 3 * (ZstdBlockSplitter.MaxSegments - 1) : 0);
         Span<byte> target = destination;
         bool scratch = destination.Length < needed;
         if (scratch)
@@ -276,6 +276,8 @@ public sealed partial class ZstdEncoder
             longMatches = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_ldmMatches);
         }
 
+        // Long-distance matching is for big inputs, where one cut in the middle of a block is worth its headers: see ZstdBlockSplitter.PlanHalf.
+        bool quickSplit = !_split && _ldm is not null;
         int size;
         if (n > 1 && block.IndexOfAnyExcept(block[0]) < 0)
         {
@@ -285,7 +287,7 @@ public sealed partial class ZstdEncoder
         {
             _store.Clear();
             ZstdLongSequencer.Fill(_finder, window, start, end, windowStartPosition, _writer.RepeatOffsets, longMatches, _store);
-            size = _split ? (_splitter ??= new ZstdBlockSplitter()).Write(_writer, _store, block, last, target) : _writer.WriteBlock(block, _store, last, target);
+            size = _split || quickSplit ? (_splitter ??= new ZstdBlockSplitter()).Write(_writer, _store, block, last, target, quickSplit) : _writer.WriteBlock(block, _store, last, target);
         }
 
         fits = true;

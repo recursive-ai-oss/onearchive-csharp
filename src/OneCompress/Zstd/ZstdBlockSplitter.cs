@@ -60,6 +60,132 @@ internal sealed class ZstdBlockSplitter
     /// <summary>The offset value (repeat code or offset + 3) the sequence <paramref name="index"/> is coded with.</summary>
     public uint OffsetValue(int index) => _offsetValues[index];
 
+    // The quick plan looks at the literals only: every fourth one of each half goes into a histogram, and the block is cut in two when
+    // coding the halves with codes of their own is estimated to save more than the second block's headers and tables cost.
+    private const int QuickMinimumLiterals = 6144;
+    private const int QuickMinimumSequences = 64;
+    private const int QuickSampleStep = 4;
+    private const long QuickThreshold = 1600L * ZstdCost.Bit;
+    private readonly uint[] _quickA = new uint[256];
+    private readonly uint[] _quickB = new uint[256];
+
+    // Estimated size, in 1/256 bit, of coding the counted symbols with a code fitted to them.
+    private static long QuickCost(ReadOnlySpan<uint> counts, uint total)
+    {
+        if (total == 0)
+        {
+            return 0;
+        }
+
+        long logTotal = ZstdCost.Log2(total);
+        long sum = 0;
+        foreach (uint n in counts)
+        {
+            if (n != 0)
+            {
+                sum += n * (logTotal - ZstdCost.Log2(n));
+            }
+        }
+
+        return sum;
+    }
+
+    /// <summary>
+    /// Plans at most one cut of the block held in <paramref name="store"/>, at about the middle of its literals, from a sample of the
+    /// literals alone. It costs a small fraction of <see cref="Plan"/>, which weighs every sequence code too.
+    /// </summary>
+    /// <param name="store">The block's literals and sequences.</param>
+    /// <param name="start">The repeat offsets in force at the start of the block.</param>
+    /// <returns>1 to write the block whole, 2 for two blocks.</returns>
+    public int PlanHalf(ZstdSequenceStore store, ZstdRepeatOffsets start)
+    {
+        ReadOnlySpan<ZstdSequence> sequences = store.Sequences;
+        ReadOnlySpan<byte> literals = store.Literals;
+        Segments = 1;
+        if (sequences.Length < QuickMinimumSequences || literals.Length < QuickMinimumLiterals)
+        {
+            return 1;
+        }
+
+        int middle = literals.Length / 2;
+        uint[] a = _quickA;
+        uint[] b = _quickB;
+        Array.Clear(a);
+        Array.Clear(b);
+        uint totalA = 0, totalB = 0;
+        for (int i = 0; i < middle; i += QuickSampleStep)
+        {
+            a[literals[i]]++;
+            totalA++;
+        }
+
+        for (int i = middle; i < literals.Length; i += QuickSampleStep)
+        {
+            b[literals[i]]++;
+            totalB++;
+        }
+
+        long separate = QuickCost(a, totalA) + QuickCost(b, totalB);
+        for (int s = 0; s < 256; s++)
+        {
+            a[s] += b[s];
+        }
+
+        long together = QuickCost(a, totalA + totalB);
+        if ((together - separate) * QuickSampleStep <= QuickThreshold)
+        {
+            return 1;
+        }
+
+        // Cut before the first sequence whose literals start at or after the middle; the offsets (repeat codes) are resolved on the way.
+        if (_offsetValues.Length < sequences.Length)
+        {
+            _offsetValues = new uint[Math.Max(sequences.Length, _offsetValues.Length * 2)];
+        }
+
+        ZstdRepeatOffsets reps = start;
+        ZstdRepeatOffsets atCut = start;
+        int cut = -1;
+        int litPos = 0;
+        int bytePos = 0;
+        int cutLit = 0;
+        int cutByte = 0;
+        for (int i = 0; i < sequences.Length; i++)
+        {
+            ZstdSequence q = sequences[i];
+            if (cut < 0 && litPos >= middle)
+            {
+                cut = i;
+                cutLit = litPos;
+                cutByte = bytePos;
+                atCut = reps;
+            }
+
+            _offsetValues[i] = reps.Apply(q.Offset, q.LiteralLength);
+            litPos += (int)q.LiteralLength;
+            bytePos += (int)(q.LiteralLength + q.MatchLength);
+        }
+
+        if (cut <= 0)
+        {
+            return 1;
+        }
+
+        SequenceStart[0] = 0;
+        SequenceStart[1] = cut;
+        SequenceStart[2] = sequences.Length;
+        LiteralStart[0] = 0;
+        LiteralStart[1] = cutLit;
+        LiteralStart[2] = literals.Length;
+        ByteStart[0] = 0;
+        ByteStart[1] = cutByte;
+        Reps[0] = start;
+        Reps[1] = atCut;
+        Reps[2] = reps;
+        Segments = 2;
+        return 2;
+    }
+
     /// <summary>Plans the cuts of the block held in <paramref name="store"/>.</summary>
     /// <param name="store">The block's literals and sequences.</param>
     /// <param name="start">The repeat offsets in force at the start of the block.</param>
@@ -265,10 +391,10 @@ internal sealed class ZstdBlockSplitter
     /// Writes the parsed block (in <paramref name="store"/>) as one block or, when the sequences' statistics change enough to pay for another
     /// set of headers and tables, as several consecutive blocks.
     /// </summary>
-    public int Write(ZstdBlockWriter writer, ZstdSequenceStore store, ReadOnlySpan<byte> block, bool last, Span<byte> target)
+    public int Write(ZstdBlockWriter writer, ZstdSequenceStore store, ReadOnlySpan<byte> block, bool last, Span<byte> target, bool quick = false)
     {
         ZstdBlockSplitter splitter = this;
-        int segments = splitter.Plan(store, writer.RepeatOffsets);
+        int segments = quick ? splitter.PlanHalf(store, writer.RepeatOffsets) : splitter.Plan(store, writer.RepeatOffsets);
         if (segments < 2)
         {
             return writer.WriteBlock(block, store, last, target);

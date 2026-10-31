@@ -36,9 +36,9 @@ applies.
 |  | 4 | 21 | 18 | 18 | 1 | 5 | 0 | double fast |
 |  | 5 | 21 | 18 | 19 | 3 | 5 | 2 | greedy |
 |  | 6 | 21 | 18 | 19 | 3 | 5 | 4 | lazy |
-|  | 7 | 21 | 19 | 20 | 4 | 5 | 8 | lazy |
+|  | 7 | 21 | 19 | 20 | 3 | 5 | 8 | lazy |
 |  | 8 | 21 | 19 | 20 | 4 | 5 | 16 | lazy2 |
-|  | 9 | 22 | 20 | 21 | 4 | 5 | 16 | lazy2 |
+|  | 9 | 22 | 20 | 21 | 3 | 5 | 16 | lazy2 |
 |  | 10 | 22 | 21 | 22 | 4 | 5 | 16 | lazy2 |
 |  | 11 | 22 | 21 | 22 | 5 | 5 | 16 | lazy2 |
 |  | 12 | 22 | 22 | 23 | 5 | 5 | 32 | lazy2 |
@@ -122,6 +122,9 @@ applies.
 |  | 21 | 14 | 15 | 15 | 9 | 3 | 512 | btultra2 |
 |  | 22 | 14 | 15 | 15 | 10 | 3 | 999 | btultra2 |
 
+**Levels 7 and 9 above 256 KiB search one step less deep than the tool** (search log 3 where the tool's is 4): eight candidates per position
+instead of sixteen. On silesia.tar this costs +0.64% (level 7) and +0.77% (level 9) of size against the tool's own output at those levels, for about 8-10% less time.
+
 **Levels 10 to 12 above 256 KiB search one step less deep than the tool.** The search log is 4, 5 and 5 where the tool's is 5, 6 and 6
 (every other value is the tool's). The row search spends most of its time on candidates that fail the longer-match check, so its time
 is close to proportional to the candidates visited. On silesia.tar the sizes are +0.55%, +0.32% and +0.32% against the tool at levels
@@ -186,7 +189,8 @@ and in how far the parse looks ahead.
   wins if its gain is higher. Lazy (lazy2) takes the best match at `ip`, then looks at `ip + 1` (`ip + 2`): a later match replaces
   it when its gain is higher by more than 4 (7 for two positions on), and the check restarts from the new position. A match of 128
   bytes or more is not looked past. The match is extended backwards over equal bytes down to the last match end, emitted, and the
-  search resumes at its end. With nothing found the position advances by `1 + (ip - anchor) / 256`.
+  search resumes at its end. With nothing found the position advances by `1 + (ip - anchor) / 256`; greedy advances by
+  `1 + (ip - anchor) / 64` and tries only the first repeat offset at each position (the second and third are tried only by lazy and lazy2).
 - **With a dictionary:** the frame's own candidates are visited first; a search that has attempts left continues along the
   dictionary's hash chains (built once per dictionary and parameter set, for every position with 8 bytes after it, sized by
   `DictionaryHashLog` and `DictionaryChainLog` when set). The dictionary's candidates count only while the bytes produced do not
@@ -243,6 +247,12 @@ literals are cheaper). A shortest-path search over the chunk boundaries (at most
 cost. Each part is written as a block of its own with its own tables; repeat offsets run on from part to part exactly as the decoder
 sees them. Because every part may cost three header bytes more than the single block would have, the bound of `GetMaxCompressedLength`
 allows 32 parts per 128 KiB.
+
+**Long-distance matching** with a strategy below btopt writes each block at most in two parts (`ZstdBlockSplitter.PlanHalf`): the block's
+literals are halved at their middle, every fourth literal of each half is counted, and when coding the halves with codes of their own is
+estimated to save more than 1,600 bits (the headers and tables of the second block), the block is cut before the first sequence whose
+literals start at or after the middle. The parts are written as for the optimal strategies. Blocks with fewer than 64 sequences or 6,144
+literals are never cut.
 
 ## Frames
 
@@ -302,8 +312,9 @@ allows 32 parts per 128 KiB.
   is extended backward over equal bytes (not before the last match end) and forward. After a match two positions are indexed (the
   match start + 2 and the position 2 before its end) and the second repeat offset is tried repeatedly at the end of each match.
 - **Double fast:** one position per round, `ip += 1 + (ip - anchor) / 256`. Tests the first repeat offset at `ip + 1`, the long
-  candidate, the short candidate (then also the long candidate at `ip + 1`, which wins if it matches 8 bytes). Both tables are
-  filled at the same positions after a match.
+  candidate, the short candidate (then also the long candidate at `ip + 1`, which wins if it matches 8 bytes). After a match the
+  long table is filled at the match start + 2 and at 2 before the match's end, and the short table at the match start + 2 and at the
+  position just before the match's end (1 before it; 2 before it if the block ends within 8 bytes of there).
 - **With a dictionary:** the dictionary content sits logically right before the first byte. A match into it has offset
   `bytes produced + dictionary length - position in dictionary`, and is allowed while the bytes produced so far do not exceed
   the window size (RFC 8878 section 3.1.1.1.2). Repeat offsets that reach before the frame start are tried against the
