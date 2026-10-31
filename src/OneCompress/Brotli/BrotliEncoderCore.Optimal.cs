@@ -10,6 +10,10 @@ internal sealed partial class BrotliEncoderCore
 
     private bool _collecting;
 
+    // A position whose tree match is this long or longer is not searched for dictionary words: a word would have to beat a long match, and
+    // the search is the largest cost of the parse. Eight rather than a longer length costs 0.1% of size and a fifth of the time.
+    private const int DictionarySkipLength = 8;
+
     // Match candidates of every position of the block, as found by the binary tree: lists of (length, distance, bytes covered, dictionary).
     private int[] _candStart = [];
     private int[] _candLength = [];
@@ -319,7 +323,7 @@ internal sealed partial class BrotliEncoderCore
             }
 
             // As in the greedy parse, a long match found by the tree makes a dictionary word unlikely to pay.
-            bool searchWords = _plan.Dictionary && (_candCount == _candStart[pos - start] || _candLength[_candCount - 1] < 12);
+            bool searchWords = _plan.Dictionary && (_candCount == _candStart[pos - start] || _candLength[_candCount - 1] < DictionarySkipLength);
             if (searchWords)
             {
                 int maxDistance = (int)Math.Min(_window, _streamBase + pos);

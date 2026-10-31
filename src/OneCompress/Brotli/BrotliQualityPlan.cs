@@ -250,7 +250,7 @@ internal sealed class BrotliQualityPlan
                 p.LiteralSegmentMin = 64;
                 p.LiteralSegmentMax = 8192;
                 p.Optimal = true;
-                p.OptimalPasses = quality == 10 ? 2 : 3;
+                p.OptimalPasses = quality == 10 ? 2 : 4;
                 p.LiteralContexts = true;
                 p.SplitBlocks = true;
                 p.SearchContextMode = true;

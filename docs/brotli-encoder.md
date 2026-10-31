@@ -64,7 +64,7 @@ Large-window brotli (window above 24) is not part of RFC 7932 and is not produce
 | 8 | 4 MiB | 2^18 x 32 | 6 | 32 | 2^17 x 16, 16 deep | lazy 2 | same | identity |
 | 9 | 4 MiB | 2^17 x 64 | 6 | 48 | 2^17 x 32, 32 deep | lazy 2 | same | identity |
 | 10 | 1 MiB | 2^20 binary tree | 4 | 64 | | shortest path, 2 passes | same, finest literal splitting | all transforms |
-| 11 | 1 MiB | 2^20 binary tree | 4 | 128 (nice length 256) | | shortest path, 3 passes | same | all transforms |
+| 11 | 1 MiB | 2^20 binary tree | 4 | 128 (nice length 256) | | shortest path, 4 passes | same | all transforms |
 
 "Table" is the number of hash values times the slots each owns ("x 16"); "Depth" is the number of entries of a bucket (or tree nodes at q10
 and q11) visited per position. Qualities 0 to 5 skip ahead on incompressible data: after a miss the position advances by
@@ -158,7 +158,7 @@ keeps sixteen bytes beyond the data for those reads.
 
 Per block (1 MiB):
 
-1. **Candidates.** For every position the binary tree (and, where the tree's best candidate is under 12 long, the dictionary)
+1. **Candidates.** For every position the binary tree (and, where the tree's best candidate is under 8 long, the dictionary)
    lists candidates `(length, distance)`.
 2. **Costs.** Costs are in 1/256 bit and path costs are 64-bit. The first pass uses the block's byte histogram for literals
    (`log2(total / count)`, unseen bytes `+ 3` bits, at least 1/8 bit), 9 bits per command symbol, 4 bits for distance symbols
