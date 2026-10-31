@@ -196,8 +196,18 @@ internal static class Program
 
     private static string Load()
     {
-        try { return File.ReadAllText("/proc/loadavg").Split(' ')[0]; }
-        catch (IOException) { return "?"; }
+        try
+        {
+            if (OperatingSystem.IsLinux()) return File.ReadAllText("/proc/loadavg").Split(' ')[0];
+            using var p = Process.Start(new ProcessStartInfo("sysctl", "-n vm.loadavg") { RedirectStandardOutput = true, UseShellExecute = false });
+            var f = p!.StandardOutput.ReadToEnd().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            p.WaitForExit();
+            return f.Length > 1 ? f[1] : "?";
+        }
+        catch (Exception e) when (e is IOException or System.ComponentModel.Win32Exception)
+        {
+            return "?";
+        }
     }
 }
 
