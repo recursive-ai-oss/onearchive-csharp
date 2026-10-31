@@ -12,13 +12,18 @@ The first stable release. Both packages leave preview: `[Experimental]` is remov
 - Documentation: a README on the family shape with compiled snippets, a docs index with one page per codec family and container, package readmes, `THIRD-PARTY-NOTICES.md`, and XML documentation on every public member. Package validation against 0.7.0-preview.1 runs on every pack.
 - `bench/Managed`: size-matched comparison rows (a row is met when some level of ours is within +1% of the library's size at no less than 0.87 of its speed), small-payload dictionary rows and checksum rows.
 
+### Fixed
+
+- LZMA2: `Lzma2Encoder.Flush` with a binary-tree match finder could write a stream that decoded to different bytes; fixed.
+
 ### Changed
 
 These speed-ups change compressed bytes at the levels listed (sizes stay within the bar's +1% of the managed libraries; bytes remain identical on every platform and thread count). Other levels write the same bytes as 0.7.0-preview.1.
 
 - Zstandard: faster levels 1-4 (leaner match loops, one-read code tables, search state computed once per block); levels 3-9 (shallower search at 7 and 9, faster greedy level 5, one cut per block with long-distance matching, cheaper block cuts); levels 13-18 (insert-only tree walk, thinner insertions, prefetching in the optimal parser, shallower dense tail at 13, wider at 18); and levels 1-4 with a dictionary, which probe the dictionary at every second or fourth position since the last match and extend matches backward. Compression with a dictionary on small payloads (game snapshot data) is considerably faster. The decoder loops are compiled fully optimized on first use.
-- LZMA and xz: faster hash-chain encoder with identical bytes for the same search (batched position insertion, bucket prefetch, branch-free bit coding, wider match compares). Preset 0 uses the 4-byte hash chain, presets 0 and 1 skip the look-ahead for matches of 3 and 4 bytes or more, and preset 2 searches 12 candidates, so bytes at presets 0-2 differ.
+- LZMA and xz: faster hash-chain encoder with identical bytes for the same search (batched position insertion, bucket prefetch, branch-free bit coding, wider match compares). Preset 0 uses the 4-byte hash chain, presets 0 and 1 skip the look-ahead for matches of 3 and 4 bytes or more, and preset 2 searches 12 candidates, so bytes at presets 0-2 differ (preset 1 was later retuned again, see below).
 - Brotli: faster decode (UTF-8 context table, wider root table, fewer refills). Quality 3 is a four-way greedy parse, quality 4 a single-block-type lazy parse, qualities 1 and 2 are retuned, and qualities 10 and 11 price literals in UTF-8 context, skip the dictionary search under a long tree match, and use finer block splitting (four refinement passes at 11), so bytes at q1-q4, q10 and q11 differ.
+- xz/LZMA preset 1 searches less and takes 3-byte matches at once: faster, output differs at preset 1 only.
 - LZ4: decoding with a dictionary reads the dictionary in place, keeps its history between blocks and copies short pieces exactly, which makes dictionary decode of small blocks about as fast as the fastest managed library. Compressed bytes are unchanged.
 - Timestamps in ar, cpio and ISO 9660 headers that cannot be represented are reported as unknown (null) instead of throwing, found by fuzzing.
 - Benchmarks time every candidate in fully optimized code from the first call.
