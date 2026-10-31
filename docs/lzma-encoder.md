@@ -41,14 +41,15 @@ calls. Byte-identical output with the `xz` and `lzip` tools is not a goal: the s
 
 The dictionary sizes, match finders and modes of presets 0 to 9 follow the `xz` manual (dictionary 256 KiB, 1, 2, 4, 4, 8, 8, 16, 32
 and 64 MiB; `hc3` for 0, `hc4` for 1 to 3, `bt4` for 4 to 9; fast mode for 0 to 3, normal for 4 to 9). The manual leaves the nice
-lengths and depths to the implementation; they were set by measuring size against `xz` on the corpus subset below, so that every
-preset is within 1% of the tool's size.
+lengths and depths to the implementation; they were set by measuring size and speed against `xz` on the corpus subset below. On a
+mixed 16 MiB Silesia sample the fast presets 0 to 3 write 0.8% to 4.3% more than the tool at the same preset (preset 2's depth of 12
+trades about 1% of size for 10% of speed); presets 4 to 9 are within 1%.
 
 | Preset | Dictionary | Match finder | Mode | Nice length | Depth |
 |---|---|---|---|---|---|
 | 0 | 256 KiB | HashChain3 | Fast | 6 | 6 |
 | 1 | 1 MiB | HashChain4 | Fast | 8 | 8 |
-| 2 | 2 MiB | HashChain4 | Fast | 24 | 16 |
+| 2 | 2 MiB | HashChain4 | Fast | 24 | 12 |
 | 3 | 4 MiB | HashChain4 | Fast | 48 | 24 |
 | 4 | 4 MiB | BinaryTree4 | Normal | 16 | 24 |
 | 5 | 8 MiB | BinaryTree4 | Normal | 32 | 32 |

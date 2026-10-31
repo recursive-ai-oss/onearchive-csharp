@@ -77,6 +77,18 @@ internal static class LzmaMatchRaw
     /// (the entry points have checked the window).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    // Bound: callers read 8 bytes at an index of at most (the checked window end) - 8, which CheckWindow has validated.
+    public static ulong Read64(byte[] buffer, int index)
+    {
+#if CHECKED
+        return System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(index));
+#else
+        ulong value = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(buffer), (nint)(uint)index));
+        return BitConverter.IsLittleEndian ? value : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(value);
+#endif
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint Read32(byte[] buffer, int index)
     {
 #if CHECKED

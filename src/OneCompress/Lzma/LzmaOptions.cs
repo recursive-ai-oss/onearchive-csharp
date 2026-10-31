@@ -136,7 +136,7 @@ public readonly struct LzmaEncoderSettings
     private static ReadOnlySpan<byte> PresetNice => [6, 8, 24, 48, 16, 32, 64, 64, 64, 64];
 
     // Search depths of the hash-chain presets 0 to 3; the binary-tree presets derive theirs from the nice length.
-    private static ReadOnlySpan<byte> PresetChainDepth => [6, 8, 16, 24];
+    private static ReadOnlySpan<byte> PresetChainDepth => [6, 8, 12, 24];
 
     private LzmaEncoderSettings(int lc, int lp, int pb, uint dictionarySize, int niceLength, int depth, LzmaMode mode, LzmaMatchFinderKind matchFinder, bool endMarker)
     {
