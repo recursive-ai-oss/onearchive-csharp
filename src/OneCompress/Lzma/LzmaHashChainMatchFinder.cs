@@ -46,6 +46,7 @@ public sealed class LzmaHashChainMatchFinder : LzmaMatchFinder
 
         int lenLimit = Math.Min(available, LzmaModel.MaxMatchLength);
         CheckWindow(buffer, position, lenLimit);
+        PrefetchBuckets(buffer, position, available);
         int cur = UpdateHashes(buffer, position, out int c2, out int c3);
         LzmaMatchRaw.L(_chain, cp) = cur;
         int count = 0;
@@ -104,7 +105,70 @@ public sealed class LzmaHashChainMatchFinder : LzmaMatchFinder
         }
 
         CheckWindow(buffer, position, Math.Min(available, LzmaModel.MaxMatchLength));
+        PrefetchBuckets(buffer, position, available);
         LzmaMatchRaw.L(_chain, cp) = UpdateHashes(buffer, position, out _, out _);
+    }
+
+    /// <inheritdoc />
+    internal override void SkipRange(byte[] buffer, int position, int count, int bufEnd)
+    {
+        // Positions with at least `Margin` valid bytes behind them take the loop below; the last few go through Skip.
+        const int Margin = 16;
+        int end = position + count;
+        int fast = Math.Min(end, bufEnd - Margin + 1);
+        if (position < 0 || bufEnd < 0 || bufEnd + 4 > buffer.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(position), "The position and the available length must lie inside the buffer.");
+        }
+
+        int p = position;
+        if (p < fast)
+        {
+            int[] chain = _chain;
+            int cyclic = _cyclicSize;
+            int cp = _cyclicPos;
+            if (_hashBytes == 4)
+            {
+                for (; p < fast; p++)
+                {
+                    // Prefetch the buckets of a position a few steps ahead, then update the three tables for this one; each table
+                    // index is masked or shifted down to its table's size, and p + 16 < bufEnd + 4 <= buffer.Length.
+                    uint ahead = Read32(buffer, p + 12);
+                    LzmaMatchRaw.PrefetchLink(_hash2, (int)(ahead & 0xFFFF));
+                    LzmaMatchRaw.PrefetchLink(_hash3!, (int)HashOf(ahead & 0xFFFFFF, Hash3Bits));
+                    LzmaMatchRaw.PrefetchLink(_main, (int)HashOf(ahead, _mainBits));
+                    uint v = Read32(buffer, p);
+                    LzmaMatchRaw.L(_hash2, (int)(v & 0xFFFF)) = p;
+                    LzmaMatchRaw.L(_hash3!, (int)HashOf(v & 0xFFFFFF, Hash3Bits)) = p;
+                    ref int slotM = ref LzmaMatchRaw.L(_main, (int)HashOf(v, _mainBits));
+                    LzmaMatchRaw.L(chain, cp) = slotM;
+                    slotM = p;
+                    cp = cp + 1 == cyclic ? 0 : cp + 1;
+                }
+            }
+            else
+            {
+                for (; p < fast; p++)
+                {
+                    uint ahead = Read32(buffer, p + 12);
+                    LzmaMatchRaw.PrefetchLink(_hash2, (int)(ahead & 0xFFFF));
+                    LzmaMatchRaw.PrefetchLink(_main, (int)HashOf(ahead & 0xFFFFFF, _mainBits));
+                    uint v = Read32(buffer, p);
+                    LzmaMatchRaw.L(_hash2, (int)(v & 0xFFFF)) = p;
+                    ref int slotM = ref LzmaMatchRaw.L(_main, (int)HashOf(v & 0xFFFFFF, _mainBits));
+                    LzmaMatchRaw.L(chain, cp) = slotM;
+                    slotM = p;
+                    cp = cp + 1 == cyclic ? 0 : cp + 1;
+                }
+            }
+
+            _cyclicPos = cp;
+        }
+
+        for (; p < end; p++)
+        {
+            Skip(buffer, p, bufEnd - p);
+        }
     }
 
     private protected override void ResetLinks() => Array.Clear(_chain);

@@ -255,12 +255,11 @@ public sealed partial class LzmaEncoderCore
     public void EncodeEndMarker()
     {
         int posState = (int)((_posBase + _pos) & _pbMask);
-        RangeState rc = _rc.State;
+        ref RangeState rc = ref _rc.State;
         rc.EncodeBit(ref _probs[LzmaModel.IsMatch + (_state << 4) + posState], 1);
         rc.EncodeBit(ref _probs[LzmaModel.IsRep + _state], 0);
         EncodeLength(ref rc, LzmaModel.LengthCoder, 2, posState);
         EncodeDistance(ref rc, uint.MaxValue, 0);
-        _rc.State = rc;
         _state = LzmaModel.NextStateAfterMatch(_state);
     }
 
@@ -285,10 +284,10 @@ public sealed partial class LzmaEncoderCore
 
     private void AdvanceFinder(int target)
     {
-        while (_finderPos < target)
+        if (_finderPos < target)
         {
-            _finder.Skip(_buf, _finderPos, _bufEnd - _finderPos);
-            _finderPos++;
+            _finder.SkipRange(_buf, _finderPos, target - _finderPos, _bufEnd);
+            _finderPos = target;
         }
     }
 
@@ -337,6 +336,17 @@ public sealed partial class LzmaEncoderCore
         }
 
         int len = 2;
+        while (len + 8 <= maxLen)
+        {
+            ulong x = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(b.AsSpan(src + len)) ^ System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(b.AsSpan(p + len));
+            if (x != 0)
+            {
+                return len + (BitOperations.TrailingZeroCount(x) >> 3);
+            }
+
+            len += 8;
+        }
+
         while (len < maxLen && b[src + len] == b[p + len])
         {
             len++;
@@ -355,7 +365,7 @@ public sealed partial class LzmaEncoderCore
 
     private void EmitLiteral()
     {
-        RangeState rc = _rc.State;
+        ref RangeState rc = ref _rc.State;
         int p = _pos;
         int posState = (int)((_posBase + p) & _pbMask);
         rc.EncodeBit(ref _probs[LzmaModel.IsMatch + (_state << 4) + posState], 0);
@@ -373,35 +383,30 @@ public sealed partial class LzmaEncoderCore
         }
         else
         {
+            // LZMA specification, "matched literal": while the bits coded so far equal the match byte's, each bit is coded in the
+            // context of the match byte's bit; after the first difference the plain tree is used. `offs` is 0x100 while they
+            // agree and 0 after, so the context index is lit + offs + matchBit + m either way, without a branch on the bits.
             int matchByte = _buf[p - (int)_reps[0] - 1];
             int m = 1;
-            bool same = true;
+            int offs = 0x100;
+            int mb = matchByte;
             for (int i = 7; i >= 0; i--)
             {
                 int bit = (symbol >> i) & 1;
-                if (same)
-                {
-                    int matchBit = (matchByte >> i) & 1;
-                    rc.EncodeBit(ref _probs[lit + ((1 + matchBit) << 8) + m], bit);
-                    same = matchBit == bit;
-                }
-                else
-                {
-                    rc.EncodeBit(ref _probs[lit + m], bit);
-                }
-
+                mb <<= 1;
+                rc.EncodeBit(ref _probs[lit + offs + (mb & offs) + m], bit);
                 m = (m << 1) | bit;
+                offs &= ~(mb ^ -bit);
             }
         }
 
         _state = LzmaModel.NextStateAfterLiteral(_state);
         _pos = p + 1;
-        _rc.State = rc;
     }
 
     private void EmitShortRep()
     {
-        RangeState rc = _rc.State;
+        ref RangeState rc = ref _rc.State;
         int posState = (int)((_posBase + _pos) & _pbMask);
         rc.EncodeBit(ref _probs[LzmaModel.IsMatch + (_state << 4) + posState], 1);
         rc.EncodeBit(ref _probs[LzmaModel.IsRep + _state], 1);
@@ -409,12 +414,11 @@ public sealed partial class LzmaEncoderCore
         rc.EncodeBit(ref _probs[LzmaModel.IsRep0Long + (_state << 4) + posState], 0);
         _state = LzmaModel.NextStateAfterShortRep(_state);
         _pos++;
-        _rc.State = rc;
     }
 
     private void EmitRep(int index, int length)
     {
-        RangeState rc = _rc.State;
+        ref RangeState rc = ref _rc.State;
         int posState = (int)((_posBase + _pos) & _pbMask);
         rc.EncodeBit(ref _probs[LzmaModel.IsMatch + (_state << 4) + posState], 1);
         rc.EncodeBit(ref _probs[LzmaModel.IsRep + _state], 1);
@@ -457,12 +461,11 @@ public sealed partial class LzmaEncoderCore
         EncodeLength(ref rc, LzmaModel.RepLengthCoder, length, posState);
         _state = LzmaModel.NextStateAfterRep(_state);
         _pos += length;
-        _rc.State = rc;
     }
 
     private void EmitMatch(int length, uint distance0)
     {
-        RangeState rc = _rc.State;
+        ref RangeState rc = ref _rc.State;
         int posState = (int)((_posBase + _pos) & _pbMask);
         rc.EncodeBit(ref _probs[LzmaModel.IsMatch + (_state << 4) + posState], 1);
         rc.EncodeBit(ref _probs[LzmaModel.IsRep + _state], 0);
@@ -475,7 +478,6 @@ public sealed partial class LzmaEncoderCore
         reps[0] = distance0;
         _state = LzmaModel.NextStateAfterMatch(_state);
         _pos += length;
-        _rc.State = rc;
     }
 
     private void EncodeLength(ref RangeState rc, int coder, int length, int posState)

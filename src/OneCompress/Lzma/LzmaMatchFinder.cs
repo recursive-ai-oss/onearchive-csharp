@@ -1,7 +1,7 @@
-using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 
 namespace RecursiveAI.OneCompress.Lzma;
 
@@ -120,6 +120,16 @@ public abstract class LzmaMatchFinder
     /// <param name="available">The number of valid bytes from <paramref name="position"/> on.</param>
     public abstract void Skip(byte[] buffer, int position, int available);
 
+    // Skip for `count` consecutive positions starting at `position`, where `bufEnd` is the end of the valid data. Finders override it to
+    // do the same work without a call per position; the result must equal calling Skip for each position.
+    internal virtual void SkipRange(byte[] buffer, int position, int count, int bufEnd)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            Skip(buffer, position + i, bufEnd - position - i);
+        }
+    }
+
     /// <summary>Tells the finder the caller moved its data down by <paramref name="delta"/> bytes, dropping the first <paramref name="delta"/>.</summary>
     /// <param name="delta">The number of bytes dropped.</param>
     public void Slide(int delta)
@@ -144,7 +154,19 @@ public abstract class LzmaMatchFinder
 
     private protected static void Rebase(int[] table, int delta)
     {
-        for (int i = 0; i < table.Length; i++)
+        // Positions are never negative, so max(v - delta, 0) is the same as v > delta ? v - delta : 0.
+        int i = 0;
+        if (Vector128.IsHardwareAccelerated)
+        {
+            var d = Vector128.Create(delta);
+            for (; i + 4 <= table.Length; i += 4)
+            {
+                var part = table.AsSpan(i, 4);
+                Vector128.Max(Vector128.Create<int>(part) - d, Vector128<int>.Zero).CopyTo(part);
+            }
+        }
+
+        for (; i < table.Length; i++)
         {
             int v = table[i];
             table[i] = v > delta ? v - delta : 0;
@@ -163,7 +185,8 @@ public abstract class LzmaMatchFinder
         int len = start;
         while (len + 8 <= limit)
         {
-            ulong x = BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(a + len)) ^ BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(b + len));
+            // The callers have run CheckWindow: a and b are below the position and b + limit is inside the buffer, and len + 8 <= limit.
+            ulong x = LzmaMatchRaw.Read64(buffer, a + len) ^ LzmaMatchRaw.Read64(buffer, b + len);
             if (x != 0)
             {
                 return len + (BitOperations.TrailingZeroCount(x) >> 3);
@@ -274,6 +297,29 @@ public abstract class LzmaMatchFinder
 
             LzmaMatchRaw.PrefetchByte(buffer, node);
             LzmaMatchRaw.PrefetchLink(links, stride * slot);
+        }
+    }
+
+    // Memory hints for the hash buckets of a position a fixed distance ahead (the hash-chain finders touch up to three tables per
+    // position, all at random addresses). Nothing here changes any table or result.
+    private protected void PrefetchBuckets(byte[] buffer, int position, int available)
+    {
+        const int Far = 12;
+        if (available < Far + 4)
+        {
+            return;
+        }
+
+        uint v = Read32(buffer, position + Far);
+        LzmaMatchRaw.PrefetchLink(_hash2, (int)(v & 0xFFFF));
+        if (_hashBytes == 4)
+        {
+            LzmaMatchRaw.PrefetchLink(_hash3!, (int)HashOf(v & 0xFFFFFF, Hash3Bits));
+            LzmaMatchRaw.PrefetchLink(_main, (int)HashOf(v, _mainBits));
+        }
+        else
+        {
+            LzmaMatchRaw.PrefetchLink(_main, (int)HashOf(v & 0xFFFFFF, _mainBits));
         }
     }
 

@@ -108,23 +108,18 @@ internal struct RangeState
         CacheSize = 1;
     }
 
+    // The branch on `bit` is replaced by masks: the bits of a literal are close to random, so a branch would be mispredicted about
+    // half the time, and a mispredict costs more than all the arithmetic here. The result is the same as the textbook form
+    // (bit 0: range = bound, p += (2048 - p) >> 5; bit 1: low += bound, range -= bound, p -= p >> 5).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void EncodeBit(ref ushort probability, int bit)
     {
         uint p = probability;
         uint bound = (Range >> ProbabilityBits) * p;
-        if (bit == 0)
-        {
-            Range = bound;
-            probability = (ushort)(p + ((2048 - p) >> MoveBits));
-        }
-        else
-        {
-            Low += bound;
-            Range -= bound;
-            probability = (ushort)(p - (p >> MoveBits));
-        }
-
+        uint mask = (uint)-bit;
+        Low += bound & mask;
+        Range = bound ^ ((bound ^ (Range - bound)) & mask);
+        probability = (ushort)(p + (((2048 - p) >> MoveBits) & ~mask) - ((p >> MoveBits) & mask));
         if (Range < TopValue)
         {
             Range <<= 8;
@@ -137,10 +132,7 @@ internal struct RangeState
         for (int i = count - 1; i >= 0; i--)
         {
             Range >>= 1;
-            if (((value >> i) & 1) != 0)
-            {
-                Low += Range;
-            }
+            Low += Range & (uint)-(int)((value >> i) & 1);
 
             if (Range < TopValue)
             {
