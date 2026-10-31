@@ -49,6 +49,10 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     // for 0.2% to 0.5% more output at levels 13 to 15.
     private const int TreeInsertStride = 8;
     private const int TreeDenseTail = 16;
+
+    // A level that searches at most 16 nodes spends relatively more of its time on these insertions, so it keeps fewer positions dense.
+    private const int ShallowAttempts = 16;
+    private const int TreeDenseTailShallow = 8;
     private const int TreeInsertAttempts = 16;
 
     // Sources under 1 MiB are small enough to keep every position: the saving there is little and the loss counts more.
@@ -855,16 +859,13 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     private void CatchUpTree(ReadOnlySpan<byte> window, int p, int end)
     {
         int next = _next;
-        int length = 0;
-        uint offset = 0;
-        int gain = 0;
         int insertAttempts = _thinInserts ? Math.Min(_attempts, TreeInsertAttempts) : _attempts;
         int stride = _thinInserts ? TreeInsertStride : 1;
+        int denseTail = _attempts <= ShallowAttempts ? TreeDenseTailShallow : TreeDenseTail;
         while (next < p)
         {
-            int budget = insertAttempts;
-            TreeWalk(window, next, end, false, ref budget, ref length, ref offset, ref gain);
-            next += p - next > TreeDenseTail ? stride : 1;
+            InsertWalk(window, next, end, insertAttempts);
+            next += p - next > denseTail ? stride : 1;
         }
 
         _next = next;
@@ -943,6 +944,109 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
                 }
             }
 
+            if (c <= low)
+            {
+                // The node's slot has been reused for a newer position, so its children are not its own: stop here.
+                break;
+            }
+
+            int node = (c & mask) * 2;
+            if (length >= maxLength)
+            {
+                // The new node takes the old one's place and children. Those children were ordered against the old node, which is
+                // only the same as ordering them against this one for the bytes the two have in common; if either was entered with a
+                // shortened comparison, that is not all the bytes, so the new root is marked too.
+                Raw.Set(tree, smallSlot, Raw.Get(tree, node));
+                Raw.Set(tree, largeSlot, Raw.Get(tree, node + 1));
+                if (tainted)
+                {
+                    Raw.Set(head, h, (uint)p | TaintBit);
+                }
+
+                return;
+            }
+
+            // Bounds: length < maxLength <= end - p, so both reads are inside the block.
+            if (Raw.ByteAt(window, c + length) < Raw.ByteAt(window, p + length))
+            {
+                Raw.Set(tree, smallSlot, candidate);
+                smallSlot = node + 1;
+                candidate = Raw.Get(tree, smallSlot);
+                smallLength = tainted ? 0 : length;
+                if (tainted)
+                {
+                    largeLength = 0;
+                }
+            }
+            else
+            {
+                Raw.Set(tree, largeSlot, candidate);
+                largeSlot = node;
+                candidate = Raw.Get(tree, largeSlot);
+                largeLength = tainted ? 0 : length;
+                if (tainted)
+                {
+                    smallLength = 0;
+                }
+            }
+        }
+
+        Raw.Set(tree, smallSlot, 0u);
+        Raw.Set(tree, largeSlot, 0u);
+    }
+
+    // TreeWalk without the search: enters position p and reports nothing, so no result is kept in memory between nodes.
+    private void InsertWalk(ReadOnlySpan<byte> window, int p, int end, int budget)
+    {
+        uint[] head = _head;
+        uint[] tree = _links;
+        int mask = (1 << _linkLog) - 1;
+        int h = Hash(window, p);
+        int maxLength = Math.Min(end - p, _nice);
+        if (_warmTree)
+        {
+            // Bounds: the hash reads eight bytes, so q + 8 <= end; a stored position is inside the window and below p.
+            if (p + HeadWarmDistance <= end - 8)
+            {
+                Raw.Warm(head, Hash(window, p + HeadWarmDistance));
+            }
+
+            if (p + RootWarmDistance <= end - 8)
+            {
+                int root = (int)(Raw.Get(head, Hash(window, p + RootWarmDistance)) & PositionMask);
+                if (root != 0)
+                {
+                    Raw.Warm(tree, (root & mask) * 2);
+                    Raw.WarmAt(window, root);
+                }
+            }
+        }
+
+        uint candidate = Raw.Get(head, h);
+        Raw.Set(head, h, maxLength < _nice ? (uint)p | TaintBit : (uint)p);
+        int smallSlot = (p & mask) * 2;
+        int largeSlot = smallSlot + 1;
+        int low = Math.Max(p - mask - 1, 0);
+        int smallLength = 0;
+        int largeLength = 0;
+        long windowSize = _windowSize;
+        while (candidate != 0 && budget > 0)
+        {
+            int c = (int)(candidate & PositionMask);
+            if ((long)p - c > windowSize)
+            {
+                break;
+            }
+
+            budget--;
+            if (_warmTree)
+            {
+                Raw.Warm(tree, (c & mask) * 2);
+            }
+
+            bool tainted = (candidate & TaintBit) != 0;
+            int length = tainted ? 0 : Math.Min(smallLength, largeLength);
+            length += ZstdFastMatchFinder.Count(window, c + length, p + length, p + maxLength);
             if (c <= low)
             {
                 // The node's slot has been reused for a newer position, so its children are not its own: stop here.

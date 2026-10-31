@@ -99,6 +99,7 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
     // strategy enters every position. Ultra also walks at most UltraInsertAttempts nodes for these insertions.
     private const int SkipStride = 8;
     private const int SkipTail = 8;
+    private const int UltraSkipTail = 16;
     private const int UltraInsertAttempts = 16;
 
     // Sources under 1 MiB are small enough to keep every position: the saving there is little and the loss counts more.
@@ -174,7 +175,7 @@ public sealed class ZstdOptimalMatchFinder : ZstdMatchFinder
         _windowSize = parameters.WindowSize;
         bool thin = !_twoPass && parameters.WindowLog >= ThinInsertsMinWindowLog;
         _insertStride = thin ? SkipStride : 1;
-        _insertTail = SkipTail;
+        _insertTail = parameters.Strategy == ZstdStrategy.BinaryTreeUltra ? UltraSkipTail : SkipTail;
         _insertAttempts = thin && parameters.Strategy == ZstdStrategy.BinaryTreeUltra ? Math.Min(_attempts, UltraInsertAttempts) : _attempts;
         _linkLog = Math.Clamp(parameters.ChainLog - 1, 4, 25);
         Prepare(ref _head, 1 << _hashLog);
