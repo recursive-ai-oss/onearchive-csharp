@@ -33,15 +33,24 @@ internal sealed class ArchiveExtractor
     private readonly ArchiveExtractOptions _options;
     private readonly string _format;
     private readonly string _root;
-    private readonly HashSet<string> _safeDirs = new(StringComparer.Ordinal) { string.Empty };
-    private readonly Dictionary<string, string> _files = new(StringComparer.Ordinal);
+
+    // Directories already checked to be real directories (not links), so a million files in a thousand folders cost a thousand
+    // checks. Only a cache: when it grows past the cap it is emptied and the checks run again, which is slower but just as safe.
+    private const int SafeDirCacheLimit = 1 << 16;
+
+    private readonly HashSet<string> _safeDirs = new(StringComparer.Ordinal);
+
+    // Files extracted so far, by archive path, so that a hard link can name one. Null for formats that have no hard links
+    // (zip, 7z, cab, ar, ISO, single streams): holding a path per entry would cost memory that grows with the entry count for nothing.
+    private readonly Dictionary<string, string>? _files;
     private readonly List<(string Path, UnixFileMode? Mode, DateTimeOffset? Time)> _directories = [];
     private int _extracted;
     private int _skipped;
     private long _bytes;
 
-    public ArchiveExtractor(string targetDirectory, ArchiveExtractOptions options, string format)
+    public ArchiveExtractor(string targetDirectory, ArchiveExtractOptions options, string format, bool canHaveHardLinks = true)
     {
+        _files = canHaveHardLinks ? new Dictionary<string, string>(StringComparer.Ordinal) : null;
         _options = options;
         _format = format;
         string full = Path.GetFullPath(targetDirectory);
@@ -191,6 +200,11 @@ internal sealed class ArchiveExtractor
                 Directory.CreateDirectory(current);
             }
 
+            if (_safeDirs.Count >= SafeDirCacheLimit)
+            {
+                _safeDirs.Clear();
+            }
+
             _safeDirs.Add(key);
         }
 
@@ -215,8 +229,20 @@ internal sealed class ArchiveExtractor
             Directory.CreateDirectory(dest);
         }
 
+        if (_safeDirs.Count >= SafeDirCacheLimit)
+        {
+            _safeDirs.Clear();
+        }
+
         _safeDirs.Add(relKey);
-        _directories.Add((dest, entry.Mode, entry.ModifiedTime));
+
+        // Directory metadata is applied after all content, so it has to be remembered; skip directories that have none to apply.
+        if (WillApplyMetadata(entry.Mode, entry.ModifiedTime))
+        {
+            _directories.Add((dest, entry.Mode, entry.ModifiedTime));
+        }
+
+        
         _extracted++;
     }
 
@@ -242,7 +268,7 @@ internal sealed class ArchiveExtractor
             case ExistingFilePolicy.Overwrite:
                 // Replace the link or file itself; never write through a link.
                 File.Delete(dest);
-                _files.Remove(relKey);
+                _files?.Remove(relKey);
                 return true;
             default:
                 throw Unsafe(entry, "existing-file", $"'{relKey}' already exists");
@@ -342,7 +368,11 @@ internal sealed class ArchiveExtractor
         }
 
         ApplyMetadata(dest, entry.Mode, entry.ModifiedTime, isDirectory: false);
-        _files[relKey] = dest;
+        if (_files is not null)
+        {
+            _files[relKey] = dest;
+        }
+
         _extracted++;
     }
 
@@ -399,7 +429,7 @@ internal sealed class ArchiveExtractor
         }
 
         string targetKey = string.Join('/', targetParts);
-        if (!_files.TryGetValue(targetKey, out string? source) || IsLink(source) || !File.Exists(source))
+        if (_files is null || !_files.TryGetValue(targetKey, out string? source) || IsLink(source) || !File.Exists(source))
         {
             throw Unsafe(entry, "hardlink-target", $"the hard link target '{Printable(target)}' is not a file extracted earlier from this archive");
         }
@@ -416,6 +446,10 @@ internal sealed class ArchiveExtractor
         _files[relKey] = dest;
         _extracted++;
     }
+
+    private bool WillApplyMetadata(UnixFileMode? mode, DateTimeOffset? time) =>
+        (_options.RestorePermissions && mode is not null && !OperatingSystem.IsWindows() && !OperatingSystem.IsBrowser())
+        || (_options.RestoreTimes && time is not null);
 
     private void ApplyMetadata(string path, UnixFileMode? mode, DateTimeOffset? time, bool isDirectory)
     {
