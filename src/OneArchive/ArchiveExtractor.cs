@@ -7,8 +7,12 @@ namespace RecursiveAI.OneArchive;
 /// <summary>The outcome of an extraction: how many entries were created, how many were skipped and how many content bytes were written. Returned by <see cref="Archive.Extract(string, string, ArchiveExtractOptions?, System.Threading.CancellationToken)"/>; a limit or safety failure throws instead and never produces a partial result.</summary>
 public sealed class ArchiveExtractResult
 {
-    internal ArchiveExtractResult(int extracted, int skipped, long bytes)
+    internal const int MaxDamagedNames = 1000;
+
+    internal ArchiveExtractResult(int extracted, int skipped, long bytes, int damaged = 0, IReadOnlyList<string>? damagedNames = null)
     {
+        EntriesDamaged = damaged;
+        DamagedEntryNames = damagedNames ?? [];
         EntriesExtracted = extracted;
         EntriesSkipped = skipped;
         BytesWritten = bytes;
@@ -19,6 +23,12 @@ public sealed class ArchiveExtractResult
 
     /// <summary>Gets the number of entries that were skipped by a filter or by a policy set to skip.</summary>
     public int EntriesSkipped { get; }
+
+    /// <summary>Gets the number of file entries a recovering reader flagged as damaged, whether they were then written or skipped (see <see cref="ArchiveExtractOptions.DamagedEntries"/>). Zero when nothing was repaired.</summary>
+    public int EntriesDamaged { get; }
+
+    /// <summary>Gets the names of the first 1,000 damaged entries, in archive order.</summary>
+    public IReadOnlyList<string> DamagedEntryNames { get; }
 
     /// <summary>Gets the number of content bytes written (sparse holes are not counted).</summary>
     public long BytesWritten { get; }
@@ -47,6 +57,8 @@ internal sealed class ArchiveExtractor
     private int _extracted;
     private int _skipped;
     private long _bytes;
+    private int _damaged;
+    private readonly List<string> _damagedNames = [];
 
     public ArchiveExtractor(string targetDirectory, ArchiveExtractOptions options, string format, bool canHaveHardLinks = true)
     {
@@ -82,7 +94,7 @@ internal sealed class ArchiveExtractor
             ApplyMetadata(path, mode, time, isDirectory: true);
         }
 
-        return new ArchiveExtractResult(_extracted, _skipped, _bytes);
+        return new ArchiveExtractResult(_extracted, _skipped, _bytes, _damaged, _damagedNames);
     }
 
     private ArchiveSafetyException Unsafe(ArchiveEntry entry, string rule, string detail) => new(_format, rule, entry.Name, detail);
@@ -93,6 +105,27 @@ internal sealed class ArchiveExtractor
         {
             _skipped++;
             return;
+        }
+
+        if (entry is Cfb.CfbEntry { IsDamaged: true, Kind: ArchiveEntryKind.File })
+        {
+            _damaged++;
+            if (_damagedNames.Count < ArchiveExtractResult.MaxDamagedNames)
+            {
+                _damagedNames.Add(entry.Name);
+            }
+
+            _options.OnDamagedEntry?.Invoke(entry);
+            if (_options.DamagedEntries == DamagedEntryPolicy.Skip)
+            {
+                _skipped++;
+                return;
+            }
+
+            if (_options.DamagedEntries == DamagedEntryPolicy.Fail)
+            {
+                throw new CompressionFormatException(_format, 0, $"an intact stream for '{entry.Name}' (recovery could not follow it to its declared size)");
+            }
         }
 
         if (entry.Kind is ArchiveEntryKind.CharacterDevice or ArchiveEntryKind.BlockDevice or ArchiveEntryKind.Fifo)
@@ -317,7 +350,7 @@ internal sealed class ArchiveExtractor
 
                     if (n > _options.Limits.MaxTotalSize - _bytes)
                     {
-                        throw new CompressionLimitException(_format, nameof(ArchiveLimits.MaxTotalSize), _options.Limits.MaxTotalSize, _bytes + n);
+                        throw new CompressionLimitException(_format, nameof(ArchiveLimits.MaxTotalSize), _options.Limits.MaxTotalSize, _bytes + n, runningTotal: true);
                     }
 
                     if (sparse && !buffer.AsSpan(0, n).ContainsAnyExcept((byte)0))

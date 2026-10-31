@@ -561,7 +561,7 @@ x64 timing rows wait for a quiet window.
 | enwik8 20 | +0.50% | | | |
 | enwik8 22 | +1.16% | 0.82 | 1.69 | 876 / 994 |
 
-Compression time is over the 1.15 bar everywhere but enwik8 22 (where the size is also over the 1% bar), so levels 16 to 22 stay preview.
+Compression time is over the 1.15 bar everywhere but enwik8 22 (where the size is also over the 1% bar), against the native tool. These are information only: no level is preview since 1.0, and the 1.0 bar is the fastest managed .NET library (see the README tables).
 Outliers by file (first 4 MB of Silesia files, levels 16 and 19): mr +1.1% and +1.3%, x-ray 0.0% and +1.7%, nci +0.9% and +0.4%; the others
 are within 0.4% (osdb is 1.3% smaller). x-ray at levels 18 and up is 1.7% larger than at level 17 for us but 1.2% smaller for the tool: skipping the search at a
 position where a literal is almost as cheap (what level 17 does) brings it to +0.4% and costs 0.3% on text, so the other levels do not do it.

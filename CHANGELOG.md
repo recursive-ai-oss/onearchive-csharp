@@ -4,6 +4,21 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-31
+
+Additive over 1.1.0; compressed bytes are unchanged for every codec and level.
+
+### Added
+
+- `Archive.EnumerateEntries()`: lists entries one at a time without keeping them, so memory stays flat on archives with millions of entries (`Archive.Entries` builds a list and grows with the count; its documentation now says so). The large-archive example in `docs/archive.md` uses it.
+- Extraction of a damaged compound file (opened with `Recovery`): `ArchiveExtractOptions.DamagedEntries` (`DamagedEntryPolicy.Extract`, `Skip`, `Fail`) and `OnDamagedEntry`, and `ArchiveExtractResult.EntriesDamaged` and `DamagedEntryNames`. The default still writes the shortened streams, as in 1.1.0, but the result now reports them.
+- `CompressionLimitException(format, limitName, limit, total, runningTotal)` for limits checked against a running total.
+
+### Fixed
+
+- The `MaxTotalSize` message no longer reads as if the archive needs the reported number: it says the total reached that value when it passed the limit. The exception type and its properties are unchanged.
+- README and docs: status line, when the speed rows were measured, and a stale "stay preview" remark on zstd levels 16 to 22.
+
 ## [1.1.0] - 2026-10-31
 
 Additive over 1.0.0: no public API was removed or changed, and compressed bytes are unchanged for every codec and level. Every new mode is off by default.

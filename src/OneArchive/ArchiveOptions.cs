@@ -109,6 +109,19 @@ public enum SpecialFilePolicy
     Skip = 1,
 }
 
+/// <summary>What extraction does with an entry the reader had to repair (a compound file opened with <see cref="Cfb.CompoundFileReaderOptions.Recovery"/>, whose stream was cut short).</summary>
+public enum DamagedEntryPolicy
+{
+    /// <summary>Write what could be recovered, which may be shorter than the stream's declared size. The default, as in 1.1.0; the entry is counted in <see cref="ArchiveExtractResult.EntriesDamaged"/> and listed in <see cref="ArchiveExtractResult.DamagedEntryNames"/>.</summary>
+    Extract = 0,
+
+    /// <summary>Do not write the entry. It is counted in <see cref="ArchiveExtractResult.EntriesSkipped"/> and <see cref="ArchiveExtractResult.EntriesDamaged"/>.</summary>
+    Skip = 1,
+
+    /// <summary>Throw <see cref="RecursiveAI.OneCompress.CompressionFormatException"/> naming the entry before anything is written for it.</summary>
+    Fail = 2,
+}
+
 /// <summary>What to do when an entry's destination already exists.</summary>
 public enum ExistingFilePolicy
 {
@@ -157,6 +170,16 @@ public sealed class ArchiveExtractOptions : ArchiveOpenOptions
 
     /// <summary>Gets a value indicating whether modification times of files and directories are applied. Default true.</summary>
     public bool RestoreTimes { get; init; } = true;
+
+    /// <summary>
+    /// Gets what happens to an entry that a recovering reader flagged as damaged (<see cref="Cfb.CfbEntry.IsDamaged"/>). Default
+    /// <see cref="DamagedEntryPolicy.Extract"/>: the shortened content is written, and the result reports it. Only compound files
+    /// flag entries; a damaged zip entry that cannot be decoded raises its format error as before.
+    /// </summary>
+    public DamagedEntryPolicy DamagedEntries { get; init; }
+
+    /// <summary>Gets a callback invoked once for each file entry flagged as damaged, before <see cref="DamagedEntries"/> is applied; <see langword="null"/> for none.</summary>
+    public Action<ArchiveEntry>? OnDamagedEntry { get; init; }
 
     /// <summary>Gets a predicate that selects entries to extract; <see langword="null"/> extracts all. Skipped entries still count against the limits.</summary>
     public Func<ArchiveEntry, bool>? Filter { get; init; }
