@@ -177,6 +177,7 @@ public static class Lz4Block
     /// <param name="options">The dictionary; <see langword="null"/> for the defaults.</param>
     /// <returns>True on success; false when <paramref name="destination"/> is too small.</returns>
     /// <exception cref="CompressionFormatException">The block is truncated or invalid.</exception>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     public static bool TryDecompress(ReadOnlySpan<byte> source, Span<byte> destination, out int bytesWritten, Lz4BlockOptions? options = null)
     {
         Lz4Dictionary? dictionary = options?.Dictionary;
@@ -185,22 +186,7 @@ public static class Lz4Block
             return Lz4BlockDecoder.TryDecode(source, destination, 0, out bytesWritten);
         }
 
-        int history = dictionary.Length;
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(checked(history + destination.Length));
-        try
-        {
-            dictionary.Content.CopyTo(buffer);
-            bool ok = Lz4BlockDecoder.TryDecode(source, buffer.AsSpan(0, history + destination.Length), history, out bytesWritten);
-            if (ok)
-            {
-                buffer.AsSpan(history, bytesWritten).CopyTo(destination);
-            }
-
-            return ok;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        // The dictionary is read in place: copying it next to the output would cost time proportional to its size for every block.
+        return Lz4BlockDecoder.TryDecodeWithDictionary(source, destination, dictionary.Content, out bytesWritten);
     }
 }

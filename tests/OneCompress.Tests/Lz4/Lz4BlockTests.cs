@@ -197,6 +197,76 @@ public class Lz4BlockTests
     }
 
     [Fact]
+    public void DictionaryBlocksDecodeWhenSizesAndDictionariesAlternate()
+    {
+        var rng = new Random(11);
+        var dicts = new Lz4Dictionary[2];
+        for (int d = 0; d < 2; d++)
+        {
+            byte[] c = new byte[4000 + d * 3000];
+            rng.NextBytes(c);
+            dicts[d] = new Lz4Dictionary(c);
+        }
+
+        foreach (int size in new[] { 10, 5000, 300, 70_000, 2_000_000, 40, 1_500_000 })
+        {
+            for (int d = 0; d < 2; d++)
+            {
+                byte[] payload = new byte[size];
+                for (int i = 0; i < size; i += 64)
+                {
+                    int n = Math.Min(64, size - i);
+                    if (rng.Next(2) == 0) dicts[d].Content.Slice(rng.Next(dicts[d].Length - 64), n).CopyTo(payload.AsSpan(i));
+                    else rng.NextBytes(payload.AsSpan(i, n));
+                }
+
+                byte[] block = Lz4Block.Compress(payload, new Lz4CompressionOptions { Level = 3, Dictionary = dicts[d] });
+                var options = new Lz4BlockOptions { Dictionary = dicts[d] };
+                Assert.Equal(payload, Lz4Block.Decompress(block, options));
+                byte[] dest = new byte[size];
+                Assert.Equal(size, Lz4Block.Decompress(block, dest, options));
+                Assert.Equal(payload, dest);
+            }
+        }
+    }
+
+    [Fact]
+    public void RandomSequencesReachingIntoTheDictionaryMatchTheModel()
+    {
+        var rng = new Random(23);
+        byte[] dictionary = new byte[300];
+        rng.NextBytes(dictionary);
+        var options = new Lz4BlockOptions { Dictionary = new Lz4Dictionary(dictionary) };
+        for (int round = 0; round < 3000; round++)
+        {
+            int count = 1 + rng.Next(8);
+            var sequences = new List<Sequence>();
+            int produced = dictionary.Length;
+            for (int i = 0; i < count; i++)
+            {
+                byte[] literals = new byte[rng.Next(round % 3 == 0 ? 40 : 6)];
+                rng.NextBytes(literals);
+                produced += literals.Length;
+                int offset = 1 + rng.Next(produced);
+                int length = 4 + (rng.Next(4) == 0 ? rng.Next(60) : rng.Next(15));
+                sequences.Add(new Sequence(literals, offset, length));
+                produced += length;
+            }
+
+            // The last sequence holds only literals, at least five of them after a match that starts at least twelve bytes before the end.
+            byte[] tail = new byte[12 + rng.Next(30)];
+            rng.NextBytes(tail);
+            sequences.Add(new Sequence(tail, 0, 0));
+            byte[] block = Block([.. sequences]);
+            byte[] expected = Expand(dictionary, [.. sequences]);
+            Assert.Equal(expected, Lz4Block.Decompress(block, options));
+            byte[] exact = new byte[expected.Length];
+            Assert.Equal(expected.Length, Lz4Block.Decompress(block, exact, options));
+            Assert.Equal(expected, exact);
+        }
+    }
+
+    [Fact]
     public void OffsetZeroIsRejected()
     {
         byte[] block = [0x10, (byte)'a', 0, 0, 0x50, 1, 2, 3, 4, 5];
