@@ -231,6 +231,42 @@ public class Lz4BlockTests
     }
 
     [Fact]
+    public void RandomSequencesReachingIntoTheDictionaryMatchTheModel()
+    {
+        var rng = new Random(23);
+        byte[] dictionary = new byte[300];
+        rng.NextBytes(dictionary);
+        var options = new Lz4BlockOptions { Dictionary = new Lz4Dictionary(dictionary) };
+        for (int round = 0; round < 3000; round++)
+        {
+            int count = 1 + rng.Next(8);
+            var sequences = new List<Sequence>();
+            int produced = dictionary.Length;
+            for (int i = 0; i < count; i++)
+            {
+                byte[] literals = new byte[rng.Next(round % 3 == 0 ? 40 : 6)];
+                rng.NextBytes(literals);
+                produced += literals.Length;
+                int offset = 1 + rng.Next(produced);
+                int length = 4 + (rng.Next(4) == 0 ? rng.Next(60) : rng.Next(15));
+                sequences.Add(new Sequence(literals, offset, length));
+                produced += length;
+            }
+
+            // The last sequence holds only literals, at least five of them after a match that starts at least twelve bytes before the end.
+            byte[] tail = new byte[12 + rng.Next(30)];
+            rng.NextBytes(tail);
+            sequences.Add(new Sequence(tail, 0, 0));
+            byte[] block = Block([.. sequences]);
+            byte[] expected = Expand(dictionary, [.. sequences]);
+            Assert.Equal(expected, Lz4Block.Decompress(block, options));
+            byte[] exact = new byte[expected.Length];
+            Assert.Equal(expected.Length, Lz4Block.Decompress(block, exact, options));
+            Assert.Equal(expected, exact);
+        }
+    }
+
+    [Fact]
     public void OffsetZeroIsRejected()
     {
         byte[] block = [0x10, (byte)'a', 0, 0, 0x50, 1, 2, 3, 4, 5];

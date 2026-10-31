@@ -47,6 +47,24 @@ public static class Lz4BlockDecoder
         return false;
     }
 
+    // Decodes a block that may reach back into a dictionary kept outside the output; the false and exception results are those of TryDecode.
+    internal static bool TryDecodeWithDictionary(ReadOnlySpan<byte> source, Span<byte> destination, ReadOnlySpan<byte> dictionary, out int written)
+    {
+        BlockResult result = Decode(source, destination, 0, dictionary, out written, out int errorOffset);
+        if (result == BlockResult.Ok)
+        {
+            return true;
+        }
+
+        if (result == BlockResult.OutputOverflow)
+        {
+            return false;
+        }
+
+        Throw(result, errorOffset, 0);
+        return false;
+    }
+
     /// <summary>Measures the output of a block without writing it, validating the block's structure on the way.</summary>
     /// <param name="source">The compressed block.</param>
     /// <param name="historyLength">The number of history bytes that will precede the output, for the offset checks.</param>
@@ -108,6 +126,13 @@ public static class Lz4BlockDecoder
     /// <paramref name="errorOffset"/> is the position in <paramref name="src"/> the error was found at.
     /// </summary>
     internal static BlockResult Decode(ReadOnlySpan<byte> src, Span<byte> dst, int outStart, out int written, out int errorOffset)
+        => Decode(src, dst, outStart, default, out written, out errorOffset);
+
+    /// <summary>
+    /// As above, with a separate dictionary: it counts as history that precedes <c>dst[outStart..]</c>, so a match may reach back into
+    /// it without the dictionary being copied next to the output.
+    /// </summary>
+    internal static BlockResult Decode(ReadOnlySpan<byte> src, Span<byte> dst, int outStart, ReadOnlySpan<byte> dictionary, out int written, out int errorOffset)
     {
         int ip = 0;
         int op = outStart;
@@ -122,11 +147,15 @@ public static class Lz4BlockDecoder
         {
             // The fast loop takes every complete sequence it can prove safe; the general code below handles the rest (the
             // ends of the spans, malformed sequences and the end of the block), one sequence at a time.
-            int before = ip;
-            (ip, op, lastMatchStart) = FastLoop(src, dst, ip, op, lastMatchStart);
-            if (ip != before)
+            // It is only worth calling while it has the margins it needs, which only shrink as the block is decoded.
+            if (ip < iend - 19 && op < oend - 40)
             {
-                onlySequence = false;
+                int before = ip;
+                (ip, op, lastMatchStart) = FastLoop(src, dst, dictionary, ip, op, lastMatchStart);
+                if (ip != before)
+                {
+                    onlySequence = false;
+                }
             }
 
             if (ip >= iend)
@@ -187,7 +216,11 @@ public static class Lz4BlockDecoder
 
             // Literals go in 16-byte steps when both spans have 16 bytes to spare beyond the run (the surplus is overwritten
             // by what follows); near the ends of the spans the copy is exact.
-            if (literalLength <= iend - ip - 16 && literalLength <= oend - op - 16)
+            if (literalLength <= 16)
+            {
+                Lz4Raw.CopyUpTo16(dst, op, src, ip, literalLength);  // both ranges were checked above
+            }
+            else if (literalLength <= iend - ip - 16 && literalLength <= oend - op - 16)
             {
                 int k = 0;
                 do
@@ -246,11 +279,18 @@ public static class Lz4BlockDecoder
                 break;
             }
 
+            // Bytes of the offset that lie in the dictionary rather than in the output.
+            int dictionaryBytes = 0;
             if (offset > op)
             {
-                result = BlockResult.OffsetTooFar;
-                errorOffset = offsetAt;
-                break;
+                if (offset - op > dictionary.Length)
+                {
+                    result = BlockResult.OffsetTooFar;
+                    errorOffset = offsetAt;
+                    break;
+                }
+
+                dictionaryBytes = offset - op;
             }
 
             long matchExtended = token & 15;
@@ -286,10 +326,38 @@ public static class Lz4BlockDecoder
             lastMatchStart = op;
             onlySequence = false;
 
+            if (dictionaryBytes != 0)
+            {
+                // The match starts in the dictionary and, if it is longer than what is left of it, continues from the start of the
+                // output, which is exactly where the dictionary's end is followed by.
+                int fromDictionary = Math.Min(matchLength, dictionaryBytes);
+                if (fromDictionary <= 16)
+                {
+                    Lz4Raw.CopyUpTo16(dst, op, dictionary, dictionary.Length - dictionaryBytes, fromDictionary);
+                }
+                else
+                {
+                    dictionary.Slice(dictionary.Length - dictionaryBytes, fromDictionary).CopyTo(dst.Slice(op));
+                }
+
+                int rest = matchLength - fromDictionary;
+                for (int k = 0; k < rest; k++)
+                {
+                    dst[op + fromDictionary + k] = dst[k];
+                }
+
+                op += matchLength;
+                continue;
+            }
+
             // Match bytes are copied in increasing order, so a match longer than its offset repeats the last `offset` bytes.
             int mp = op - offset;
             int room = oend - op;
-            if (offset >= 16 && room >= matchLength + 16)
+            if (matchLength <= 16 && offset >= matchLength)
+            {
+                Lz4Raw.CopyUpTo16(dst, op, dst, mp, matchLength);  // inside the output (checked above), and the ranges do not overlap
+            }
+            else if (offset >= 16 && room >= matchLength + 16)
             {
                 // Sixteen-byte steps never read bytes the same step writes (offset >= 16) and overshoot by at most 15 bytes,
                 // which the room check covers.
@@ -341,7 +409,7 @@ public static class Lz4BlockDecoder
     // out, too little room for the wide copies, a bad offset) is left undone, with the position back at its token, for the
     // general code in Decode to finish or to report. The sequence is never the block's last: 19 bytes of input remain after its
     // token, so the offset field exists.
-    private static (int Ip, int Op, int LastMatchStart) FastLoop(ReadOnlySpan<byte> src, Span<byte> dst, int ipStart, int opStart, int matchStart)
+    private static (int Ip, int Op, int LastMatchStart) FastLoop(ReadOnlySpan<byte> src, Span<byte> dst, ReadOnlySpan<byte> dictionary, int ipStart, int opStart, int matchStart)
     {
         nint ip = ipStart;
         nint op = opStart;
@@ -407,10 +475,32 @@ public static class Lz4BlockDecoder
             ip += 2;
             if ((nuint)(offset - 1) >= (nuint)op)
             {
-                // Offset 0, or reaching before the start of the output: the general code reports it.
-                ip = sequence;
-                op -= literals;
-                goto exit;
+                // A short match that lies wholly inside the dictionary is copied here; anything else that reaches before the
+                // start of the output (a long match, one that runs on into the output, offset 0, a bad offset) is left for the
+                // general code to finish or to report.
+                nint dictionaryBytes = offset - op;
+                nint shortLength = (token & 15) + Lz4Format.MinMatch;
+                if (offset == 0 || (token & 15) == 15 || dictionaryBytes > dictionary.Length || shortLength > dictionaryBytes)
+                {
+                    ip = sequence;
+                    op -= literals;
+                    goto exit;
+                }
+
+                ms = op;
+                nint from = dictionary.Length - dictionaryBytes;
+                if (shortLength <= 16)
+                {
+                    Lz4Raw.CopyUpTo16(dst, op, dictionary, from, shortLength);
+                }
+                else
+                {
+                    Lz4Raw.Copy16(dst, op, dictionary, from);
+                    Lz4Raw.CopyUpTo16(dst, op + 16, dictionary, from + 16, shortLength - 16);
+                }
+
+                op += shortLength;
+                continue;
             }
 
             nint length = token & 15;

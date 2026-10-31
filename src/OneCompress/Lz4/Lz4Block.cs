@@ -185,63 +185,7 @@ public static class Lz4Block
             return Lz4BlockDecoder.TryDecode(source, destination, 0, out bytesWritten);
         }
 
-        // The history is copied next to the output room once and reused: copying the dictionary on every call would cost
-        // time proportional to its size for every small block. The decoder never writes below the history, so the copy stays valid.
-        int history = dictionary.Length;
-        int total = checked(history + destination.Length);
-        HistoryWorkspace? ws = t_workspace;
-        if (ws is null || !ReferenceEquals(ws.Dictionary, dictionary) || ws.Buffer.Length < total)
-        {
-            if (total > MaxCachedWorkspace)
-            {
-                return DecodeWithRentedHistory(source, destination, dictionary, out bytesWritten);
-            }
-
-            // Grow geometrically so that payloads of rising size do not rebuild the workspace each time.
-            int size = Math.Max(total, ws is not null && ReferenceEquals(ws.Dictionary, dictionary) ? Math.Min(MaxCachedWorkspace, ws.Buffer.Length * 2) : history + 4096);
-            ws = new HistoryWorkspace(dictionary, new byte[size]);
-            dictionary.Content.CopyTo(ws.Buffer);
-            t_workspace = ws;
-        }
-
-        bool ok = Lz4BlockDecoder.TryDecode(source, ws.Buffer.AsSpan(0, total), history, out bytesWritten);
-        if (ok)
-        {
-            ws.Buffer.AsSpan(history, bytesWritten).CopyTo(destination);
-        }
-
-        return ok;
-    }
-
-    private const int MaxCachedWorkspace = 1 << 20;
-
-    [ThreadStatic]
-    private static HistoryWorkspace? t_workspace;
-
-    private sealed class HistoryWorkspace(Lz4Dictionary dictionary, byte[] buffer)
-    {
-        public readonly Lz4Dictionary Dictionary = dictionary;
-        public readonly byte[] Buffer = buffer;
-    }
-
-    private static bool DecodeWithRentedHistory(ReadOnlySpan<byte> source, Span<byte> destination, Lz4Dictionary dictionary, out int bytesWritten)
-    {
-        int history = dictionary.Length;
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(checked(history + destination.Length));
-        try
-        {
-            dictionary.Content.CopyTo(buffer);
-            bool ok = Lz4BlockDecoder.TryDecode(source, buffer.AsSpan(0, history + destination.Length), history, out bytesWritten);
-            if (ok)
-            {
-                buffer.AsSpan(history, bytesWritten).CopyTo(destination);
-            }
-
-            return ok;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        // The dictionary is read in place: copying it next to the output would cost time proportional to its size for every block.
+        return Lz4BlockDecoder.TryDecodeWithDictionary(source, destination, dictionary.Content, out bytesWritten);
     }
 }
