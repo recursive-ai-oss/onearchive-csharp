@@ -873,10 +873,10 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
                 return ip;
             }
 
-            // The dictionary is probed at every second position since the last match:
+            // The dictionary is probed at every second position since the last match (every position when the search already steps over some):
             // a match found one byte late is extended backward over the skipped byte, so the size barely moves and the lookups
             // that miss are the largest cost of the loop on small payloads.
-            if (((ip - anchor) & 1) == 0)
+            if (baseStep > 1 || ((ip - anchor) & 1) == 0)
             {
                 uint entry = Raw.Get(dictionaryTable, (nuint)(product >> dictionaryShift));
                 nint d = (nint)(entry & positionMask);
