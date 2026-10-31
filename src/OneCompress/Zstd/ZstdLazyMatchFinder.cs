@@ -112,6 +112,8 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     private const int RootWarmDistance = 8;
     private const int TreeWarmMinHashLog = 18;
     private bool _warmTree;
+    private bool _touchTree;
+    private uint _touchSink;
     private int _rowShift;
     private int _tagShift;
     private ZstdCompressionDictionary? _dictionary;
@@ -170,6 +172,7 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         _warmed = 0;
         _stride = !_tree && dictionary is null && _minMatch >= 4 && _rowLog == 4 && _hashLog >= StrideMinHashLog ? Math.Max(InsertStride, 1) : 1;
         _warmTree = Raw.CanWarm && _tree && _hashLog >= TreeWarmMinHashLog;
+        _touchTree = Raw.CanTouch && _tree && _hashLog >= TreeWarmMinHashLog;
         _warmRows = Raw.CanWarm && !_tree && _hashLog >= WarmMinHashLog;
         if (dictionary is not null && dictionary.Content.Length >= 8)
         {
@@ -895,6 +898,28 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         int mask = (1 << _linkLog) - 1;
         int h = Hash(window, p);
         int maxLength = Math.Min(end - p, _nice);
+        if (_touchTree)
+        {
+            // Same positions as the prefetch below, for targets that have none: a plain load, kept in a field so it stays.
+            // Bounds: as below, and a table index is a hash or a masked position.
+            uint touched = 0;
+            if (p + HeadWarmDistance <= end - 8)
+            {
+                touched = Raw.Touch(head, Hash(window, p + HeadWarmDistance));
+            }
+
+            if (p + RootWarmDistance <= end - 8)
+            {
+                int root = (int)(Raw.Get(head, Hash(window, p + RootWarmDistance)) & PositionMask);
+                if (root != 0)
+                {
+                    touched += Raw.Touch(tree, (root & mask) * 2);
+                }
+            }
+
+            _touchSink = touched;
+        }
+
         if (_warmTree)
         {
             // Bounds: the hash reads eight bytes, so q + 8 <= end; a stored position is inside the window and below p.
@@ -1011,6 +1036,28 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         int mask = (1 << _linkLog) - 1;
         int h = Hash(window, p);
         int maxLength = Math.Min(end - p, _nice);
+        if (_touchTree)
+        {
+            // Same positions as the prefetch below, for targets that have none: a plain load, kept in a field so it stays.
+            // Bounds: as below, and a table index is a hash or a masked position.
+            uint touched = 0;
+            if (p + HeadWarmDistance <= end - 8)
+            {
+                touched = Raw.Touch(head, Hash(window, p + HeadWarmDistance));
+            }
+
+            if (p + RootWarmDistance <= end - 8)
+            {
+                int root = (int)(Raw.Get(head, Hash(window, p + RootWarmDistance)) & PositionMask);
+                if (root != 0)
+                {
+                    touched += Raw.Touch(tree, (root & mask) * 2);
+                }
+            }
+
+            _touchSink = touched;
+        }
+
         if (_warmTree)
         {
             // Bounds: the hash reads eight bytes, so q + 8 <= end; a stored position is inside the window and below p.

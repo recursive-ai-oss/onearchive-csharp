@@ -21,7 +21,19 @@ public sealed class HuffmanEncodingTable
     /// <summary>The longest code the format allows (RFC 8878 §4.2.1).</summary>
     public const int MaxBits = ZstdFormat.HuffmanMaxBits;
 
+    private static uint[] NewCosts()
+    {
+        var costs = new uint[256];
+        Array.Fill(costs, AbsentCost);
+        return costs;
+    }
+
     private readonly byte[] _length = new byte[256];
+
+    // The code length of each symbol as a number to add up, with AbsentCost for a symbol that has no code: a sum over a block of fewer than
+    // 2^16 / MaxBits bytes stays below AbsentCost exactly when every byte has a code.
+    private const uint AbsentCost = 1 << 16;
+    private readonly uint[] _cost = NewCosts();
     private readonly ushort[] _code = new ushort[256];
     private int _symbolCount;
     private int _maxBits;
@@ -219,6 +231,7 @@ public sealed class HuffmanEncodingTable
         }
 
         Array.Clear(_length);
+        Array.Fill(_cost, AbsentCost);
         for (int i = 0; i < symbols.Length; i++)
         {
             int symbol = symbols[i];
@@ -227,6 +240,7 @@ public sealed class HuffmanEncodingTable
             _code[symbol] = (ushort)(rankStart[w] >> (w - 1));
             rankStart[w] += 1 << (w - 1);
             _length[symbol] = (byte)len;
+            _cost[symbol] = (uint)len;
         }
 
         _symbolCount = symbols[^1] + 1;
@@ -388,6 +402,7 @@ public sealed class HuffmanEncodingTable
         }
 
         Array.Clear(_length);
+        Array.Fill(_cost, AbsentCost);
         for (int s = 0; s < symbolCount; s++)
         {
             int len = lengths[s];
@@ -400,6 +415,7 @@ public sealed class HuffmanEncodingTable
             _code[s] = (ushort)(rankStart[w] >> (w - 1));
             rankStart[w] += 1 << (w - 1);
             _length[s] = (byte)len;
+            _cost[s] = (uint)len;
         }
 
         _symbolCount = last + 1;
@@ -491,6 +507,45 @@ public sealed class HuffmanEncodingTable
 
         bits = total;
         return true;
+    }
+
+    /// <summary>
+    /// Adds up the bits of <paramref name="literals"/> under this tree straight from the bytes, for a caller that has no histogram of
+    /// them: one table read per byte, which is cheaper than counting the bytes first when the answer is the only thing wanted.
+    /// </summary>
+    /// <param name="literals">The bytes to code; at least one and fewer than 5,900, so that the sum cannot reach the cost of a missing code.</param>
+    /// <param name="bits">The size of the coded bytes in bits, when the tree can code them.</param>
+    /// <param name="allEqual">Whether every byte has the value of the first.</param>
+    /// <returns>True if every byte has a code.</returns>
+    internal bool TryEncodedBits(ReadOnlySpan<byte> literals, out long bits, out bool allEqual)
+    {
+        // Bounds: a byte indexes the 256 costs; i + 8 <= literals.Length for the reads of a round.
+        uint[] cost = _cost;
+        ulong first = literals[0] * 0x0101_0101_0101_0101UL;
+        ulong different = 0;
+        uint t0 = 0, t1 = 0, t2 = 0, t3 = 0;
+        int i = 0;
+        for (; i + 8 <= literals.Length; i += 8)
+        {
+            ulong v = Raw.ReadUInt64(literals, i);
+            different |= v ^ first;
+            t0 += Raw.Get(cost, (int)(v & 0xFF)) + Raw.Get(cost, (int)((v >> 32) & 0xFF));
+            t1 += Raw.Get(cost, (int)((v >> 8) & 0xFF)) + Raw.Get(cost, (int)((v >> 40) & 0xFF));
+            t2 += Raw.Get(cost, (int)((v >> 16) & 0xFF)) + Raw.Get(cost, (int)((v >> 48) & 0xFF));
+            t3 += Raw.Get(cost, (int)((v >> 24) & 0xFF)) + Raw.Get(cost, (int)(v >> 56));
+        }
+
+        for (; i < literals.Length; i++)
+        {
+            uint a = literals[i];
+            t0 += cost[a];
+            different |= a ^ (first & 0xFF);
+        }
+
+        allEqual = different == 0;
+        uint total = t0 + t1 + t2 + t3;
+        bits = total;
+        return total < AbsentCost;
     }
 
     /// <summary>Gets the size in bits of the literals coded with this table, in one stream or in four (add up to 7 bits of padding per stream).</summary>

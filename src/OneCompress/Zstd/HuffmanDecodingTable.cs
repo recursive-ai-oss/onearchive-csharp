@@ -307,6 +307,7 @@ public sealed class HuffmanDecodingTable
 
     // With `pairs` (see GetPairs) two symbols are decoded per lookup where possible, which shortens the chain of dependent lookups
     // that bounds the speed of a single stream.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal void DecodeStream(ReadOnlySpan<byte> stream, Span<byte> destination, long streamOffset, uint[]? pairs)
     {
         if (_tableBits == 0)
@@ -364,6 +365,7 @@ public sealed class HuffmanDecodingTable
     /// </param>
     /// <param name="streamOffset">Offset of <paramref name="source"/> in the compressed input, for error messages.</param>
     /// <exception cref="CompressionFormatException">The jump table or a stream is invalid.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void DecodeFourStreams(ReadOnlySpan<byte> source, Span<byte> destination, long streamOffset = 0)
     {
         if (_tableBits == 0)
