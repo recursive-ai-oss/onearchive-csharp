@@ -94,7 +94,7 @@ public readonly struct ZstdCompressionParameters
     // Level tables, one row per level (row 0 is the base of the negative levels), for source sizes above 256 KiB, up to 256 KiB, up to
     // 128 KiB and up to 16 KiB. Columns: window log, chain log, hash log, search log, minimum match, target length, strategy.
     // The values were read off the reference tool's reported parameters for each size class (docs/zstd-encoder.md), except the search log of
-    // levels 10 to 12 above 256 KiB, which is one less (4, 5, 5): see the notes under the level table.
+    // levels 7, 9 and 10 to 12 above 256 KiB, which is one less: see the notes under the level table.
     private const int Columns = 7;
 
     private static readonly short[][] s_table =
@@ -107,9 +107,9 @@ public readonly struct ZstdCompressionParameters
             21, 18, 18, 1, 5, 0, 2,
             21, 18, 19, 3, 5, 2, 3,
             21, 18, 19, 3, 5, 4, 4,
-            21, 19, 20, 4, 5, 8, 4,
+            21, 19, 20, 3, 5, 8, 4,
             21, 19, 20, 4, 5, 16, 5,
-            22, 20, 21, 4, 5, 16, 5,
+            22, 20, 21, 3, 5, 16, 5,
             22, 21, 22, 4, 5, 16, 5,
             22, 21, 22, 5, 5, 16, 5,
             22, 22, 23, 5, 5, 32, 5,

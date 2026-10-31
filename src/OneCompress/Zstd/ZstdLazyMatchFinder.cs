@@ -41,6 +41,10 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
     // With nothing found the step grows by one for every 2^SkipShift bytes since the last match.
     private const int SkipShift = 8;
 
+    // The greedy strategy steps faster over stretches with no match, and looks only at the newest repeat offset at each position: it has no
+    // lookahead to recover from a poor choice, and its levels are the ones that trade a little size for speed.
+    private const int GreedySkipShift = 6;
+
     // Positions the parse skips over (inside a match, or before a later search) are entered into the tree without looking for matches,
     // and that is most of the tree's work: a match is usually a repeat of text that is already in the tree. So when more than
     // TreeDenseTail positions lie between the last one entered and the next search, only every TreeInsertStride-th of them is entered
@@ -318,7 +322,7 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
 
             if (length == 0)
             {
-                ip += 1 + ((ip - anchor) >> SkipShift);
+                ip += 1 + ((ip - anchor) >> (_depth == 0 ? GreedySkipShift : SkipShift));
                 continue;
             }
 
@@ -420,20 +424,24 @@ public sealed class ZstdLazyMatchFinder : ZstdMatchFinder
         int bestLength = RepeatLengthFlat(window, p, first, rep0, repeatLimit, end);
         uint bestOffset = bestLength > 0 ? rep0 : 0;
         int bestGain = bestLength > 0 ? (4 * bestLength) - RepeatCost : int.MinValue;
-        int length = RepeatLengthFlat(window, p, first, rep1, repeatLimit, end);
-        if (length > 0 && (4 * length) - RepeatCost > bestGain)
+        int length;
+        if (_depth > 0)
         {
-            bestGain = (4 * length) - RepeatCost;
-            bestLength = length;
-            bestOffset = rep1;
-        }
+            length = RepeatLengthFlat(window, p, first, rep1, repeatLimit, end);
+            if (length > 0 && (4 * length) - RepeatCost > bestGain)
+            {
+                bestGain = (4 * length) - RepeatCost;
+                bestLength = length;
+                bestOffset = rep1;
+            }
 
-        length = RepeatLengthFlat(window, p, first, rep2, repeatLimit, end);
-        if (length > 0 && (4 * length) - RepeatCost > bestGain)
-        {
-            bestGain = (4 * length) - RepeatCost;
-            bestLength = length;
-            bestOffset = rep2;
+            length = RepeatLengthFlat(window, p, first, rep2, repeatLimit, end);
+            if (length > 0 && (4 * length) - RepeatCost > bestGain)
+            {
+                bestGain = (4 * length) - RepeatCost;
+                bestLength = length;
+                bestOffset = rep2;
+            }
         }
 
         if (_warmRows)

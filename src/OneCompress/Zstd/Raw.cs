@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 #if !CHECKED
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 #endif
 
@@ -391,6 +392,41 @@ internal static class Raw
         }
 
         return scalar;
+#endif
+    }
+
+    /// <summary>
+    /// The number of leading bytes, 0 to 16, that are equal in the 16 bytes at <paramref name="a"/> and the 16 bytes at <paramref name="b"/>; 16
+    /// when all are. Every path gives the same count. The caller guarantees both 16-byte ranges lie inside <paramref name="span"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int CommonPrefix16(ReadOnlySpan<byte> span, nint a, nint b)
+    {
+#if CHECKED
+        int n = 0;
+        while (n < 16 && span[checked((int)a) + n] == span[checked((int)b) + n])
+        {
+            n++;
+        }
+
+        return n;
+#else
+        if (AdvSimd.Arm64.IsSupported)
+        {
+            // A vector compare has no cheap move-mask on this architecture; two 64-bit compares find the first difference directly.
+            ref byte origin = ref MemoryMarshal.GetReference(span);
+            ulong low = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref origin, a)) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref origin, b));
+            if (low != 0)
+            {
+                return System.Numerics.BitOperations.TrailingZeroCount(low) >> 3;
+            }
+
+            ulong high = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref origin, a + 8)) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref origin, b + 8));
+            return high != 0 ? 8 + (System.Numerics.BitOperations.TrailingZeroCount(high) >> 3) : 16;
+        }
+
+        uint differ = DifferMask16(span, a, b);
+        return differ != 0 ? System.Numerics.BitOperations.TrailingZeroCount(differ) : 16;
 #endif
     }
 
