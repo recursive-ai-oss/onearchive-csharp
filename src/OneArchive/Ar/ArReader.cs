@@ -227,6 +227,10 @@ public sealed class ArReader : ArchiveReader
         _next = MagicLength;
     }
 
+    // A time outside DateTimeOffset's range is unknown, not an error: the entry stays readable.
+    private static DateTimeOffset? UnixTime(long seconds) =>
+        seconds is >= -62135596800L and <= 253402300799L ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
+
     private static long Decimal(ReadOnlySpan<byte> field, long offset, string what, bool required)
     {
         ReadOnlySpan<byte> f = field.TrimEnd((byte)' ');
@@ -422,7 +426,7 @@ public sealed class ArReader : ArchiveReader
             Name = name,
             Kind = ArchiveEntryKind.File,
             Size = contentSize,
-            ModifiedTime = DateTimeOffset.FromUnixTimeSeconds(mtime),
+            ModifiedTime = UnixTime(mtime),
             Mode = (UnixFileMode)(mode & 0xFFF),
             Uid = uid,
             Gid = gid,

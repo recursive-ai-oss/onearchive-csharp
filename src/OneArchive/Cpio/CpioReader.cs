@@ -245,7 +245,7 @@ public sealed class CpioReader : ArchiveReader
             Name = h.Name,
             Kind = kind,
             Size = logicalSize,
-            ModifiedTime = DateTimeOffset.FromUnixTimeSeconds(h.MTime),
+            ModifiedTime = UnixTime(h.MTime),
             Mode = (UnixFileMode)(h.Mode & 0xFFF),
             Uid = h.Uid,
             Gid = h.Gid,
@@ -318,6 +318,10 @@ public sealed class CpioReader : ArchiveReader
 
         return index;
     }
+
+    // A time outside DateTimeOffset's range is unknown, not an error: the entry stays readable.
+    private static DateTimeOffset? UnixTime(long seconds) =>
+        seconds is >= -62135596800L and <= 253402300799L ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
 
     private struct RawHeader
     {
