@@ -157,7 +157,54 @@ public sealed class ZipReaderOptions
 
     /// <summary>Gets the encoding for names that are not flagged UTF-8 and have no Unicode path field. Default <see langword="null"/>: IBM code page 437, as APPNOTE 4.4.17 says.</summary>
     public Encoding? LegacyNameEncoding { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the reader recovers what it can from a damaged archive. Default false: every
+    /// malformation is a typed error. When true, the reader
+    /// <list type="bullet">
+    /// <item>scans forward for the next local file header (APPNOTE 4.3.7) when it finds other bytes where a header is expected, and resumes at the first candidate whose fields are plausible;</item>
+    /// <item>falls back to reading the local headers when a seekable stream has no usable end record or central directory;</item>
+    /// <item>reports an entry whose data is truncated or fails its checks, and goes on with the next entry.</item>
+    /// </list>
+    /// Everything it skipped or found damaged is listed in <see cref="ZipReader.Damage"/>. All other limits still apply. Damage inside a
+    /// compressed stream is not repaired: that entry stays damaged (reading it raises <see cref="RecursiveAI.OneCompress.CompressionFormatException"/>).
+    /// An entry that is skipped without being read is not checked. A header is only recognized when its name and extra field are
+    /// together at most 64 KiB minus 30 bytes and its name at most 4096 bytes.
+    /// </summary>
+    public bool Recovery { get; init; }
+
+    /// <summary>
+    /// Gets the most bytes recovery may skip over, scan a second time, or examine as names and extra fields of candidate headers, in total. Default 1 GiB. The scan is linear in the input; this bounds
+    /// its work. Exceeding it raises <see cref="RecursiveAI.OneCompress.CompressionLimitException"/>. Only used when <see cref="Recovery"/> is true.
+    /// </summary>
+    public long MaxRecoveryBytes { get; init; } = 1L << 30;
 }
+
+/// <summary>What <see cref="ZipDamage"/> describes.</summary>
+[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
+public enum ZipDamageKind
+{
+    /// <summary>Bytes that are not part of any entry were skipped to reach the next local header.</summary>
+    SkippedBytes = 0,
+
+    /// <summary>The end record or central directory is missing or unusable; the archive was read through its local headers.</summary>
+    DirectoryUnusable = 1,
+
+    /// <summary>An entry's data is damaged: it does not decode, or its size or CRC-32 is wrong.</summary>
+    DamagedEntry = 2,
+
+    /// <summary>The archive ends inside an entry, or before the central directory.</summary>
+    Truncated = 3,
+}
+
+/// <summary>One thing recovery skipped or found damaged. See <see cref="ZipReaderOptions.Recovery"/>.</summary>
+/// <param name="Kind">What happened.</param>
+/// <param name="Offset">The archive offset where it starts (the entry's local header for a damaged entry).</param>
+/// <param name="Length">The bytes it covers; zero when it marks a place (the end of a truncated archive, an unusable directory).</param>
+/// <param name="EntryName">The name of the damaged entry; <see langword="null"/> when no entry is involved.</param>
+/// <param name="Reason">A short description of what was expected and not found.</param>
+[Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
+public readonly record struct ZipDamage(ZipDamageKind Kind, long Offset, long Length, string? EntryName, string Reason);
 
 /// <summary>When the writer uses zip64 structures.</summary>
 [Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]

@@ -66,6 +66,7 @@ internal static class FuzzTargets
         IsoTargets.Read,
         IsoTargets.RoundTrip,
         ZipTargets.Read,
+        ZipTargets.Recover,
         ZipTargets.ReadEncrypted,
         ZipTargets.RoundTrip,
         ZipTargets.RoundTripEncrypted,

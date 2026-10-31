@@ -12,6 +12,9 @@ namespace RecursiveAI.Fuzz;
 /// <item><c>zip-read</c>: the zip reader over the input, through the central directory (with entries opened out of order) and
 /// forward-only in odd pieces; each must end normally or in one of the library's exceptions, every entry that is read must have
 /// the length it declares, and sequential and random-access reads of one entry must agree.</item>
+/// <item><c>zip-recover</c>: the reader in recovery mode over the input, seekable and forward-only. Each must end normally or in one of
+/// the library's exceptions; every damage record must lie inside the input, skipped ranges must not run backwards past the start,
+/// an entry that fails to read must appear in the damage list, and the entries read from an intact archive must match a strict read.</item>
 /// <item><c>zip-roundtrip</c>: entries made from the input are written with an option mix (method, zip64, descriptors, seekable or
 /// not) and read back both ways unchanged.</item>
 /// <item><c>zip-read-encrypted</c> and <c>zip-roundtrip-encrypted</c>: the same two targets with a password, so that WinZip AES and
@@ -33,6 +36,8 @@ internal static class ZipTargets
     };
 
     public static FuzzTarget Read { get; } = new("zip-read", static data => CheckRead(data.ToArray(), null), static ex => ex is CompressionException);
+
+    public static FuzzTarget Recover { get; } = new("zip-recover", static data => CheckRecover(data.ToArray()), static ex => ex is CompressionException);
 
     public static FuzzTarget ReadEncrypted { get; } = new("zip-read-encrypted", static data => CheckRead(data.ToArray(), Password), static ex => ex is CompressionException);
 
@@ -170,6 +175,94 @@ internal static class ZipTargets
         }
         catch (CompressionException)
         {
+        }
+    }
+
+    private static void CheckRecover(byte[] data)
+    {
+        var options = new ZipReaderOptions { Limits = s_limits, Recovery = true, MaxRecoveryBytes = 1 << 26 };
+        foreach (bool seekable in new[] { true, false })
+        {
+            try
+            {
+                using Stream source = seekable ? new MemoryStream(data) : new Pieces(data);
+                using var reader = new ZipReader(source, options);
+                int count = 0;
+                var failed = new List<string>();
+                while (reader.GetNextEntry() is { } e && count++ < 40)
+                {
+                    if ((count & 3) == 0)
+                    {
+                        continue; // some entries are skipped unread
+                    }
+
+                    try
+                    {
+                        using Stream s = reader.OpenEntryStream();
+                        HashOf(s, e.IsSizeKnown && e.Kind == ArchiveEntryKind.File ? e.Size : -1, e.Name);
+                    }
+                    catch (CompressionFormatException)
+                    {
+                        failed.Add(e.Name);
+                    }
+                }
+
+                foreach (ZipDamage d in reader.Damage)
+                {
+                    if (d.Offset < 0 || d.Length < 0)
+                    {
+                        throw new InvalidOperationException($"damage {d.Kind} at {d.Offset} length {d.Length}");
+                    }
+
+                    if (d.Kind == ZipDamageKind.SkippedBytes && d.Offset + d.Length > data.Length)
+                    {
+                        throw new InvalidOperationException($"skipped range {d.Offset}+{d.Length} is past the end of the {data.Length} byte input");
+                    }
+                }
+
+                foreach (string name in failed)
+                {
+                    if (!reader.Damage.Any(d => d.EntryName == name))
+                    {
+                        throw new InvalidOperationException($"entry '{name}' failed to read and is not in the damage list");
+                    }
+                }
+            }
+            catch (CompressionException)
+            {
+            }
+        }
+
+        // An archive the strict reader accepts completely is clean for the recovering reader too.
+        int strictCount;
+        try
+        {
+            using var strict = new ZipReader(new Pieces(data), new ZipReaderOptions { Limits = s_limits });
+            strictCount = 0;
+            while (strict.GetNextEntry() is { } e && strictCount < 40)
+            {
+                strictCount++;
+                using Stream s = strict.OpenEntryStream();
+                HashOf(s, -1, e.Name);
+            }
+        }
+        catch (CompressionException)
+        {
+            return;
+        }
+
+        using var recovering = new ZipReader(new Pieces(data), new ZipReaderOptions { Limits = s_limits, Recovery = true });
+        int n = 0;
+        while (recovering.GetNextEntry() is { } e && n < 40)
+        {
+            n++;
+            using Stream s = recovering.OpenEntryStream();
+            HashOf(s, -1, e.Name);
+        }
+
+        if (n != strictCount || (strictCount < 40 && recovering.Damage.Count != 0))
+        {
+            throw new InvalidOperationException($"strict read found {strictCount} entries, recovery {n} with {recovering.Damage.Count} damage records");
         }
     }
 

@@ -17,11 +17,12 @@ namespace RecursiveAI.OneArchive.Zip;
 /// seek (or <see cref="ZipReaderOptions.ForceStreaming"/>) is read forward through the local headers; then the central
 /// directory is never read, symbolic links and Unix modes are not known, and an entry whose sizes follow its data
 /// (bit 3) reports <see cref="ZipEntry.IsSizeKnown"/> false.</para>
+/// <para>With <see cref="ZipReaderOptions.Recovery"/> the reader resynchronises on damage instead of throwing, and lists what it skipped or found damaged in <see cref="Damage"/>.</para>
 /// <para>Offsets in errors count bytes from where the reader started. Spanned (multi-disk) archives are not supported.
 /// Entry streams are forward-only.</para>
 /// </remarks>
 [Experimental("ONEARCHIVE001", UrlFormat = "https://github.com/recursive-ai-oss/onearchive-csharp#preview-codecs")]
-public sealed class ZipReader : ArchiveReader
+public sealed partial class ZipReader : ArchiveReader
 {
     private sealed class Rec
     {
@@ -42,7 +43,7 @@ public sealed class ZipReader : ArchiveReader
     private readonly long _origin;
     private readonly ZipReaderOptions _options;
     private readonly ExpansionMeter _meter;
-    private readonly bool _useDirectory;
+    private bool _useDirectory;
 
     // Central directory mode.
     private List<ZipEntry>? _entries;
@@ -113,10 +114,25 @@ public sealed class ZipReader : ArchiveReader
         ZipEntry entry = (ZipEntry?)CurrentEntry ?? throw new InvalidOperationException("There is no current entry; call GetNextEntry first.");
         if (_useDirectory)
         {
-            return Sync.Result(OpenFromDirectoryAsync(entry, false, default));
+            return OpenDirectoryEntry(entry);
         }
 
-        return _entryStream ??= BuildForwardStream(entry);
+        if (!_options.Recovery)
+        {
+            return _entryStream ??= BuildForwardStream(entry);
+        }
+
+        try
+        {
+            _entryStream ??= BuildForwardStream(entry);
+        }
+        catch (CompressionFormatException ex)
+        {
+            EntryFailed(entry, ex, forward: true);
+            throw;
+        }
+
+        return _wrapper ??= Wrap(entry, _entryStream, forward: true);
     }
 
     /// <inheritdoc />
@@ -133,7 +149,25 @@ public sealed class ZipReader : ArchiveReader
             throw new ArgumentException("The entry was not read by this ZipReader.", nameof(entry));
         }
 
-        return Sync.Result(OpenFromDirectoryAsync(zip, false, default));
+        return OpenDirectoryEntry(zip);
+    }
+
+    private Stream OpenDirectoryEntry(ZipEntry entry)
+    {
+        if (!_options.Recovery)
+        {
+            return Sync.Result(OpenFromDirectoryAsync(entry, false, default));
+        }
+
+        try
+        {
+            return Wrap(entry, Sync.Result(OpenFromDirectoryAsync(entry, false, default)), forward: false);
+        }
+        catch (CompressionFormatException ex)
+        {
+            EntryFailed(entry, ex, forward: false);
+            throw;
+        }
     }
 
     internal void NoteUnannouncedBytes(int n)
@@ -184,10 +218,24 @@ public sealed class ZipReader : ArchiveReader
         {
             if (_entries is null)
             {
-                await LoadDirectoryAsync(async, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await LoadDirectoryAsync(async, cancellationToken).ConfigureAwait(false);
+                    if (_options.Recovery)
+                    {
+                        await VerifyLocalSignaturesAsync(async, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                catch (CompressionFormatException ex) when (_options.Recovery)
+                {
+                    FallBackToForward(ex);
+                }
             }
 
-            return _next < _entries!.Count ? _entries[_next++] : null;
+            if (_useDirectory)
+            {
+                return _next < _entries!.Count ? _entries[_next++] : null;
+            }
         }
 
         return await ReadNextForwardAsync(async, cancellationToken).ConfigureAwait(false);
@@ -816,9 +864,27 @@ public sealed class ZipReader : ArchiveReader
     {
         _buf ??= new ZipInputBuffer(_stream, _origin, _seekable ? _stream.Position - _origin : 0);
         ZipInputBuffer buf = _buf;
+        bool recover = _options.Recovery;
+        Rec? cur = _currentRec;
+        bool failed = _entryFailed;
+        _entryFailed = false;
+        _wrapper = null;
         if (_entryStream is not null)
         {
-            await _entryStream.DrainAsync(async, ct).ConfigureAwait(false);
+            if (!failed)
+            {
+                try
+                {
+                    await _entryStream.DrainAsync(async, ct).ConfigureAwait(false);
+                    _rewindTo = -1;
+                }
+                catch (CompressionFormatException ex) when (recover && cur is not null)
+                {
+                    NoteEntryDamage(cur.Name, cur.LocalOffset, ex);
+                    failed = true;
+                }
+            }
+
             _entryStream.Invalidate();
             _entryStream = null;
         }
@@ -826,21 +892,35 @@ public sealed class ZipReader : ArchiveReader
         {
             // Never opened: skip the data without decoding it, if its length is known.
             _currentRec = null;
-            if (skipped.SizeKnown && (skipped.Flags & ZipFormat.FlagDescriptor) == 0)
+            try
             {
-                if (!await buf.SkipAsync(skipped.CompressedSize, async, ct).ConfigureAwait(false))
+                if (skipped.SizeKnown && (skipped.Flags & ZipFormat.FlagDescriptor) == 0)
                 {
-                    throw ZipFormat.Bad(buf.Offset, "the entry's data (the archive ended inside it)", truncated: true);
-                }
+                    if (!await buf.SkipAsync(skipped.CompressedSize, async, ct).ConfigureAwait(false))
+                    {
+                        throw ZipFormat.Bad(buf.Offset, "the entry's data (the archive ended inside it)", truncated: true);
+                    }
 
-                _meter.AddCompressed(skipped.CompressedSize);
+                    _meter.AddCompressed(skipped.CompressedSize);
+                }
+                else
+                {
+                    CheckForwardStreamable(skipped);
+                    using var drain = BuildForwardStream(skippedEntry: null, skipped);
+                    await drain.DrainAsync(async, ct).ConfigureAwait(false);
+                    _rewindTo = -1;
+                }
             }
-            else
+            catch (Exception ex) when (recover && ex is CompressionFormatException or ArchiveUnsupportedException or ArchivePasswordException)
             {
-                CheckForwardStreamable(skipped);
-                using var drain = BuildForwardStream(skippedEntry: null, skipped);
-                await drain.DrainAsync(async, ct).ConfigureAwait(false);
+                AddDamage(ex is CompressionFormatException { IsTruncated: true } ? ZipDamageKind.Truncated : ZipDamageKind.DamagedEntry, skipped.LocalOffset, buf.Offset - skipped.LocalOffset, skipped.Name, ex.Message);
+                failed = true;
             }
+        }
+
+        if (failed && cur is not null)
+        {
+            await MoveToDeclaredEndAsync(cur, async, ct).ConfigureAwait(false);
         }
 
         _currentRec = null;
@@ -854,7 +934,26 @@ public sealed class ZipReader : ArchiveReader
             long at = buf.Offset;
             if (!await buf.EnsureAsync(4, async, ct).ConfigureAwait(false))
             {
-                throw ZipFormat.Bad(at, "a local file header or the central directory (the archive ended without an end record)", truncated: true);
+                if (!recover)
+                {
+                    throw ZipFormat.Bad(at, "a local file header or the central directory (the archive ended without an end record)", truncated: true);
+                }
+
+                // The end of the input. If the entry before did not end at a header, its declared size may be wrong: look again.
+                if (_rewindTo >= 0 && _rewindTo < at && buf.CanSeek)
+                {
+                    if (await RecoverAsync(buf, at, false, async, ct).ConfigureAwait(false))
+                    {
+                        continue;
+                    }
+
+                    _ended = true;
+                    return null;
+                }
+
+                AddDamage(ZipDamageKind.Truncated, at, buf.Available, null, "the archive ended without a central directory");
+                _ended = true;
+                return null;
             }
 
             uint sig = BinaryPrimitives.ReadUInt32LittleEndian(buf.Span);
@@ -875,7 +974,55 @@ public sealed class ZipReader : ArchiveReader
 
             if (sig != ZipFormat.LocalSignature)
             {
-                throw ZipFormat.Bad(at, "a local file header signature (PK\\3\\4), a central directory header or an end record");
+                if (!recover)
+                {
+                    throw ZipFormat.Bad(at, "a local file header signature (PK\\3\\4), a central directory header or an end record");
+                }
+
+                if (!await RecoverAsync(buf, at, false, async, ct).ConfigureAwait(false))
+                {
+                    _ended = true;
+                    return null;
+                }
+
+                continue;
+            }
+
+            if (recover)
+            {
+                // A header where one is expected is taken as it is, if it parses; the plausibility checks are for
+                // signatures found by scanning, which may be anything.
+                ArchiveEntry? entry = null;
+                try
+                {
+                    entry = await ReadLocalHeaderAsync(buf, at, async, ct).ConfigureAwait(false);
+                }
+                catch (CompressionFormatException) when (recover)
+                {
+                    // A header that passed the check but cannot be used (an unusable zip64 field, for example).
+                    _rewindTo = -1;
+                    if (buf.CanSeek)
+                    {
+                        // Look again from the byte after the signature that did not lead to a usable header.
+                        buf.SeekTo(at + 1);
+                        Charge(1);
+                    }
+
+                    if (!await RecoverAsync(buf, at, false, async, ct).ConfigureAwait(false))
+                    {
+                        _ended = true;
+                        return null;
+                    }
+                }
+
+                if (entry is null)
+                {
+                    continue;
+                }
+
+                _dataStart = buf.Offset;
+                _rewindTo = buf.CanSeek ? _dataStart : -1;
+                return entry;
             }
 
             return await ReadLocalHeaderAsync(buf, at, async, ct).ConfigureAwait(false);
