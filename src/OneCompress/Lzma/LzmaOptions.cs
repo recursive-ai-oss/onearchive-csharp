@@ -136,7 +136,7 @@ public readonly struct LzmaEncoderSettings
     private static ReadOnlySpan<byte> PresetNice => [6, 8, 24, 48, 16, 32, 64, 64, 64, 64];
 
     // Search depths of the hash-chain presets 0 to 3; the binary-tree presets derive theirs from the nice length.
-    private static ReadOnlySpan<byte> PresetChainDepth => [6, 8, 12, 24];
+    private static ReadOnlySpan<byte> PresetChainDepth => [6, 6, 12, 24];
 
     private LzmaEncoderSettings(int lc, int lp, int pb, uint dictionarySize, int niceLength, int depth, int lazyLength, LzmaMode mode, LzmaMatchFinderKind matchFinder, bool endMarker)
     {
@@ -222,8 +222,8 @@ public readonly struct LzmaEncoderSettings
             }
         }
 
-        // Presets 0 and 1 are the speed presets: they skip the look-ahead for any match of 3 (preset 0) or 4 (preset 1) bytes or more.
-        int lazy = ext ? int.MaxValue : p switch { 0 => 3, 1 => 4, _ => int.MaxValue };
+        // Presets 0 and 1 are the speed presets: they skip the look-ahead for any match of 3 bytes or more.
+        int lazy = ext ? int.MaxValue : p switch { 0 => 3, 1 => 3, _ => int.MaxValue };
         return new LzmaEncoderSettings(o.Lc, o.Lp, o.Pb, dict, nice, depth, lazy, mode, mf, o.WriteEndMarker);
     }
 }
