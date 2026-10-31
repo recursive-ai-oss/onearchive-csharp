@@ -19,7 +19,7 @@ namespace RecursiveAI.OneArchive.Cfb;
 /// <para>Errors: <see cref="CompressionFormatException"/> names the byte offset and what was expected; a limit raises
 /// <see cref="CompressionLimitException"/>. A reader is not thread-safe.</para>
 /// </remarks>
-public sealed class CompoundFileReader : ArchiveReader
+public sealed partial class CompoundFileReader : ArchiveReader
 {
     internal const string Name = "cfb";
 
@@ -278,6 +278,11 @@ public sealed class CompoundFileReader : ArchiveReader
     {
         ThrowIfDisposed();
         int sid = Resolve(entry);
+        if (_recovered)
+        {
+            return OpenRecovered(sid);
+        }
+
         ref DirEntry d = ref _dir[sid];
         if (d.Type == (byte)CfbObjectType.Storage || sid == 0 || d.Size == 0)
         {
@@ -366,6 +371,25 @@ public sealed class CompoundFileReader : ArchiveReader
 
     // [MS-CFB] 2.2: the header, then 2.5, 2.3, 2.6 in the order the structures depend on each other.
     private void Load()
+    {
+        if (!_options.Recovery)
+        {
+            LoadStrict();
+            return;
+        }
+
+        // Recovery only takes over when the strict checks refuse the file, so a good file is read the same either way.
+        try
+        {
+            LoadStrict();
+        }
+        catch (CompressionFormatException)
+        {
+            LoadRecovering();
+        }
+    }
+
+    private void LoadStrict()
     {
         long length = _source.Length;
         if (length < HeaderLength)
@@ -1011,7 +1035,9 @@ public sealed class CompoundFileReader : ArchiveReader
             Name = sid == 0 ? string.Empty : PathOf(sid),
             RawName = sid == 0 ? string.Empty : d.Name,
             Kind = storage ? ArchiveEntryKind.Directory : ArchiveEntryKind.File,
-            Size = storage ? 0 : d.Size,
+            Size = storage ? 0 : _recovered ? _recLength[sid] : d.Size,
+            DeclaredSize = storage ? 0 : d.Size,
+            IsDamaged = _recovered && _entryDamaged[sid],
             ModifiedTime = FromFileTime(d.Modified),
             CreationTime = FromFileTime(d.Created),
             StreamId = sid,

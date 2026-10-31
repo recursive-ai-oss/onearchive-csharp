@@ -63,6 +63,7 @@ internal static class FuzzTargets
         CfbTargets.Read,
         CfbTargets.Rewrite,
         CfbTargets.Write,
+        CfbTargets.Recover,
         IsoTargets.Read,
         IsoTargets.RoundTrip,
         ZipTargets.Read,

@@ -84,6 +84,39 @@ The whole structure is checked the first time the reader is used, before any str
   A storage opens as an empty stream.
 - A reader is not thread-safe.
 
+## Recovery [choice]
+
+`CompoundFileReaderOptions.Recovery` (default false) lets the reader open a file the strict checks refuse. `MaxRecoveryBytes` (default 1 GiB) bounds the
+bytes examined while searching for lost directory sectors. Without the option nothing changes: the same checks, the same exceptions, the same listing.
+
+**When it runs.** The strict loader runs first. Only if it raises `CompressionFormatException` does recovery start over from the bytes, so a file that passes
+is read exactly as before and `Damage` is empty. Limit exceptions (`MaxDirectoryEntries`, `MaxEntryCount`, `MaxPathDepth`, `MaxRecoveryBytes`) are never recovered from.
+`Damage` lists `CfbDamage` records (kind, file offset, length, directory entry ID and stored name when an entry is involved, reason); it holds at most `MaxEntryCount` records.
+
+**One rule keeps it bounded.** A sector belongs to the first structure that reaches it, in this order: FAT and DIFAT sectors, the directory, the mini FAT, the mini
+stream, then streams in tree order. A chain that reaches a claimed sector ends there. So chains cannot loop, and the streams recovered never add up to more than the file holds.
+
+**What is repaired.**
+
+- Header (2.2): a major version outside 3 and 4 is taken from the sector shift; a sector shift, mini shift or cutoff that disagrees with the version is replaced by the value the
+  version requires (9 or 12; 6; 4096); a wrong byte order mark is noted; the FAT, DIFAT and mini FAT sector counts are never trusted: the sectors the DIFAT and the chains actually list are used and a count that disagrees is noted.
+  A first-DIFAT-sector field that is not ENDOFCHAIN is followed even when the DIFAT count is zero. `CompoundFileHeader` shows the corrected values.
+- The file (2.1): a final sector the file holds only in part counts; its bytes are used, and the missing ones read as free (FAT, mini FAT) or unallocated (directory).
+- FAT and DIFAT (2.3, 2.5): a slot that points outside the file, or at a sector already claimed, leaves its part of the FAT free; chains that cross it end there. A DIFAT chain that leaves the file or loops ends there.
+  At least one usable FAT sector is required.
+- Directory chain (2.6): when the first directory sector is outside the file or claimed, sectors are scanned for an entry of type 5 named `Root Entry` (a sector the FAT marks free is the second choice, since writers leave old directories behind).
+  When the chain is cut short, the sectors that follow its last one are taken while each looks like a directory sector (every entry unallocated, or a storage or stream with a valid name length and colour) and the FAT does not mark it free.
+- Directory entries (2.6.1): an object type other than 1 or 2 ignores the entry (type 5 anywhere but entry 0 included); colour above 1 becomes black; an odd or oversize name length is rounded or cut to 64 bytes, a name is cut at its first null,
+  and an empty name becomes `unnamed-<id>`; a size at 2^63 or above becomes `long.MaxValue` (and is then limited by the chain). Entry 0 of type 1 serves as the root; if it is neither, an empty root is made up, which has no mini stream.
+- Tree (2.6.4): a sibling or child link that is out of range, points at an unallocated entry or the root, or reaches an entry already reached, is dropped with its branch. Entries no walk reaches (allocated, types 1 and 2) are attached to the root,
+  in directory order, and a storage brings its own subtree along. Siblings out of name order, or with equal names, are sorted by the 2.6.4 comparison, then by entry ID. A stream with a child ignores the child.
+- Mini FAT and mini stream (2.4): chains are followed like the others. The mini stream's size is its chain's, not the root entry's, when the two differ by more than the sector padding.
+- Streams (2.1): a stream keeps the bytes before the first break in its chain: it ends early, leaves the file, loops, reaches a claimed sector, crosses a lost part of the FAT, or the file ends inside a sector. `CfbEntry.Size` is then that length,
+  `DeclaredSize` the directory's, and `IsDamaged` is true. A chain longer than the declared size is not an error. Where a chain stops, no guess is made about what follows (for example, that sectors are consecutive).
+
+**Not repaired.** No header, no usable FAT sector, or no directory (even by scanning) still raises `CompressionFormatException`. Damage inside the bytes of a stream is not detected. A file whose
+FAT and directory are at its end and that is cut short has lost both, and is not recoverable.
+
 ## Not done
 
 Transacted or in-place editing; property-set encoding; the range lock sector (never read or written); transactions; the old beta-2 signature (`0E 11 FC 0D D0 CF 11 E0`), which is
@@ -94,7 +127,9 @@ rejected as a bad signature; reading the contents of streams (property sets, Wor
 `tools/cfb/gen_cfb.py` writes the vectors in `testdata/cfb/` (version 3 and 4, DIFAT beyond 109 entries, the 4096-byte boundary, empty and
 deeply nested storages, unusual names, a message-like tree, and about fifty damaged files that each break one rule) and
 `manifest.json`; `olefile_check.py` confirms with the olefile package that the good ones read as described. `make-office-vectors.sh` makes
-.doc/.xls/.ppt files with LibreOffice and records olefile's view of them in `testdata/cfb/office/`. The `cfb-read`, `cfb-rewrite` and `cfb-write` fuzz targets and their
+.doc/.xls/.ppt files with LibreOffice and records olefile's view of them in `testdata/cfb/office/`. `tools/cfb/gen_damaged.py` (with the table model `cfbmodel.py`) writes `testdata/cfb/damaged/`: forty damaged copies of the vectors and Office files, one kind of damage each
+(truncation, bad FAT/DIFAT/mini FAT entries, cycles, lost directory start or chain, bad links and entry types, header fields), and a manifest of the streams a recovering reader must still find, with the SHA-256 of the exact bytes expected.
+The `cfb-read`, `cfb-rewrite`, `cfb-write` and `cfb-recover` fuzz targets and their
 seeds are in `fuzz/`. `check-written.sh` rewrites every good vector and the Office files in both versions and has olefile list the result.
 
 # Writer

@@ -1,0 +1,3911 @@
+{
+ "vectors": [
+  {
+   "base": "own3",
+   "file": "truncate-sector.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": true,
+     "declared": 30000,
+     "length": 20480,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "531896ad4f6095cd1d753ca88361c0a5776a99f2aebf2e5e9e5897008e6fd274"
+    },
+    {
+     "damaged": true,
+     "declared": 20000,
+     "length": 19968,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "7df245d3cc3f43fafc3ce34f28eb3786801aeb6be9122193ae350618b295b24f"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "truncate-mid-sector.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": true,
+     "declared": 30000,
+     "length": 20343,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "2419e1f2428d81c7f3b29a9f707f640df7518d3192d38ea53f451fe1879714e5"
+    },
+    {
+     "damaged": true,
+     "declared": 20000,
+     "length": 19968,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "7df245d3cc3f43fafc3ce34f28eb3786801aeb6be9122193ae350618b295b24f"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own4",
+   "file": "truncate-v4.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": true,
+     "declared": 30000,
+     "length": 20480,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "531896ad4f6095cd1d753ca88361c0a5776a99f2aebf2e5e9e5897008e6fd274"
+    },
+    {
+     "damaged": true,
+     "declared": 20000,
+     "length": 19480,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "1611230948c8e62b6566b3ec472a08e3968be0a367409b44b52f86619bdfe086"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "fat-out-of-range.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": true,
+     "declared": 30000,
+     "length": 1024,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "c70c0bdf4884d19002283f6ee476cbd7952ea6b4993499d40e679fce228ca578"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "report",
+   "file": "fat-out-of-range-doc.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": false,
+     "declared": 2477,
+     "length": 2477,
+     "name": "31005400610062006c006500",
+     "path": [
+      "31005400610062006c006500"
+     ],
+     "sha256": "aca9baba0ca8fc5ed0375ea2cc81c6cf1419ce2fa21646042ee69be688a71e9a"
+    },
+    {
+     "damaged": false,
+     "declared": 106,
+     "length": 106,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "fadeb43f2f725c7d4b4d451fb0a33f220157ca22cd5eaea3737ef76f635426c7"
+    },
+    {
+     "damaged": true,
+     "declared": 65085,
+     "length": 10752,
+     "name": "57006f007200640044006f00630075006d0065006e007400",
+     "path": [
+      "57006f007200640044006f00630075006d0065006e007400"
+     ],
+     "sha256": "99f3fda37f876ad033cc37099e608cd8b42992f71ba46c2254d445698a9fb633"
+    },
+    {
+     "damaged": false,
+     "declared": 208,
+     "length": 208,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "3708abd8146db312771b3609bb0c0d369c9bb324db5b6105d68afbc0e1b61667"
+    },
+    {
+     "damaged": false,
+     "declared": 116,
+     "length": 116,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "4bf70144f3e3f0b611e4aba0e93ceb37fd05a81a852137e1bf7b1f021a545c80"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "fat-cycle.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": true,
+     "declared": 30000,
+     "length": 5632,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "b7e31761370b83c3ef730751045e47f1feeea9937b6dcfdb92e906c1e5dd0254"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "ppt",
+   "file": "fat-cycle-ppt.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": false,
+     "declared": 57,
+     "length": 57,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "78ef0a74965bcdaae316466d40721c1b7bf82923e6bd509f09ae3241cc8f04de"
+    },
+    {
+     "damaged": false,
+     "declared": 0,
+     "length": 0,
+     "name": "50006900630074007500720065007300",
+     "path": [
+      "50006900630074007500720065007300"
+     ],
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+     "damaged": false,
+     "declared": 44,
+     "length": 44,
+     "name": "430075007200720065006e00740020005500730065007200",
+     "path": [
+      "430075007200720065006e00740020005500730065007200"
+     ],
+     "sha256": "d414eaa25dd1d41d49f6184c3eccb0887468c565aa308eef1422ec28866b33d8"
+    },
+    {
+     "damaged": true,
+     "declared": 442604,
+     "length": 154112,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "d2b55f625c4020a062cad86fd0217ce65b20f65f5293e2d4c069679de3a8e9b9"
+    },
+    {
+     "damaged": false,
+     "declared": 21180,
+     "length": 21180,
+     "name": "50006f0077006500720050006f0069006e007400200044006f00630075006d0065006e007400",
+     "path": [
+      "50006f0077006500720050006f0069006e007400200044006f00630075006d0065006e007400"
+     ],
+     "sha256": "a7acced299bd5f0ff5db1b93473aa9d3c9bdbee9d1bb47f5e5125c151180232f"
+    },
+    {
+     "damaged": false,
+     "declared": 284,
+     "length": 284,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "cd5cdee8e4dcfbad2dfe690b984f742a915dc7cebc2577ba589a5bfdeabdcf11"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own4",
+   "file": "fat-through-free.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": true,
+     "declared": 30000,
+     "length": 12288,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "6106168034150bbfdaa265f9981328a5d12e4a764cb36f735f0506b6b4ade0b8"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "fat-ends-early.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": true,
+     "declared": 30000,
+     "length": 4096,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "3f370e767318347139f9a16c0d5068553912273fcaad65de46042c292b56c471"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "size-beyond-chain.cfb.gz",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": true,
+     "declared": 90100,
+     "length": 30208,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "74fb5feaea38abf9ec0024caa6f7a4f26a8e28e429b9f3424078a59d260b7bb4"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "xls",
+   "file": "size-beyond-chain-xls.cfb",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": false,
+     "declared": 73,
+     "length": 73,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "3b782f2ba4979fe212fc7bb0a985de42c31212a1802b70acf9d274116612476d"
+    },
+    {
+     "damaged": true,
+     "declared": 114208,
+     "length": 38400,
+     "name": "57006f0072006b0062006f006f006b00",
+     "path": [
+      "57006f0072006b0062006f006f006b00"
+     ],
+     "sha256": "812c3a9479ce525de9778ae7a10f17dc5dc24d415a1fc29c06b6b61eb588a5af"
+    },
+    {
+     "damaged": false,
+     "declared": 172,
+     "length": 172,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "47cd783c91e1c0fc90d0b8784808dde8909a0a7c5bc39cec391c47f031b8e37e"
+    },
+    {
+     "damaged": false,
+     "declared": 116,
+     "length": 116,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "4bf70144f3e3f0b611e4aba0e93ceb37fd05a81a852137e1bf7b1f021a545c80"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "ppt",
+   "file": "difat-slot-lost.cfb.gz",
+   "kinds": [
+    "AllocationTableUnusable",
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": false,
+     "declared": 57,
+     "length": 57,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "78ef0a74965bcdaae316466d40721c1b7bf82923e6bd509f09ae3241cc8f04de"
+    },
+    {
+     "damaged": false,
+     "declared": 0,
+     "length": 0,
+     "name": "50006900630074007500720065007300",
+     "path": [
+      "50006900630074007500720065007300"
+     ],
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+     "damaged": false,
+     "declared": 44,
+     "length": 44,
+     "name": "430075007200720065006e00740020005500730065007200",
+     "path": [
+      "430075007200720065006e00740020005500730065007200"
+     ],
+     "sha256": "d414eaa25dd1d41d49f6184c3eccb0887468c565aa308eef1422ec28866b33d8"
+    },
+    {
+     "damaged": true,
+     "declared": 442604,
+     "length": 169984,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "4b6d5349d254b9ec2087fb0b51a452c9817e24ca5f49a7deba3c9bd2effdf0c7"
+    },
+    {
+     "damaged": false,
+     "declared": 21180,
+     "length": 21180,
+     "name": "50006f0077006500720050006f0069006e007400200044006f00630075006d0065006e007400",
+     "path": [
+      "50006f0077006500720050006f0069006e007400200044006f00630075006d0065006e007400"
+     ],
+     "sha256": "a7acced299bd5f0ff5db1b93473aa9d3c9bdbee9d1bb47f5e5125c151180232f"
+    },
+    {
+     "damaged": false,
+     "declared": 284,
+     "length": 284,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "cd5cdee8e4dcfbad2dfe690b984f742a915dc7cebc2577ba589a5bfdeabdcf11"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "report",
+   "file": "difat-slot-lost-doc.cfb.gz",
+   "kinds": [
+    "AllocationTableUnusable",
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": false,
+     "declared": 2477,
+     "length": 2477,
+     "name": "31005400610062006c006500",
+     "path": [
+      "31005400610062006c006500"
+     ],
+     "sha256": "aca9baba0ca8fc5ed0375ea2cc81c6cf1419ce2fa21646042ee69be688a71e9a"
+    },
+    {
+     "damaged": false,
+     "declared": 106,
+     "length": 106,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "fadeb43f2f725c7d4b4d451fb0a33f220157ca22cd5eaea3737ef76f635426c7"
+    },
+    {
+     "damaged": true,
+     "declared": 65085,
+     "length": 61440,
+     "name": "57006f007200640044006f00630075006d0065006e007400",
+     "path": [
+      "57006f007200640044006f00630075006d0065006e007400"
+     ],
+     "sha256": "cee893c1dae3fa43351aa16558c6713baac2174aa1aca368dfb40856410be47c"
+    },
+    {
+     "damaged": false,
+     "declared": 208,
+     "length": 208,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "3708abd8146db312771b3609bb0c0d369c9bb324db5b6105d68afbc0e1b61667"
+    },
+    {
+     "damaged": false,
+     "declared": 116,
+     "length": 116,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "4bf70144f3e3f0b611e4aba0e93ceb37fd05a81a852137e1bf7b1f021a545c80"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "difat",
+   "file": "difat-slot-lost-large.cfb.gz",
+   "kinds": [
+    "AllocationTableUnusable",
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 300,
+     "length": 300,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "b789573ea09a1134b178b5edb97496b1468fc04d670b8ebc1a83599864d72be0"
+    },
+    {
+     "damaged": true,
+     "declared": 7200000,
+     "length": 326656,
+     "name": "6c006100720067006500",
+     "path": [
+      "6c006100720067006500"
+     ],
+     "sha256": "3a7931c5c1e770652874b9d95cff26293cf8ef2f7cee54b003ef4a5cca50e5f4"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "msg",
+   "file": "minifat-lost.cfb",
+   "kinds": [
+    "MiniStreamUnusable",
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 40,
+     "length": 40,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200"
+     ],
+     "sha256": "82c3956b92ad097a031cd89df5b111a25bfa14c7cbbd1ed8d3a5f629296b123c"
+    },
+    {
+     "damaged": true,
+     "declared": 80,
+     "length": 64,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200"
+     ],
+     "sha256": "16f6d1b6bdb2beb9c5ce1cc9da83891453d1d99bcaa59fd533cafd7c7ebd7711"
+    },
+    {
+     "damaged": false,
+     "declared": 50,
+     "length": 50,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600",
+     "path": [
+      "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600"
+     ],
+     "sha256": "289b0764da4d7f4e54831331a17b95ec9cbf26dd8b5b54523f21cda643229729"
+    },
+    {
+     "damaged": false,
+     "declared": 64,
+     "length": 64,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "93d4a3afcf9d0e950ee9355832ae462adcbb8fb48c23cd22f4cb17a907402a25"
+    },
+    {
+     "damaged": false,
+     "declared": 60,
+     "length": 60,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600"
+     ],
+     "sha256": "a0c05e83c7085985c5385d96fe01883a1c03a759bdb6e50f807a7cbeba0a2916"
+    },
+    {
+     "damaged": true,
+     "declared": 200,
+     "length": 64,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "8a0a84287a0344932e323b58b663ed9718f1e23f27caa30fc678b72845ca1987"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "69006e006e0065007200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000300030004400",
+      "69006e006e0065007200"
+     ],
+     "sha256": "16d137a7c2ecf4f4a8e00375462ecf2b2b5741d4865937ed812aa6500663c981"
+    },
+    {
+     "damaged": false,
+     "declared": 6000,
+     "length": 6000,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200"
+     ],
+     "sha256": "201bd698d5e766664189e38610dc8162d418974bcfbef15eb6f72eeeab39d748"
+    },
+    {
+     "damaged": true,
+     "declared": 300,
+     "length": 64,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "40f842c0d94327cf5257c2eb4051b89f9b93b448d2903fff04464a96514507b9"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "msg",
+   "file": "minifat-entry-bad.cfb",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 40,
+     "length": 40,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200"
+     ],
+     "sha256": "82c3956b92ad097a031cd89df5b111a25bfa14c7cbbd1ed8d3a5f629296b123c"
+    },
+    {
+     "damaged": false,
+     "declared": 80,
+     "length": 80,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200"
+     ],
+     "sha256": "11356bb42bd55bebc8919a364cbfcd8cd96dcdd7286118dd250af0b3421303b2"
+    },
+    {
+     "damaged": false,
+     "declared": 50,
+     "length": 50,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600",
+     "path": [
+      "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600"
+     ],
+     "sha256": "289b0764da4d7f4e54831331a17b95ec9cbf26dd8b5b54523f21cda643229729"
+    },
+    {
+     "damaged": false,
+     "declared": 64,
+     "length": 64,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "93d4a3afcf9d0e950ee9355832ae462adcbb8fb48c23cd22f4cb17a907402a25"
+    },
+    {
+     "damaged": false,
+     "declared": 60,
+     "length": 60,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600"
+     ],
+     "sha256": "a0c05e83c7085985c5385d96fe01883a1c03a759bdb6e50f807a7cbeba0a2916"
+    },
+    {
+     "damaged": true,
+     "declared": 200,
+     "length": 64,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "8a0a84287a0344932e323b58b663ed9718f1e23f27caa30fc678b72845ca1987"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "69006e006e0065007200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000300030004400",
+      "69006e006e0065007200"
+     ],
+     "sha256": "16d137a7c2ecf4f4a8e00375462ecf2b2b5741d4865937ed812aa6500663c981"
+    },
+    {
+     "damaged": false,
+     "declared": 6000,
+     "length": 6000,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200"
+     ],
+     "sha256": "201bd698d5e766664189e38610dc8162d418974bcfbef15eb6f72eeeab39d748"
+    },
+    {
+     "damaged": false,
+     "declared": 300,
+     "length": 300,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "78d5b0416a5bdd617f351e2e1cc1e86bf5d28cf343893e4c7a29a04c492a7fc5"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "doc",
+   "file": "minifat-entry-bad-doc.cfb",
+   "kinds": [
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": true,
+     "declared": 2253,
+     "length": 64,
+     "name": "31005400610062006c006500",
+     "path": [
+      "31005400610062006c006500"
+     ],
+     "sha256": "940e67e499301ec9180288ef3d8ef075736889c8694233d8aa3959c59224a24e"
+    },
+    {
+     "damaged": false,
+     "declared": 106,
+     "length": 106,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "fadeb43f2f725c7d4b4d451fb0a33f220157ca22cd5eaea3737ef76f635426c7"
+    },
+    {
+     "damaged": false,
+     "declared": 3645,
+     "length": 3645,
+     "name": "57006f007200640044006f00630075006d0065006e007400",
+     "path": [
+      "57006f007200640044006f00630075006d0065006e007400"
+     ],
+     "sha256": "768cf9e6e492de59d23e5a3de5da4c157c87ffe987fe7297fb4d926f7f09a02f"
+    },
+    {
+     "damaged": false,
+     "declared": 172,
+     "length": 172,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "47cd783c91e1c0fc90d0b8784808dde8909a0a7c5bc39cec391c47f031b8e37e"
+    },
+    {
+     "damaged": false,
+     "declared": 116,
+     "length": 116,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "4bf70144f3e3f0b611e4aba0e93ceb37fd05a81a852137e1bf7b1f021a545c80"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "msg",
+   "file": "ministream-cut.cfb",
+   "kinds": [
+    "MiniStreamUnusable",
+    "DamagedStream"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 40,
+     "length": 40,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200"
+     ],
+     "sha256": "82c3956b92ad097a031cd89df5b111a25bfa14c7cbbd1ed8d3a5f629296b123c"
+    },
+    {
+     "damaged": false,
+     "declared": 80,
+     "length": 80,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200"
+     ],
+     "sha256": "11356bb42bd55bebc8919a364cbfcd8cd96dcdd7286118dd250af0b3421303b2"
+    },
+    {
+     "damaged": false,
+     "declared": 50,
+     "length": 50,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600",
+     "path": [
+      "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600"
+     ],
+     "sha256": "289b0764da4d7f4e54831331a17b95ec9cbf26dd8b5b54523f21cda643229729"
+    },
+    {
+     "damaged": false,
+     "declared": 64,
+     "length": 64,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "93d4a3afcf9d0e950ee9355832ae462adcbb8fb48c23cd22f4cb17a907402a25"
+    },
+    {
+     "damaged": false,
+     "declared": 60,
+     "length": 60,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600"
+     ],
+     "sha256": "a0c05e83c7085985c5385d96fe01883a1c03a759bdb6e50f807a7cbeba0a2916"
+    },
+    {
+     "damaged": true,
+     "declared": 200,
+     "length": 128,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "edc0a38fdf86324ced82c373260790a36688e2ea026f0a22deb9be61537ead73"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "69006e006e0065007200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000300030004400",
+      "69006e006e0065007200"
+     ],
+     "sha256": "16d137a7c2ecf4f4a8e00375462ecf2b2b5741d4865937ed812aa6500663c981"
+    },
+    {
+     "damaged": false,
+     "declared": 6000,
+     "length": 6000,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200"
+     ],
+     "sha256": "201bd698d5e766664189e38610dc8162d418974bcfbef15eb6f72eeeab39d748"
+    },
+    {
+     "damaged": true,
+     "declared": 300,
+     "length": 0,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "dir-start-bad.cfb.gz",
+   "kinds": [
+    "DirectoryUnusable"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "report",
+   "file": "dir-start-bad-doc.cfb.gz",
+   "kinds": [
+    "DirectoryUnusable"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": false,
+     "declared": 2477,
+     "length": 2477,
+     "name": "31005400610062006c006500",
+     "path": [
+      "31005400610062006c006500"
+     ],
+     "sha256": "aca9baba0ca8fc5ed0375ea2cc81c6cf1419ce2fa21646042ee69be688a71e9a"
+    },
+    {
+     "damaged": false,
+     "declared": 106,
+     "length": 106,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "fadeb43f2f725c7d4b4d451fb0a33f220157ca22cd5eaea3737ef76f635426c7"
+    },
+    {
+     "damaged": false,
+     "declared": 65085,
+     "length": 65085,
+     "name": "57006f007200640044006f00630075006d0065006e007400",
+     "path": [
+      "57006f007200640044006f00630075006d0065006e007400"
+     ],
+     "sha256": "64d6ae19884e7e5a0d363720c2f9eb347555a1e13a781ea2c2c15831539d3caa"
+    },
+    {
+     "damaged": false,
+     "declared": 208,
+     "length": 208,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "3708abd8146db312771b3609bb0c0d369c9bb324db5b6105d68afbc0e1b61667"
+    },
+    {
+     "damaged": false,
+     "declared": 116,
+     "length": 116,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "4bf70144f3e3f0b611e4aba0e93ceb37fd05a81a852137e1bf7b1f021a545c80"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "msg",
+   "file": "dir-chain-cut.cfb",
+   "kinds": [
+    "DirectoryUnusable"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 40,
+     "length": 40,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200"
+     ],
+     "sha256": "82c3956b92ad097a031cd89df5b111a25bfa14c7cbbd1ed8d3a5f629296b123c"
+    },
+    {
+     "damaged": false,
+     "declared": 80,
+     "length": 80,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200"
+     ],
+     "sha256": "11356bb42bd55bebc8919a364cbfcd8cd96dcdd7286118dd250af0b3421303b2"
+    },
+    {
+     "damaged": false,
+     "declared": 50,
+     "length": 50,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600",
+     "path": [
+      "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600"
+     ],
+     "sha256": "289b0764da4d7f4e54831331a17b95ec9cbf26dd8b5b54523f21cda643229729"
+    },
+    {
+     "damaged": false,
+     "declared": 64,
+     "length": 64,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "93d4a3afcf9d0e950ee9355832ae462adcbb8fb48c23cd22f4cb17a907402a25"
+    },
+    {
+     "damaged": false,
+     "declared": 60,
+     "length": 60,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600"
+     ],
+     "sha256": "a0c05e83c7085985c5385d96fe01883a1c03a759bdb6e50f807a7cbeba0a2916"
+    },
+    {
+     "damaged": false,
+     "declared": 200,
+     "length": 200,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "34b7fb4cdfa293fff5ae956a4cf1df196f40f05685df102582ab5f21411481f6"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "69006e006e0065007200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000300030004400",
+      "69006e006e0065007200"
+     ],
+     "sha256": "16d137a7c2ecf4f4a8e00375462ecf2b2b5741d4865937ed812aa6500663c981"
+    },
+    {
+     "damaged": false,
+     "declared": 6000,
+     "length": 6000,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200"
+     ],
+     "sha256": "201bd698d5e766664189e38610dc8162d418974bcfbef15eb6f72eeeab39d748"
+    },
+    {
+     "damaged": false,
+     "declared": 300,
+     "length": 300,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "78d5b0416a5bdd617f351e2e1cc1e86bf5d28cf343893e4c7a29a04c492a7fc5"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "doc",
+   "file": "dir-chain-cut-doc.cfb",
+   "kinds": [
+    "DirectoryUnusable"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": false,
+     "declared": 2253,
+     "length": 2253,
+     "name": "31005400610062006c006500",
+     "path": [
+      "31005400610062006c006500"
+     ],
+     "sha256": "27120ba846417b22f0ad30c7f6831214c639f91f9396d4b8e619f993cccc06a0"
+    },
+    {
+     "damaged": false,
+     "declared": 106,
+     "length": 106,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "fadeb43f2f725c7d4b4d451fb0a33f220157ca22cd5eaea3737ef76f635426c7"
+    },
+    {
+     "damaged": false,
+     "declared": 3645,
+     "length": 3645,
+     "name": "57006f007200640044006f00630075006d0065006e007400",
+     "path": [
+      "57006f007200640044006f00630075006d0065006e007400"
+     ],
+     "sha256": "768cf9e6e492de59d23e5a3de5da4c157c87ffe987fe7297fb4d926f7f09a02f"
+    },
+    {
+     "damaged": false,
+     "declared": 172,
+     "length": 172,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "47cd783c91e1c0fc90d0b8784808dde8909a0a7c5bc39cec391c47f031b8e37e"
+    },
+    {
+     "damaged": false,
+     "declared": 116,
+     "length": 116,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "4bf70144f3e3f0b611e4aba0e93ceb37fd05a81a852137e1bf7b1f021a545c80"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "dir-link-out-of-range.cfb.gz",
+   "kinds": [
+    "BadLink",
+    "OrphanedEntry"
+   ],
+   "match": "name",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "ppt",
+   "file": "dir-link-out-of-range-ppt.cfb.gz",
+   "kinds": [
+    "BadLink",
+    "OrphanedEntry"
+   ],
+   "match": "name",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": false,
+     "declared": 57,
+     "length": 57,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "78ef0a74965bcdaae316466d40721c1b7bf82923e6bd509f09ae3241cc8f04de"
+    },
+    {
+     "damaged": false,
+     "declared": 0,
+     "length": 0,
+     "name": "50006900630074007500720065007300",
+     "path": [
+      "50006900630074007500720065007300"
+     ],
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+     "damaged": false,
+     "declared": 44,
+     "length": 44,
+     "name": "430075007200720065006e00740020005500730065007200",
+     "path": [
+      "430075007200720065006e00740020005500730065007200"
+     ],
+     "sha256": "d414eaa25dd1d41d49f6184c3eccb0887468c565aa308eef1422ec28866b33d8"
+    },
+    {
+     "damaged": false,
+     "declared": 442604,
+     "length": 442604,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "40aff1b151dde5fe32ec781b59f128850db5abccf709faa60100396bd1ae2cdc"
+    },
+    {
+     "damaged": false,
+     "declared": 21180,
+     "length": 21180,
+     "name": "50006f0077006500720050006f0069006e007400200044006f00630075006d0065006e007400",
+     "path": [
+      "50006f0077006500720050006f0069006e007400200044006f00630075006d0065006e007400"
+     ],
+     "sha256": "a7acced299bd5f0ff5db1b93473aa9d3c9bdbee9d1bb47f5e5125c151180232f"
+    },
+    {
+     "damaged": false,
+     "declared": 284,
+     "length": 284,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "cd5cdee8e4dcfbad2dfe690b984f742a915dc7cebc2577ba589a5bfdeabdcf11"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "dir-cycle.cfb.gz",
+   "kinds": [
+    "BadLink"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "dir-bad-type.cfb.gz",
+   "kinds": [
+    "BadEntry",
+    "BadLink"
+   ],
+   "match": "name",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "xls",
+   "file": "dir-bad-type-xls.cfb",
+   "kinds": [
+    "BadEntry",
+    "BadLink"
+   ],
+   "match": "name",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 73,
+     "length": 73,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "3b782f2ba4979fe212fc7bb0a985de42c31212a1802b70acf9d274116612476d"
+    },
+    {
+     "damaged": false,
+     "declared": 38036,
+     "length": 38036,
+     "name": "57006f0072006b0062006f006f006b00",
+     "path": [
+      "57006f0072006b0062006f006f006b00"
+     ],
+     "sha256": "da8db0cbc185a7bd34e9691fe10f8c13315e08180c9a0a620daf86bcdb1e61c9"
+    },
+    {
+     "damaged": false,
+     "declared": 172,
+     "length": 172,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "47cd783c91e1c0fc90d0b8784808dde8909a0a7c5bc39cec391c47f031b8e37e"
+    },
+    {
+     "damaged": false,
+     "declared": 116,
+     "length": 116,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "4bf70144f3e3f0b611e4aba0e93ceb37fd05a81a852137e1bf7b1f021a545c80"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "dir-bad-color.cfb.gz",
+   "kinds": [
+    "BadEntry"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "big3",
+   "file": "dir-root-wrecked.cfb",
+   "kinds": [
+    "BadEntry",
+    "OrphanedEntry"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 12000,
+     "length": 12000,
+     "name": "7200",
+     "path": [
+      "7200"
+     ],
+     "sha256": "5629be290ac5e31fb3362117cd0f7e1de85f674494a57d467dcba1e6a2e8c34f"
+    },
+    {
+     "damaged": false,
+     "declared": 8000,
+     "length": 8000,
+     "name": "7300",
+     "path": [
+      "7300"
+     ],
+     "sha256": "10bd3a67d02ddb76ea366bb42cae7badc4536ba76cd218d76dea946c2fef673b"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "7000",
+     "path": [
+      "53003100",
+      "7000"
+     ],
+     "sha256": "143ba0ed5b176c43f908869482734141fde5592f06883a4fa87c339acafa0da4"
+    },
+    {
+     "damaged": false,
+     "declared": 6000,
+     "length": 6000,
+     "name": "7100",
+     "path": [
+      "53003100",
+      "7100"
+     ],
+     "sha256": "2b1643098cc759a73aab1581b2ae3ccd4fab5a73a6f0340f676eb8b8b34a2dee"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "7400",
+     "path": [
+      "53003200",
+      "7400"
+     ],
+     "sha256": "44ca23573abd35703779589d0f05d42a0eb0a7bbb4314860c1d7230e38e234ba"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "header-fat-count.cfb.gz",
+   "kinds": [
+    "HeaderInconsistent"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "smallxls",
+   "file": "header-fat-count-xls.cfb",
+   "kinds": [
+    "HeaderInconsistent"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 20,
+     "length": 20,
+     "name": "01004f006c006500",
+     "path": [
+      "01004f006c006500"
+     ],
+     "sha256": "c36c8a4b7dee703b9ce6e288032033b718feef01ca283cfaa4332a8334b2adf3"
+    },
+    {
+     "damaged": false,
+     "declared": 73,
+     "length": 73,
+     "name": "010043006f006d0070004f0062006a00",
+     "path": [
+      "010043006f006d0070004f0062006a00"
+     ],
+     "sha256": "3b782f2ba4979fe212fc7bb0a985de42c31212a1802b70acf9d274116612476d"
+    },
+    {
+     "damaged": false,
+     "declared": 1723,
+     "length": 1723,
+     "name": "57006f0072006b0062006f006f006b00",
+     "path": [
+      "57006f0072006b0062006f006f006b00"
+     ],
+     "sha256": "cd660c6aed0e697f5a00cea069c2846c0224b7ccacac9e41811d2a8321e8f4b0"
+    },
+    {
+     "damaged": false,
+     "declared": 172,
+     "length": 172,
+     "name": "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "0500530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "47cd783c91e1c0fc90d0b8784808dde8909a0a7c5bc39cec391c47f031b8e37e"
+    },
+    {
+     "damaged": false,
+     "declared": 116,
+     "length": 116,
+     "name": "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00",
+     "path": [
+      "050044006f00630075006d0065006e007400530075006d006d0061007200790049006e0066006f0072006d006100740069006f006e00"
+     ],
+     "sha256": "4bf70144f3e3f0b611e4aba0e93ceb37fd05a81a852137e1bf7b1f021a545c80"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "msg",
+   "file": "header-minifat-count.cfb",
+   "kinds": [
+    "HeaderInconsistent"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 40,
+     "length": 40,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300032003000310030003200"
+     ],
+     "sha256": "82c3956b92ad097a031cd89df5b111a25bfa14c7cbbd1ed8d3a5f629296b123c"
+    },
+    {
+     "damaged": false,
+     "declared": 80,
+     "length": 80,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200",
+     "path": [
+      "5f005f006e0061006d006500690064005f00760065007200730069006f006e0031002e003000",
+      "5f005f0073007500620073007400670031002e0030005f0030003000300033003000310030003200"
+     ],
+     "sha256": "11356bb42bd55bebc8919a364cbfcd8cd96dcdd7286118dd250af0b3421303b2"
+    },
+    {
+     "damaged": false,
+     "declared": 50,
+     "length": 50,
+     "name": "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600",
+     "path": [
+      "5f005f0073007500620073007400670031002e0030005f0030003000330037003000300031004600"
+     ],
+     "sha256": "289b0764da4d7f4e54831331a17b95ec9cbf26dd8b5b54523f21cda643229729"
+    },
+    {
+     "damaged": false,
+     "declared": 64,
+     "length": 64,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "93d4a3afcf9d0e950ee9355832ae462adcbb8fb48c23cd22f4cb17a907402a25"
+    },
+    {
+     "damaged": false,
+     "declared": 60,
+     "length": 60,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003000300031003000300031004600"
+     ],
+     "sha256": "a0c05e83c7085985c5385d96fe01883a1c03a759bdb6e50f807a7cbeba0a2916"
+    },
+    {
+     "damaged": false,
+     "declared": 200,
+     "length": 200,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f00720065006300690070005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "34b7fb4cdfa293fff5ae956a4cf1df196f40f05685df102582ab5f21411481f6"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "69006e006e0065007200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000300030004400",
+      "69006e006e0065007200"
+     ],
+     "sha256": "16d137a7c2ecf4f4a8e00375462ecf2b2b5741d4865937ed812aa6500663c981"
+    },
+    {
+     "damaged": false,
+     "declared": 6000,
+     "length": 6000,
+     "name": "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f0073007500620073007400670031002e0030005f0033003700300031003000310030003200"
+     ],
+     "sha256": "201bd698d5e766664189e38610dc8162d418974bcfbef15eb6f72eeeab39d748"
+    },
+    {
+     "damaged": false,
+     "declared": 300,
+     "length": 300,
+     "name": "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000",
+     "path": [
+      "5f005f006100740074006100630068005f00760065007200730069006f006e0031002e0030005f00230030003000300030003000300030003000",
+      "5f005f00700072006f0070006500720074006900650073005f00760065007200730069006f006e0031002e003000"
+     ],
+     "sha256": "78d5b0416a5bdd617f351e2e1cc1e86bf5d28cf343893e4c7a29a04c492a7fc5"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "difat",
+   "file": "header-difat-count.cfb.gz",
+   "kinds": [
+    "HeaderInconsistent"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 300,
+     "length": 300,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "b789573ea09a1134b178b5edb97496b1468fc04d670b8ebc1a83599864d72be0"
+    },
+    {
+     "damaged": false,
+     "declared": 7200000,
+     "length": 7200000,
+     "name": "6c006100720067006500",
+     "path": [
+      "6c006100720067006500"
+     ],
+     "sha256": "399b8df80b6f18db567cd8a7aa21fa5d230039a8fbb08bded0cbd73c3ae4f925"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "header-cutoff.cfb.gz",
+   "kinds": [
+    "HeaderInconsistent"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "header-version.cfb.gz",
+   "kinds": [
+    "HeaderInconsistent"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "header-sector-shift.cfb.gz",
+   "kinds": [
+    "HeaderInconsistent"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "header-byte-order.cfb.gz",
+   "kinds": [
+    "HeaderInconsistent"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "header-mini-shift.cfb.gz",
+   "kinds": [
+    "HeaderInconsistent"
+   ],
+   "match": "path",
+   "streams": [
+    {
+     "damaged": false,
+     "declared": 30000,
+     "length": 30000,
+     "name": "6f006e006500",
+     "path": [
+      "6f006e006500"
+     ],
+     "sha256": "0eb5b0a6de9e6d407258a0a2be47d2f74049327e464a21c47f16a6d22b031b9a"
+    },
+    {
+     "damaged": false,
+     "declared": 20000,
+     "length": 20000,
+     "name": "740077006f00",
+     "path": [
+      "740077006f00"
+     ],
+     "sha256": "55f59f127a572c5e1060068b0053650f8cc7e6955cf2c7721ea791bbf9e80e62"
+    },
+    {
+     "damaged": false,
+     "declared": 2000,
+     "length": 2000,
+     "name": "6e006f0074006500",
+     "path": [
+      "6e006f0074006500"
+     ],
+     "sha256": "e197c5bd83738bbf7f5a5a1642763e23ea5d38667d73ce4d1860114e758e5e04"
+    },
+    {
+     "damaged": false,
+     "declared": 10,
+     "length": 10,
+     "name": "740069006e007900",
+     "path": [
+      "740069006e007900"
+     ],
+     "sha256": "409c324be299cb95c2f775cee213a8b27eccff494721b3748088fed764bfa1b9"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "74006800720065006500",
+     "path": [
+      "74006800720065006500"
+     ],
+     "sha256": "698b0d4c9f99e46990acf12789cd61b3667487d93340959231582a85eec3c3e8"
+    },
+    {
+     "damaged": false,
+     "declared": 100,
+     "length": 100,
+     "name": "61003100",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003100"
+     ],
+     "sha256": "f108f9b9f4326af31c040e5636257131833cb22ef941462f62b750419868e60d"
+    },
+    {
+     "damaged": false,
+     "declared": 900,
+     "length": 900,
+     "name": "61003200",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "61003200"
+     ],
+     "sha256": "d6e725b836e1fc347aa3ccd80163b2872bbf36b573dd8cd7fbecc973ab24f1d8"
+    },
+    {
+     "damaged": false,
+     "declared": 9000,
+     "length": 9000,
+     "name": "6400650065007000620069006700",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "6400650065007000620069006700"
+     ],
+     "sha256": "fc8e38547600db5d72b6c9b3eea07c7ae0ec9b6c8a415a9775d4d0336c5ffedc"
+    },
+    {
+     "damaged": false,
+     "declared": 70,
+     "length": 70,
+     "name": "640065006500700073006d0061006c006c00",
+     "path": [
+      "530074006f00720061006700650020004100",
+      "49006e006e0065007200",
+      "640065006500700073006d0061006c006c00"
+     ],
+     "sha256": "9efa8968c1392b2137e013b46a6628cd6d14e7c86bf49b95779cfae239dc8392"
+    },
+    {
+     "damaged": false,
+     "declared": 5000,
+     "length": 5000,
+     "name": "62003100",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003100"
+     ],
+     "sha256": "da509036bc8ba6cd31855f82224e2cbb1be41ce46bff71dd91e5348a0d989bd3"
+    },
+    {
+     "damaged": false,
+     "declared": 333,
+     "length": 333,
+     "name": "62003200",
+     "path": [
+      "530074006f00720061006700650020004200",
+      "62003200"
+     ],
+     "sha256": "a448dee6c93aa9bcde76eb0b081f11594539c33ed86cb573a5ffc4e150cd69e7"
+    }
+   ],
+   "unrecoverable": false
+  },
+  {
+   "base": "own3",
+   "file": "unrecoverable-header-only.cfb",
+   "kinds": [],
+   "match": "path",
+   "unrecoverable": true
+  },
+  {
+   "base": "own3",
+   "file": "unrecoverable-no-fat.cfb.gz",
+   "kinds": [],
+   "match": "path",
+   "unrecoverable": true
+  }
+ ]
+}
