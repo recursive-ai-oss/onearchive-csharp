@@ -34,7 +34,14 @@ internal static class Rows
     private const string S16 = "silesia.tar@16";
     private const string S10 = "silesia.tar@10";
 
-    private static Cand Mine(string v, Func<Ctx, int> run) => new("ours", "main", Kind.Ours, run);
+    private static Cand Mine(string label, Func<Ctx, int> run) => new("ours", label, Kind.Ours, run);
+
+    /// <summary>Further levels of ours on the row's data, so each managed library can be matched by size.</summary>
+    private static IEnumerable<Cand> Sw(IEnumerable<int> levels, string prefix, Func<int, Func<Ctx, int>> make) =>
+        levels.Select(l => new Cand("ours", prefix + l, Kind.Sweep, make(l)));
+
+    private static IEnumerable<int> Around(int n, int lo, int hi, int below, int above) =>
+        Enumerable.Range(n - below, below + above + 1).Where(x => x != n && x >= lo && x <= hi);
     private static Cand Man(string lib, Func<Ctx, int> run) => new(lib[..lib.LastIndexOf(' ')], lib[(lib.LastIndexOf(' ') + 1)..], Kind.Managed, run);
     private static Cand Nat(string lib, string v, Func<Ctx, int> run) => new(lib, v, Kind.Native, run);
 
@@ -49,7 +56,7 @@ internal static class Rows
             MakePacked = c => Tool.Pipe("xz", "-6 -T1 -c", c.Src),
             Cands =
             [
-                Mine("", c => Xz.TryDecompress(c.Packed, c.Dst, out int n, XzDec) ? n : -1),
+                Mine("p6", c => Xz.TryDecompress(c.Packed, c.Dst, out int n, XzDec) ? n : -1),
                 Man(LzmaNetV, c => Io.Read(c, s => new LzmaNet.XzDecompressStream(s))),
                 Man(ScV, c => Io.Read(c, s => new SC.Xz.XZStream(s))),
             ],
@@ -60,7 +67,7 @@ internal static class Rows
             MakePacked = c => Tool.Pipe("xz", "--format=lzma -6 -T1 -c", c.Src),
             Cands =
             [
-                Mine("", c => Lzma.TryDecompress(c.Packed, c.Dst, out int n, new LzmaDecompressionOptions { MaxOutputSize = long.MaxValue, MaxDictionarySize = 1L << 30 }) ? n : -1),
+                Mine("p6", c => Lzma.TryDecompress(c.Packed, c.Dst, out int n, new LzmaDecompressionOptions { MaxOutputSize = long.MaxValue, MaxDictionarySize = 1L << 30 }) ? n : -1),
                 Man(LzmaNetV, c => Io.Read(c, s => new LzmaNet.LzmaAloneDecompressStream(s))),
                 Man(SdkV, SdkDecode),
             ],
@@ -77,8 +84,9 @@ internal static class Rows
                 Verify = (d, n) => Zstd.Decompress(d.AsSpan(0, n), ZstdDec),
                 Cands =
                 [
-                    Mine("", c => Zstd.TryCompress(c.Src, c.Dst, out int n, new ZstdCompressionOptions { Level = level, WriteContentSize = true }) ? n : -1),
+                    Mine($"L{level}", c => Zstd.TryCompress(c.Src, c.Dst, out int n, new ZstdCompressionOptions { Level = level, WriteContentSize = true }) ? n : -1),
                     Man(ZstdSharpV, c => { using var z = new Compressor(level); return z.Wrap(c.Src, c.Dst); }),
+                    ..Sw(Around(level, 1, 22, 1, level >= 5 ? 1 : 2), "L", l => c => Zstd.TryCompress(c.Src, c.Dst, out int n, new ZstdCompressionOptions { Level = l, WriteContentSize = true }) ? n : -1),
                 ],
             });
         }
@@ -92,7 +100,7 @@ internal static class Rows
                 MakePacked = c => Tool.Pipe("zstd", $"-{level} -q -c", c.Src),
                 Cands =
                 [
-                    Mine("", c => Zstd.TryDecompress(c.Packed, c.Dst, out int n, ZstdDec) ? n : -1),
+                    Mine($"L{level}", c => Zstd.TryDecompress(c.Packed, c.Dst, out int n, ZstdDec) ? n : -1),
                     Man(ZstdSharpV, c => { using var d = new Decompressor(); return d.Unwrap(c.Packed, c.Dst); }),
                 ],
             });
@@ -103,7 +111,8 @@ internal static class Rows
             Verify = (d, n) => Zstd.Decompress(d.AsSpan(0, n), ZstdDec),
             Cands =
             [
-                Mine("", c => Zstd.TryCompress(c.Src, c.Dst, out int n, new ZstdCompressionOptions { Level = 3, LongDistanceMatching = true, WindowLog = 27 }) ? n : -1),
+                Mine("L3", c => Zstd.TryCompress(c.Src, c.Dst, out int n, new ZstdCompressionOptions { Level = 3, LongDistanceMatching = true, WindowLog = 27 }) ? n : -1),
+                ..Sw([2, 4], "L", l => c => Zstd.TryCompress(c.Src, c.Dst, out int n, new ZstdCompressionOptions { Level = l, LongDistanceMatching = true, WindowLog = 27 }) ? n : -1),
                 Man(ZstdSharpV, c =>
                 {
                     using var z = new Compressor(3);
@@ -120,7 +129,8 @@ internal static class Rows
             Verify = (d, n) => Zstd.Decompress(d.AsSpan(0, n), ZstdDec),
             Cands =
             [
-                Mine("", c => Zstd.TryCompress(c.Src, c.Dst, out int n, new ZstdCompressionOptions { Level = 3, Workers = 2, JobSize = 8 << 20 }) ? n : -1),
+                Mine("L3", c => Zstd.TryCompress(c.Src, c.Dst, out int n, new ZstdCompressionOptions { Level = 3, Workers = 2, JobSize = 8 << 20 }) ? n : -1),
+                ..Sw([2, 4], "L", l => c => Zstd.TryCompress(c.Src, c.Dst, out int n, new ZstdCompressionOptions { Level = l, Workers = 2, JobSize = 8 << 20 }) ? n : -1),
                 Man(ZstdSharpV, c =>
                 {
                     using var z = new Compressor(3);
@@ -141,7 +151,8 @@ internal static class Rows
                 Verify = (d, n) => Deflate.Decompress(d.AsSpan(0, n), DeflateDec),
                 Cands =
                 [
-                    Mine("", c => Deflate.TryCompress(c.Src, c.Dst, out int n, new DeflateOptions { Level = level }) ? n : -1),
+                    Mine($"L{level}", c => Deflate.TryCompress(c.Src, c.Dst, out int n, new DeflateOptions { Level = level }) ? n : -1),
+                    ..Sw(Around(level, 1, 9, 1, 1), "L", l => c => Deflate.TryCompress(c.Src, c.Dst, out int n, new DeflateOptions { Level = l }) ? n : -1),
                     Man(SzlV, c => SzlDeflate(c, level)),
                     Man(DnzV, c => Io.Write(c, s => new Ionic.Zlib.DeflateStream(s, Ionic.Zlib.CompressionMode.Compress, (Ionic.Zlib.CompressionLevel)level, true))),
                     Man(ScV, c => Io.Write(c, s => new SC.Deflate.DeflateStream(s, SC.CompressionMode.Compress, (SC.Deflate.CompressionLevel)level))),
@@ -156,7 +167,7 @@ internal static class Rows
             MakePacked = c => Deflate.Compress(c.Src, new DeflateOptions { Level = 6 }),
             Cands =
             [
-                Mine("", c => Deflate.TryDecompress(c.Packed, c.Dst, out int n, DeflateDec) ? n : -1),
+                Mine("L6", c => Deflate.TryDecompress(c.Packed, c.Dst, out int n, DeflateDec) ? n : -1),
                 Man(SzlV, c => SzlInflate(c)),
                 Man(DnzV, c => Io.Read(c, s => new Ionic.Zlib.DeflateStream(s, Ionic.Zlib.CompressionMode.Decompress))),
                 Man(ScV, c => Io.Read(c, s => new SC.Deflate.DeflateStream(s, SC.CompressionMode.Decompress))),
@@ -174,7 +185,8 @@ internal static class Rows
                 Verify = (d, n) => OC.Brotli.Brotli.Decompress(d.AsSpan(0, n)),
                 Cands =
                 [
-                    Mine("", c => OC.Brotli.Brotli.TryCompress(c.Src, c.Dst, out int n, new BrotliOptions { Quality = quality, WindowBits = 22 }) ? n : -1),
+                    Mine($"q{quality}", c => OC.Brotli.Brotli.TryCompress(c.Src, c.Dst, out int n, new BrotliOptions { Quality = quality, WindowBits = 22 }) ? n : -1),
+                    ..Sw(Around(quality, 0, 11, 3, 1).Where(x => x != 10 || quality == 11), "q", l => c => OC.Brotli.Brotli.TryCompress(c.Src, c.Dst, out int n, new BrotliOptions { Quality = l, WindowBits = 22 }) ? n : -1),
                     Man(BmfV, c => BrotliManagedFast.BrotliEncoder.TryCompress(c.Src, c.Dst, out int n, new BrotliManagedFast.BrotliCompressionOptions { Quality = quality, WindowLog = 22 }) ? n : -1),
                     Man(BslV, c => Io.Copy(BrotliSharpLib.Brotli.CompressBuffer(c.Src, 0, c.Src.Length, quality, 22), c.Dst)),
                     Nat("BCL (brotli)", "net10", c => System.IO.Compression.BrotliEncoder.TryCompress(c.Src, c.Dst, out int n, quality, 22) ? n : -1),
@@ -188,7 +200,7 @@ internal static class Rows
             MakePacked = c => Tool.Pipe("brotli", "-q 5 -c", c.Src),
             Cands =
             [
-                Mine("", c => OC.Brotli.Brotli.TryDecompress(c.Packed, c.Dst, out int n) ? n : -1),
+                Mine("q5", c => OC.Brotli.Brotli.TryDecompress(c.Packed, c.Dst, out int n) ? n : -1),
                 Man(BmfV, c => BrotliManagedFast.BrotliDecoder.TryDecompress(c.Packed, c.Dst, out int n) ? n : -1),
                 // BrotliSharpLib is left out of the decode row: it did not finish 32 MiB of quality-5 output within the 300 s timeout.
                 Nat("BCL (brotli)", "net10", c => System.IO.Compression.BrotliDecoder.TryDecompress(c.Packed, c.Dst, out int n) ? n : -1),
@@ -209,7 +221,8 @@ internal static class Rows
                 Verify = (d, n) => Lz4Block.Decompress(d.AsSpan(0, n), new Lz4BlockOptions { MaxOutputSize = 1 << 30 }),
                 Cands =
                 [
-                    Mine("", c => { return Lz4Block.TryCompress(c.Src, c.Dst, out int n, new Lz4CompressionOptions { Level = level }) ? n : -1; }),
+                    Mine($"L{level}", c => { return Lz4Block.TryCompress(c.Src, c.Dst, out int n, new Lz4CompressionOptions { Level = level }) ? n : -1; }),
+                    ..Sw(Around(level, 1, 12, 1, 1), "L", l => c => Lz4Block.TryCompress(c.Src, c.Dst, out int n, new Lz4CompressionOptions { Level = l }) ? n : -1),
                     Man(K4osV, c => { return LZ4Codec.Encode(c.Src, c.Dst, k4level); }),
                 ],
             });
@@ -221,7 +234,7 @@ internal static class Rows
             MakePacked = c => Lz4Block.Compress(c.Src, new Lz4CompressionOptions { Level = 1 }),
             Cands =
             [
-                Mine("", c => Lz4Block.TryDecompress(c.Packed, c.Dst, out int n, new Lz4BlockOptions { MaxOutputSize = 1 << 30 }) ? n : -1),
+                Mine("L1", c => Lz4Block.TryDecompress(c.Packed, c.Dst, out int n, new Lz4BlockOptions { MaxOutputSize = 1 << 30 }) ? n : -1),
                 Man(K4osV, c => LZ4Codec.Decode(c.Packed, c.Dst)),
             ],
         });
@@ -236,7 +249,9 @@ internal static class Rows
                 Verify = (d, n) => Xz.Decompress(d.AsSpan(0, n), XzDec),
                 Cands =
                 [
-                    Mine("", c => Xz.TryCompress(c.Src, c.Dst, out int n, new XzCompressionOptions { Lzma = new LzmaOptions { Preset = preset } }) ? n : -1),
+                    Mine($"p{preset}", c => Xz.TryCompress(c.Src, c.Dst, out int n, new XzCompressionOptions { Lzma = new LzmaOptions { Preset = preset } }) ? n : -1),
+                    ..Sw(XzSweep(preset), "p", pr => c => Xz.TryCompress(c.Src, c.Dst, out int n, new XzCompressionOptions { Lzma = new LzmaOptions { Preset = pr } }) ? n : -1),
+                    ..XzFast(preset),
                     Man(LzmaNetV, c => Io.Copy(LzmaNet.XzCompressor.Compress(c.Src, new LzmaNet.XzCompressOptions { Preset = preset, Threads = 1 }), c.Dst)),
                     Nat("xz CLI (pipe)", "system", c => Io.Copy(Tool.Pipe("xz", $"-{preset} -T1 -c", c.Src), c.Dst)),
                 ],
@@ -252,7 +267,8 @@ internal static class Rows
                 Verify = (d, n) => Lzip.Decompress(d.AsSpan(0, n), LzipDec),
                 Cands =
                 [
-                    Mine("", c => Lzip.TryCompress(c.Src, c.Dst, out int n, new LzipOptions { Level = level }) ? n : -1),
+                    Mine($"L{level}", c => Lzip.TryCompress(c.Src, c.Dst, out int n, new LzipOptions { Level = level }) ? n : -1),
+                    ..Sw(Enumerable.Range(0, 10).Where(x => x != level), "L", l => c => Lzip.TryCompress(c.Src, c.Dst, out int n, new LzipOptions { Level = l }) ? n : -1),
                     Man(ScV, c => Io.Write(c, s => new SC.LZMA.LZipStream(s, SC.CompressionMode.Compress))),
                 ],
             });
@@ -265,7 +281,8 @@ internal static class Rows
             Verify = (d, n) => OC.BZip2.BZip2.Decompress(d.AsSpan(0, n)),
             Cands =
             [
-                Mine("", c => OC.BZip2.BZip2.TryCompress(c.Src, c.Dst, out int n, new BZip2Options { Level = 9 }) ? n : -1),
+                Mine("L9", c => OC.BZip2.BZip2.TryCompress(c.Src, c.Dst, out int n, new BZip2Options { Level = 9 }) ? n : -1),
+                ..Sw([5, 7], "L", l => c => OC.BZip2.BZip2.TryCompress(c.Src, c.Dst, out int n, new BZip2Options { Level = l }) ? n : -1),
                 Man(ScV, c => Io.Write(c, s => new SC.BZip2.BZip2Stream(s, SC.CompressionMode.Compress, false))),
                 Man(SzlV, c => Io.Write(c, s => new ICSharpCode.SharpZipLib.BZip2.BZip2OutputStream(s, 9) { IsStreamOwner = false })),
                 Nat("bzip2 CLI (pipe)", "system", c => Io.Copy(Tool.Pipe("bzip2", "-9 -c", c.Src), c.Dst)),
@@ -277,16 +294,41 @@ internal static class Rows
             MakePacked = c => Tool.Pipe("bzip2", "-9 -c", c.Src),
             Cands =
             [
-                Mine("", c => OC.BZip2.BZip2.TryDecompress(c.Packed, c.Dst, out int n) ? n : -1),
+                Mine("L9", c => OC.BZip2.BZip2.TryDecompress(c.Packed, c.Dst, out int n) ? n : -1),
                 Man(ScV, c => Io.Read(c, s => new SC.BZip2.BZip2Stream(s, SC.CompressionMode.Decompress, false))),
                 Man(SzlV, c => Io.Read(c, s => new ICSharpCode.SharpZipLib.BZip2.BZip2InputStream(s))),
             ],
         });
 
+        MoreRows.Add(rows, corpora);
         return rows;
     }
 
+    /// <summary>Presets of ours that could match a managed xz writer's row by size: the row's neighbours.</summary>
+    private static IEnumerable<int> XzSweep(int preset) => preset switch
+    {
+        0 => [],
+        1 => [0],
+        3 => [0, 1, 2, 4],
+        6 => [2, 3, 4, 5, 7],
+        _ => Around(preset, 0, 9, 2, 0),
+    };
+
+    /// <summary>Preset 0 is our fastest xz level; these keep its dictionary and search but cut the work further, to see whether a faster row can be matched.</summary>
+    private static IEnumerable<Cand> XzFast(int preset)
+    {
+        if (preset > 1) yield break;
+        foreach (int nice in new[] { 8, 16, 24 })
+        {
+            int nl = nice;
+            yield return new Cand("ours", $"p0/nice{nl}", Kind.Sweep, c => Xz.TryCompress(c.Src, c.Dst, out int n, new XzCompressionOptions { Lzma = new LzmaOptions { Preset = 0, NiceLength = nl, Depth = 4 } }) ? n : -1);
+        }
+
+        yield return new Cand("ours", "p0/hc4", Kind.Sweep, c => Xz.TryCompress(c.Src, c.Dst, out int n, new XzCompressionOptions { Lzma = new LzmaOptions { Preset = 0, MatchFinder = LzmaMatchFinderKind.HashChain4, Depth = 8 } }) ? n : -1);
+    }
+
     internal static readonly XzDecompressionOptions XzDec = new() { MaxOutputSize = long.MaxValue, MaxDictionarySize = 1L << 30 };
+    internal static readonly LzmaDecompressionOptions LzmaDec = new() { MaxOutputSize = long.MaxValue, MaxDictionarySize = 1L << 30 };
     internal static readonly ZstdDecompressionOptions ZstdDec = new() { MaxOutputSize = long.MaxValue, MaxWindowSize = 1L << 30 };
     internal static readonly DeflateDecompressionOptions DeflateDec = new() { MaxOutputSize = long.MaxValue };
     internal static readonly LzipDecompressionOptions LzipDec = new() { MaxOutputSize = long.MaxValue, MaxDictionarySize = 1L << 30 };
