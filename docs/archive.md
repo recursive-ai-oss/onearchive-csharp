@@ -123,7 +123,9 @@ Other behaviour, fixed:
 
 ### Limits (`ArchiveLimits`)
 
-A limit hit raises `CompressionLimitException` whose `LimitName` is the property name; never a truncated result.
+A limit hit raises `CompressionLimitException` whose `LimitName` is the property name; never a truncated result. For a running total
+(`MaxTotalSize` on bytes written, buffered or declared so far) `Requested` is the total at the moment it passed the limit and the
+message says so ("the total reached N when it passed the limit of L"); it is not the archive's size, which may be larger.
 
 | Property | Default | Checked |
 |---|---|---|
@@ -150,8 +152,12 @@ the declared sizes pass 1 GiB first). To read one, set three things:
 var zip = new ZipReaderOptions { LazyDirectory = true };
 var limits = ArchiveLimits.LargeArchive;
 using Archive archive = Archive.Open(path, new ArchiveOpenOptions { Limits = limits, Zip = zip });
+foreach (ArchiveEntry entry in archive.EnumerateEntries()) { /* one entry at a time, nothing kept */ }
 Archive.Extract(path, target, new ArchiveExtractOptions { Limits = limits, Zip = zip });
 ```
+
+`Archive.Entries` builds a list of every entry (about 700 bytes each for a zip), so it grows with the entry count even with
+`LazyDirectory`; use `EnumerateEntries()`, `OpenReader()` or `Extract` on large archives.
 
 - **`ArchiveLimits.LargeArchive`** changes two values: `MaxEntryCount` 4,000,000 (four times a million-entry export) and
   `MaxTotalSize` 256 GiB (the sum of declared sizes, which also bounds the disk an extraction can fill). Everything else keeps its
@@ -169,6 +175,16 @@ Archive.Extract(path, target, new ArchiveExtractOptions { Limits = limits, Zip =
   at the runtime's baseline.
 - **Still on** with the preset: `..`, absolute-path, drive-letter, link and device checks, overwrite rules, the expansion ratio
   and the nesting and window limits. A hit is still a typed `CompressionLimitException` or `ArchiveSafetyException`.
+
+## Damaged entries
+
+A compound file opened with `CompoundFileReaderOptions.Recovery` (through `ArchiveOpenOptions.CompoundFile`) can hand out streams that
+are shorter than declared (`CfbEntry.IsDamaged`). `ArchiveExtractOptions.DamagedEntries` says what extraction does with each such
+file: `Extract` (the default, as in 1.1.0) writes the shortened content, `Skip` writes nothing for it, `Fail` throws
+`CompressionFormatException` naming the entry. In every mode `ArchiveExtractResult.EntriesDamaged` and `DamagedEntryNames` (the first
+1,000) report them, and `ArchiveExtractOptions.OnDamagedEntry` is called once per damaged file. The default stays `Extract` so that
+1.x callers who opted into recovery get the same files; check `EntriesDamaged`, or choose `Skip`. Zip recovery reports its damage
+through `ZipReader.Damage`; a zip entry that cannot be decoded still raises its error.
 
 ## Tar
 

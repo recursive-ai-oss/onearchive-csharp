@@ -109,6 +109,23 @@ public class CompressionLimitException : CompressionException
         Requested = requested;
     }
 
+    /// <summary>Creates a limit error for a running total: the message says the limit was exceeded when the total reached a value, not that the input needs it.</summary>
+    /// <param name="format">The format's name.</param>
+    /// <param name="limitName">The name of the option that holds the limit.</param>
+    /// <param name="limit">The configured limit.</param>
+    /// <param name="total">The running total at the moment it passed the limit; stored in <see cref="Requested"/>.</param>
+    /// <param name="runningTotal">Must be <see langword="true"/>; selects this overload.</param>
+    public CompressionLimitException(string format, string limitName, long limit, long total, bool runningTotal)
+        : base(runningTotal
+            ? $"{format}: {limitName} limit exceeded: the total reached {total} when it passed the limit of {limit}; the archive may be larger"
+            : $"{format}: {limitName} limit exceeded: the input needs {total} but the limit is {limit}")
+    {
+        Format = format;
+        LimitName = limitName;
+        Limit = limit;
+        Requested = total;
+    }
+
     /// <summary>Creates a limit error with a default message.</summary>
     public CompressionLimitException()
         : this("unknown", "limit", 0, 0)

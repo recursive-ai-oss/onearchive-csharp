@@ -421,7 +421,7 @@ public sealed class Archive : IDisposable, IAsyncDisposable
         {
             if (memory.Length + n > limits.MaxTotalSize)
             {
-                throw new CompressionLimitException(format, nameof(ArchiveLimits.MaxTotalSize), limits.MaxTotalSize, memory.Length + n);
+                throw new CompressionLimitException(format, nameof(ArchiveLimits.MaxTotalSize), limits.MaxTotalSize, memory.Length + n, runningTotal: true);
             }
 
             memory.Write(buffer, 0, n);
@@ -475,8 +475,34 @@ public sealed class Archive : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Enumerates the entries in archive order without keeping them: memory stays flat however many entries there are,
+    /// which <see cref="Entries"/> cannot promise. Each call reads the archive again from the start (a source that cannot
+    /// seek can be enumerated once); the limits apply. With <c>ArchiveOpenOptions.Zip</c> set to a <c>LazyDirectory</c> reader
+    /// a seekable zip is walked record by record. Entries are not tied to <see cref="OpenEntry(ArchiveEntry)"/>; to read
+    /// content as you go use <see cref="OpenReader"/>, and to write everything out use <see cref="Extract(string, ArchiveExtractOptions?, CancellationToken)"/>.
+    /// </summary>
+    /// <returns>A sequence that reads lazily; disposing the enumerator releases the reader.</returns>
+    /// <exception cref="InvalidOperationException">The source cannot seek and the archive was already read.</exception>
+    /// <exception cref="CompressionFormatException">The archive is malformed (raised while enumerating).</exception>
+    public IEnumerable<ArchiveEntry> EnumerateEntries()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return EnumerateCore();
+    }
+
+    private IEnumerable<ArchiveEntry> EnumerateCore()
+    {
+        using ArchiveReader reader = NewReader();
+        while (reader.GetNextEntry() is { } entry)
+        {
+            yield return entry;
+        }
+    }
+
+    /// <summary>
     /// Gets every entry of the archive, in archive order. The first call reads the whole archive (and decompresses it,
-    /// for a compressed one); the limits apply.
+    /// for a compressed one) and keeps every entry in a list, so memory grows with the entry count (about 700 bytes per
+    /// entry for a zip); for large archives use <see cref="EnumerateEntries"/> or <see cref="Extract(string, ArchiveExtractOptions?, CancellationToken)"/>. The limits apply.
     /// </summary>
     /// <exception cref="NotSupportedException">The source cannot seek (<see cref="IsRandomAccess"/> is false).</exception>
     /// <exception cref="CompressionFormatException">The archive is malformed.</exception>

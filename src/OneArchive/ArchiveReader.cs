@@ -121,7 +121,7 @@ public abstract class ArchiveReader : IDisposable, IAsyncDisposable
 
         if (entry.Size > _limits.MaxTotalSize - _declaredTotal)
         {
-            throw new CompressionLimitException(format, nameof(ArchiveLimits.MaxTotalSize), _limits.MaxTotalSize, _declaredTotal + entry.Size);
+            throw new CompressionLimitException(format, nameof(ArchiveLimits.MaxTotalSize), _limits.MaxTotalSize, _declaredTotal + entry.Size, runningTotal: true);
         }
 
         _declaredTotal += entry.Size;

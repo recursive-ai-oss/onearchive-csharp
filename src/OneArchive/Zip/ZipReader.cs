@@ -183,7 +183,7 @@ public sealed partial class ZipReader : ArchiveReader
         _unknownTotal += n;
         if (_knownTotal + _unknownTotal > Limits.MaxTotalSize)
         {
-            throw new CompressionLimitException(ZipFormat.Name, nameof(ArchiveLimits.MaxTotalSize), Limits.MaxTotalSize, _knownTotal + _unknownTotal);
+            throw new CompressionLimitException(ZipFormat.Name, nameof(ArchiveLimits.MaxTotalSize), Limits.MaxTotalSize, _knownTotal + _unknownTotal, runningTotal: true);
         }
     }
 
