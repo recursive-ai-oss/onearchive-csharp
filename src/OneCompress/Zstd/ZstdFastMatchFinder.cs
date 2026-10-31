@@ -873,15 +873,21 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
                 return ip;
             }
 
-            uint entry = Raw.Get(dictionaryTable, (nuint)(product >> dictionaryShift));
-            nint d = (nint)(entry & positionMask);
-            if (d != 0 && ((entry ^ Tag(low)) & tagMask) == 0 && Raw.ReadUInt32(dictionaryContent, d) == low)
+            // The dictionary is probed at every second position since the last match:
+            // a match found one byte late is extended backward over the skipped byte, so the size barely moves and the lookups
+            // that miss are the largest cost of the loop on small payloads.
+            if (((ip - anchor) & 1) == 0)
             {
-                if (ExtendDictionaryMatch(dictionaryContent, (int)d, window, (int)ip, (int)anchor, end, windowStartPosition, false, out int extendedStart, out int extendedLength, out uint extendedOffset))
+                uint entry = Raw.Get(dictionaryTable, (nuint)(product >> dictionaryShift));
+                nint d = (nint)(entry & positionMask);
+                if (d != 0 && ((entry ^ Tag(low)) & tagMask) == 0 && Raw.ReadUInt32(dictionaryContent, d) == low)
                 {
-                    offset = extendedOffset;
-                    matchLength = extendedLength;
-                    return extendedStart;
+                    if (ExtendDictionaryMatch(dictionaryContent, (int)d, window, (int)ip, (int)anchor, end, windowStartPosition, false, out int extendedStart, out int extendedLength, out uint extendedOffset))
+                    {
+                        offset = extendedOffset;
+                        matchLength = extendedLength;
+                        return extendedStart;
+                    }
                 }
             }
 
@@ -1097,29 +1103,34 @@ public sealed class ZstdFastMatchFinder : ZstdMatchFinder
                 return matchStart;
             }
 
-            // The dictionary's tables: the eight-byte index first, then the one for the shortest match.
-            uint longEntry = Raw.Get(dictionaryLong, (nuint)(longProduct >> dictionaryLongShift));
-            nint longPosition = (nint)(longEntry & positionMask);
-            if (longPosition != 0
-                && ((longEntry ^ Tag(low4)) & tagMask) == 0
-                && Raw.ReadUInt64(dictionaryContent, longPosition) == value
-                && ExtendDictionaryMatch(dictionaryContent, (int)longPosition, window, (int)ip, (int)anchor, end, windowStartPosition, true, out int longStart, out int longLength, out uint longOffset))
+            // See SearchWithDictionary: here every fourth position, as the long and short probes make a late find cheaper to miss.
+            if (((ip - anchor) & 3) == 0)
             {
-                offset = longOffset;
-                matchLength = longLength;
-                return longStart;
-            }
+                // The dictionary's tables: the eight-byte index first, then the one for the shortest match.
+                uint longEntry = Raw.Get(dictionaryLong, (nuint)(longProduct >> dictionaryLongShift));
+                nint longPosition = (nint)(longEntry & positionMask);
+                if (longPosition != 0
+                    && ((longEntry ^ Tag(low4)) & tagMask) == 0
+                    && Raw.ReadUInt64(dictionaryContent, longPosition) == value
+                    && ExtendDictionaryMatch(dictionaryContent, (int)longPosition, window, (int)ip, (int)anchor, end, windowStartPosition, true, out int longStart, out int longLength, out uint longOffset))
+                {
+                    offset = longOffset;
+                    matchLength = longLength;
+                    return longStart;
+                }
 
-            uint shortEntry = Raw.Get(dictionaryShort, (nuint)(shortProduct >> dictionaryShortShift));
-            nint shortPosition = (nint)(shortEntry & positionMask);
-            if (shortPosition != 0
-                && ((shortEntry ^ Tag(low4)) & tagMask) == 0
-                && Raw.ReadUInt32(dictionaryContent, shortPosition) == low4
-                && ExtendDictionaryMatch(dictionaryContent, (int)shortPosition, window, (int)ip, (int)anchor, end, windowStartPosition, false, out int shortStart, out int shortLength, out uint shortOffset))
-            {
-                offset = shortOffset;
-                matchLength = shortLength;
-                return shortStart;
+                uint shortEntry = Raw.Get(dictionaryShort, (nuint)(shortProduct >> dictionaryShortShift));
+                nint shortPosition = (nint)(shortEntry & positionMask);
+                if (shortPosition != 0
+                    && ((shortEntry ^ Tag(low4)) & tagMask) == 0
+                    && Raw.ReadUInt32(dictionaryContent, shortPosition) == low4
+                    && ExtendDictionaryMatch(dictionaryContent, (int)shortPosition, window, (int)ip, (int)anchor, end, windowStartPosition, false, out int shortStart, out int shortLength, out uint shortOffset))
+                {
+                    offset = shortOffset;
+                    matchLength = shortLength;
+                    return shortStart;
+                }
+
             }
 
             ip += 1 + ((ip - anchor) >> 8);
