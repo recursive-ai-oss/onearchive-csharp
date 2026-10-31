@@ -34,10 +34,11 @@ the code components of IETF RFC 8878 (Zstandard Compression and the 'application
 same Revised BSD License as above (Section 4.c of the IETF Trust's Legal Provisions), with the notice "Copyright (c) 2021 IETF
 Trust and the persons identified as authors of the code. All rights reserved."
 
-## Microsoft Open Specifications ([MS-CAB], [MS-PATCH])
+## Microsoft Open Specifications ([MS-CAB], [MS-PATCH], [MS-CFB])
 
-The cabinet reader and the LZX decoder are written from Microsoft's Cabinet File Format ([MS-CAB]) and LZX DELTA Compression and
-Decompression ([MS-PATCH]) specifications. The position-slot table of LZX is computed in `LzxPositionSlots` from the rule those
+The cabinet reader, the LZX decoder and the compound file reader and writer (`src/OneArchive/Cab`, `src/OneArchive/Cfb`,
+`src/OneCompress/Lzx`) are written from Microsoft's Cabinet File Format ([MS-CAB]), LZX DELTA Compression and
+Decompression ([MS-PATCH]) and Compound File Binary File Format ([MS-CFB]) specifications. The position-slot table of LZX is computed in `LzxPositionSlots` from the rule those
 documents state, and `docs/` and the tests quote a few of its values. Microsoft's Intellectual Property Rights Notice for Open
 Specifications Documentation applies to the documents: "you may make copies of it in order to develop implementations of the
 technologies described in the Open Specifications and may distribute portions of it in your implementations using these technologies or
@@ -46,7 +47,7 @@ technologies, and the notice grants no licence under them.
 
 ## PPMd (public domain)
 
-The PPMd variant H and I codecs (`src/OneCompress/Ppmd`) are ported from public-domain sources, as a deliberate exception to the
+The PPMd variant H and I codecs (`PpmdHModel.cs`, `PpmdIModel.cs`, `PpmdIModel.Coding.cs` and `PpmdTables.cs` in `src/OneCompress/Ppmd`) are ported from public-domain sources, as a deliberate exception to the
 project's otherwise clean-room approach, for these files only. Each ported file names its originals in its header. The authors placed the code in the public domain, so no licence
 conditions apply; the notices are kept here as provenance.
 
@@ -58,5 +59,15 @@ conditions apply; the notices are kept here as provenance.
   `C/Ppmd8.c`, `C/Ppmd8Dec.c`, `C/Ppmd8Enc.c` from
   <https://github.com/ip7z/7zip/releases/download/26.05/7z2605-src.tar.xz> (SHA-256 `0b6080b8c3e7a579161d2d495224c0e51c467576cb4c7048b0ab485ef44cc22e`).
 
-The tests and benchmarks also use test corpora, comparison packages and reference tools; they are fetched or referenced, never
-shipped, and are listed here as they are added.
+## bzip2 randomisation table
+
+`src/OneCompress/BZip2/BZip2RandomizationTable.g.cs` holds the 512 gap values the bzip2 format uses to "randomise" a block (an obsolete
+feature that decoders still have to undo). The format has no published specification, so `tools/bzip2/derive-randomization-table.py`
+recovers the values by decompressing a crafted block with the randomised flag set using the `bzip2` 1.0.8 program as a black box.
+The table is a list of numbers observed from program output; no `bzip2` source or binary is included.
+
+## Not shipped
+
+The tests and benchmarks also use public test corpora (Silesia, Canterbury, enwik8), comparison packages and reference command-line
+tools. They are fetched or referenced by scripts under `tools/` and are never committed, packed or redistributed, so they carry
+no notice here.

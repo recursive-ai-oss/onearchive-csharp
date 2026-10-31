@@ -94,7 +94,7 @@ public sealed class CfbEntry : ArchiveEntry
     /// <summary>Gets the stream ID of the storage that holds this entry; -1 for the root storage.</summary>
     public int ParentStreamId { get; init; }
 
-    /// <summary>Gets what the entry is.</summary>
+    /// <summary>Gets what the directory entry is ([MS-CFB] 2.6.1): a storage (a directory), a stream (a file) or the root storage.</summary>
     public CfbObjectType ObjectType { get; init; }
 
     /// <summary>Gets the red-black tree color.</summary>

@@ -158,13 +158,13 @@ public readonly struct LzmaEncoderSettings
     /// <summary>Gets the literal position bits.</summary>
     public int Lp { get; }
 
-    /// <summary>Gets the position bits.</summary>
+    /// <summary>Gets the position bits (0 to 4) the encoder runs with.</summary>
     public int Pb { get; }
 
     /// <summary>Gets the dictionary size in bytes.</summary>
     public uint DictionarySize { get; }
 
-    /// <summary>Gets the nice length.</summary>
+    /// <summary>Gets the match length (2 to 273) at which the parser stops looking for a longer one.</summary>
     public int NiceLength { get; }
 
     /// <summary>Gets the search depth (never 0).</summary>
@@ -173,10 +173,10 @@ public readonly struct LzmaEncoderSettings
     // The fast parser looks one position ahead only when the match it found is shorter than this; int.MaxValue leaves it to the nice length.
     internal int LazyLength { get; }
 
-    /// <summary>Gets the parser.</summary>
+    /// <summary>Gets the parser, fast or normal, that the preset selected or the options overrode.</summary>
     public LzmaMode Mode { get; }
 
-    /// <summary>Gets the match finder.</summary>
+    /// <summary>Gets the match finder that the preset selected or the options overrode.</summary>
     public LzmaMatchFinderKind MatchFinder { get; }
 
     /// <summary>Gets whether a known-length <c>.lzma</c> stream gets an end marker.</summary>

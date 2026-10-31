@@ -96,10 +96,11 @@ jobs:
         run: build/ci.sh build test
 
       - name: Pack
-        # The two shipped packages share one version. Symbols come out as .snupkg files.
+        # The two shipped packages share one version, and are packed from the Release build made just before the tests. Package validation
+        # checks them against the last published version; symbols come out as .snupkg files.
         run: |
-          dotnet pack src/OneCompress -c Release -o "$RUNNER_TEMP/packages"
-          dotnet pack src/OneArchive -c Release -o "$RUNNER_TEMP/packages"
+          dotnet pack src/OneCompress -c Release --no-build -o "$RUNNER_TEMP/packages"
+          dotnet pack src/OneArchive -c Release --no-build -o "$RUNNER_TEMP/packages"
           ls -l "$RUNNER_TEMP/packages"
       - name: Packages have no dependencies beyond each other
         run: |
