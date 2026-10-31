@@ -333,6 +333,35 @@ internal static class Raw
 #endif
     }
 
+    /// <summary>True where <see cref="Warm{T}"/> cannot prefetch but <see cref="Touch"/> can stand in for it (a plain load whose result is kept).</summary>
+    public static bool CanTouch
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+#if CHECKED
+            return false;
+#else
+            return !Sse.IsSupported;
+#endif
+        }
+    }
+
+    /// <summary>
+    /// Loads <c>array[index]</c> so that the row is in the cache when it is needed a little later, for targets without a
+    /// prefetch hint. The caller keeps the result somewhere so the load is not removed; it has no effect on any value the
+    /// encoder computes. The caller guarantees <c>0 &lt;= index &lt; array.Length</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint Touch(uint[] array, int index)
+    {
+#if CHECKED
+        return array[index];
+#else
+        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(array), index);
+#endif
+    }
+
     /// <summary>
     /// Starts loading <c>span[index]</c> into the cache, as <see cref="Warm{T}"/> does for a table. The caller guarantees
     /// <c>0 &lt;= index &lt; span.Length</c>.
