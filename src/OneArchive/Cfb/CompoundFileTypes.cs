@@ -139,6 +139,7 @@ public sealed class CfbEntry : ArchiveEntry
     /// Gets a value indicating whether recovery found something wrong with this entry: a stream shortened because its sector chain is
     /// broken, a directory entry with invalid fields, or an entry attached to the root because the tree no longer reaches it.
     /// Always false unless <see cref="CompoundFileReaderOptions.Recovery"/> is set and the file needed recovery. The reasons are in <see cref="CompoundFileReader.Damage"/>.
+    /// A damaged entry's data may still be complete (a repaired field, an orphan): the data was cut short only when <c>Size</c> is less than <see cref="DeclaredSize"/>.
     /// </summary>
     public bool IsDamaged { get; init; }
 

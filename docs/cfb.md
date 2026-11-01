@@ -113,6 +113,7 @@ stream, then streams in tree order. A chain that reaches a claimed sector ends t
 - Mini FAT and mini stream (2.4): chains are followed like the others. The mini stream's size is its chain's, not the root entry's, when the two differ by more than the sector padding.
 - Streams (2.1): a stream keeps the bytes before the first break in its chain: it ends early, leaves the file, loops, reaches a claimed sector, crosses a lost part of the FAT, or the file ends inside a sector. `CfbEntry.Size` is then that length,
   `DeclaredSize` the directory's, and `IsDamaged` is true. A chain longer than the declared size is not an error. Where a chain stops, no guess is made about what follows (for example, that sectors are consecutive).
+  `IsDamaged` is also true for an entry whose fields were repaired or that was attached to the root as an orphan; its data is complete. To tell a shortened stream from one whose metadata was repaired, compare `Size` with `DeclaredSize`.
 
 **Not repaired.** No header, no usable FAT sector, or no directory (even by scanning) still raises `CompressionFormatException`. Damage inside the bytes of a stream is not detected. A file whose
 FAT and directory are at its end and that is cut short has lost both, and is not recoverable.
