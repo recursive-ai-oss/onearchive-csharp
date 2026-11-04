@@ -475,10 +475,10 @@ public sealed class Archive : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Enumerates the entries in archive order without keeping them: memory stays flat however many entries there are,
-    /// which <see cref="Entries"/> cannot promise. Each call reads the archive again from the start (a source that cannot
-    /// seek can be enumerated once); the limits apply. With <c>ArchiveOpenOptions.Zip</c> set to a <c>LazyDirectory</c> reader
-    /// a seekable zip is walked record by record. Entries are not tied to <see cref="OpenEntry(ArchiveEntry)"/>; to read
+    /// Enumerates the entries in archive order without keeping them, which <see cref="Entries"/> does not do. Memory stays flat
+    /// however many entries there are for every format except a seekable zip, whose central directory the default reader holds
+    /// (about 700 bytes per entry): set <c>ArchiveOpenOptions.Zip</c> to a reader with <c>LazyDirectory</c> and it is walked record by record.
+    /// Each call reads the archive again from the start (a source that cannot seek can be enumerated once); the limits apply. Entries are not tied to <see cref="OpenEntry(ArchiveEntry)"/>; to read
     /// content as you go use <see cref="OpenReader"/>, and to write everything out use <see cref="Extract(string, ArchiveExtractOptions?, CancellationToken)"/>.
     /// </summary>
     /// <returns>A sequence that reads lazily; disposing the enumerator releases the reader.</returns>

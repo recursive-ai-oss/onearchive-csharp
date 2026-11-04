@@ -84,6 +84,18 @@ public sealed class ZipEntry : ArchiveEntry
     /// <summary>Gets the name exactly as stored, before decoding.</summary>
     public ReadOnlyMemory<byte> RawName { get; init; }
 
+    /// <summary>Gets the comment exactly as stored, before decoding (empty if none, and always empty for entries read forward-only, which never see the central directory).</summary>
+    public ReadOnlyMemory<byte> RawComment { get; init; }
+
+    /// <summary>Gets the DOS time field of the header (APPNOTE 4.4.6) as stored: hour, minute and two-second units packed in 16 bits.</summary>
+    public ushort DosTime { get; init; }
+
+    /// <summary>Gets the DOS date field of the header (APPNOTE 4.4.6) as stored: year since 1980, month and day packed in 16 bits.</summary>
+    public ushort DosDate { get; init; }
+
+    /// <summary>Gets the uncompressed size the header declares, for every kind of entry (<see cref="ArchiveEntry.Size"/> is 0 for directories and links). Zero while it is unknown (<see cref="IsSizeKnown"/> is false).</summary>
+    public long UncompressedSize => DeclaredSize;
+
     /// <summary>Gets the records of the extra field (central directory copy when the archive was read from its directory, the local header's otherwise).</summary>
     public IReadOnlyList<ZipExtraField> ExtraFields { get; init; } = s_noFields;
 

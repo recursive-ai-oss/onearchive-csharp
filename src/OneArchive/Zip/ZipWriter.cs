@@ -23,9 +23,9 @@ namespace RecursiveAI.OneArchive.Zip;
 /// when the local header has a zip64 field. Directories, links and empty files are stored and have no descriptor.
 /// Documented in <c>docs/archive.md</c>.</para>
 /// </remarks>
-public sealed class ZipWriter : ArchiveWriter
+public sealed partial class ZipWriter : ArchiveWriter
 {
-    private const ushort VersionMadeBy = (3 << 8) | 63;
+    internal const ushort VersionMadeBy = (3 << 8) | 63;
 
     private sealed class CountingSink(Stream inner) : Stream
     {
@@ -155,9 +155,12 @@ public sealed class ZipWriter : ArchiveWriter
         public bool Descriptor;
         public ArchiveEntryKind Kind;
         public bool Encrypted;
+        public ushort InternalAttributes;
+        public ushort VersionMadeBy = ZipWriter.VersionMadeBy;
+        public ushort? RawMethod;     // a raw entry carries the method field of the headers as it came
 
         // The method field of the headers: 99 wraps the real method for WinZip AES entries.
-        public ZipMethod HeaderMethod => Encrypted ? ZipMethod.Aes : Method;
+        public ushort HeaderMethod => RawMethod ?? (ushort)(Encrypted ? ZipMethod.Aes : Method);
     }
 
     private Prepared Prepare(ArchiveEntry entry)
@@ -178,7 +181,7 @@ public sealed class ZipWriter : ArchiveWriter
             name += "/";
         }
 
-        var p = new Prepared { Kind = entry.Kind, Name = Encoding.UTF8.GetBytes(name) };
+        var p = new Prepared { Kind = entry.Kind, Name = Encoding.UTF8.GetBytes(name), InternalAttributes = (entry as ZipEntry)?.InternalAttributes ?? 0 };
         string? comment = (entry as ZipEntry)?.Comment;
         p.Comment = string.IsNullOrEmpty(comment) ? [] : Encoding.UTF8.GetBytes(comment);
         if (p.Name.Length > 65535 || p.Comment.Length > 65535)
@@ -441,7 +444,7 @@ public sealed class ZipWriter : ArchiveWriter
         BinaryPrimitives.WriteUInt32LittleEndian(h, ZipFormat.LocalSignature);
         BinaryPrimitives.WriteUInt16LittleEndian(h[4..], needed);
         BinaryPrimitives.WriteUInt16LittleEndian(h[6..], flags);
-        BinaryPrimitives.WriteUInt16LittleEndian(h[8..], (ushort)p.HeaderMethod);
+        BinaryPrimitives.WriteUInt16LittleEndian(h[8..], p.HeaderMethod);
         BinaryPrimitives.WriteUInt16LittleEndian(h[10..], time);
         BinaryPrimitives.WriteUInt16LittleEndian(h[12..], date);
         if (known || !p.Descriptor)
@@ -613,7 +616,7 @@ public sealed class ZipWriter : ArchiveWriter
             await PatchHeaderAsync(headerOffset, p, crc, compressed, async, ct).ConfigureAwait(false);
         }
 
-        AddDirectoryRecord(entry, p, flags, needed, time, date, crc, compressed, headerOffset, utCentral, ntfs, user);
+        AddDirectoryRecord(nameof(entry), p, flags, needed, time, date, crc, compressed, headerOffset, utCentral, ntfs, user);
     }
 
     // Writes the CRC-32 and sizes into a local header that is already on the stream, then returns to the end.
@@ -661,13 +664,13 @@ public sealed class ZipWriter : ArchiveWriter
 
     // Central directory file header (APPNOTE 4.3.12), kept in memory until Finish.
     private void AddDirectoryRecord(
-        ArchiveEntry entry, Prepared p, ushort flags, ushort needed, ushort time, ushort date, uint crc, long compressed, long headerOffset,
+        string paramName, Prepared p, ushort flags, ushort needed, ushort time, ushort date, uint crc, long compressed, long headerOffset,
         byte[] utCentral, byte[] ntfs, byte[] user)
     {
         bool bigSize = p.Size >= ZipFormat.Max32, bigComp = compressed >= ZipFormat.Max32, bigOffset = headerOffset >= ZipFormat.Max32;
         if ((bigSize || bigComp || bigOffset) && _options.Zip64 == ZipZip64Mode.Never)
         {
-            throw new ArgumentException("The archive needs zip64 (ZipZip64Mode.Never).", nameof(entry));
+            throw new ArgumentException("The archive needs zip64 (ZipZip64Mode.Never).", paramName);
         }
 
         int zipLen = (bigSize ? 8 : 0) + (bigComp ? 8 : 0) + (bigOffset ? 8 : 0);
@@ -700,16 +703,16 @@ public sealed class ZipWriter : ArchiveWriter
         int extraLength = zip64.Length + utCentral.Length + ntfs.Length + user.Length;
         if (extraLength > 65535)
         {
-            throw new ArgumentException("The entry's extra fields are longer than 65535 bytes.", nameof(entry));
+            throw new ArgumentException("The entry's extra fields are longer than 65535 bytes.", paramName);
         }
 
         byte[] r = new byte[ZipFormat.CentralHeaderSize + p.Name.Length + extraLength + p.Comment.Length];
         Span<byte> h = r;
         BinaryPrimitives.WriteUInt32LittleEndian(h, ZipFormat.CentralSignature);
-        BinaryPrimitives.WriteUInt16LittleEndian(h[4..], VersionMadeBy);
+        BinaryPrimitives.WriteUInt16LittleEndian(h[4..], p.VersionMadeBy);
         BinaryPrimitives.WriteUInt16LittleEndian(h[6..], needed);
         BinaryPrimitives.WriteUInt16LittleEndian(h[8..], flags);
-        BinaryPrimitives.WriteUInt16LittleEndian(h[10..], (ushort)p.HeaderMethod);
+        BinaryPrimitives.WriteUInt16LittleEndian(h[10..], p.HeaderMethod);
         BinaryPrimitives.WriteUInt16LittleEndian(h[12..], time);
         BinaryPrimitives.WriteUInt16LittleEndian(h[14..], date);
         BinaryPrimitives.WriteUInt32LittleEndian(h[16..], crc);
@@ -718,7 +721,7 @@ public sealed class ZipWriter : ArchiveWriter
         BinaryPrimitives.WriteUInt16LittleEndian(h[28..], (ushort)p.Name.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(h[30..], (ushort)extraLength);
         BinaryPrimitives.WriteUInt16LittleEndian(h[32..], (ushort)p.Comment.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(h[36..], (ushort)((entry as ZipEntry)?.InternalAttributes ?? 0));
+        BinaryPrimitives.WriteUInt16LittleEndian(h[36..], p.InternalAttributes);
         BinaryPrimitives.WriteUInt32LittleEndian(h[38..], p.ExternalAttributes);
         BinaryPrimitives.WriteUInt32LittleEndian(h[42..], bigOffset ? ZipFormat.Max32 : (uint)headerOffset);
         int at = ZipFormat.CentralHeaderSize;

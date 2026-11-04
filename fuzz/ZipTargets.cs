@@ -18,6 +18,9 @@ namespace RecursiveAI.Fuzz;
 /// <item><c>zip-recover</c>: the reader in recovery mode over the input, seekable and forward-only. Each must end normally or in one of
 /// the library's exceptions; every damage record must lie inside the input, skipped ranges must not run backwards past the start,
 /// an entry that fails to read must appear in the damage list, and the entries read from an intact archive must match a strict read.</item>
+/// <item><c>zip-raw-copy</c>: every entry of the input is opened raw (through the directory, with <c>LazyDirectory</c>, and forward-only), written
+/// into new archives with <c>WriteRawEntry</c> (seekable or not, zip64 or not), and read back: the new archives must read without error, with
+/// the same headers and the same raw bytes, and a raw stream must be exactly <c>CompressedSize</c> bytes.</item>
 /// <item><c>zip-roundtrip</c>: entries made from the input are written with an option mix (method, zip64, descriptors, seekable or
 /// not) and read back both ways unchanged.</item>
 /// <item><c>zip-read-encrypted</c> and <c>zip-roundtrip-encrypted</c>: the same two targets with a password, so that WinZip AES and
@@ -26,7 +29,7 @@ namespace RecursiveAI.Fuzz;
 /// scratch directory.</item>
 /// </list>
 /// </summary>
-internal static class ZipTargets
+internal static partial class ZipTargets
 {
     private static readonly ArchiveLimits s_limits = new()
     {

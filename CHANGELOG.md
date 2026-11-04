@@ -4,6 +4,24 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [1.2.0-preview.1]
+
+Additive over 1.1.1: no public API was removed or changed, and the bytes the writers produce for ordinary entries are unchanged.
+
+### Added
+
+- Zip raw entry copy, for callers that carry untouched parts from one archive to another without decompressing and recompressing them: `ZipReader.OpenRawEntryStream(ZipEntry)` returns an entry's stored bytes (compressed data plus any ZipCrypto header or WinZip AES salt, verifier and authentication code) with no decoding, decryption or CRC check, in seekable, `LazyDirectory` and forward-only modes (forward-only needs the sizes in the local header and otherwise raises `ArchiveUnsupportedException`); `ZipWriter.WriteRawEntry` / `WriteRawEntryAsync` with `ZipRawEntry` (and `ZipRawEntry.FromEntry`) write an entry from a header and such a stream, rewriting zip64 fields, dropping stale alignment padding and checking that the stream holds exactly the declared compressed size. `ZipEntry` gained `RawComment`, `DosTime`, `DosDate` and `UncompressedSize`. See `docs/zip.md`.
+- The `zip-raw-copy` fuzz target.
+
+### Fixed
+
+- A disposed `ZipReader` no longer keeps its central directory alive, so an `Archive.EnumerateEntries()` sequence held after the loop does not pin it.
+- Documentation: `Archive.EnumerateEntries()` keeps memory flat for a zip only with `LazyDirectory` (the 1.1.1 note read as if it did on its own).
+
+### Changed
+
+- The SDK pin in `global.json` is 10.0.403 (a runtime patch level that AOT restore needs).
+
 ## [1.1.1] - 2026-10-31
 
 Additive over 1.1.0; compressed bytes are unchanged for every codec and level.

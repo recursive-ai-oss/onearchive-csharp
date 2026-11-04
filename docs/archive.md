@@ -157,7 +157,9 @@ Archive.Extract(path, target, new ArchiveExtractOptions { Limits = limits, Zip =
 ```
 
 `Archive.Entries` builds a list of every entry (about 700 bytes each for a zip), so it grows with the entry count even with
-`LazyDirectory`; use `EnumerateEntries()`, `OpenReader()` or `Extract` on large archives.
+`LazyDirectory`; use `EnumerateEntries()`, `OpenReader()` or `Extract` on large archives. `EnumerateEntries()` holds nothing per
+entry for most formats, but a seekable zip is read through its central directory, which the default reader keeps whole while the
+enumeration runs: for flat memory on a zip it needs `LazyDirectory`, as in the example above.
 
 - **`ArchiveLimits.LargeArchive`** changes two values: `MaxEntryCount` 4,000,000 (four times a million-entry export) and
   `MaxTotalSize` 256 GiB (the sum of declared sizes, which also bounds the disk an extraction can fill). Everything else keeps its
