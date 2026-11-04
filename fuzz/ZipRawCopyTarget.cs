@@ -103,7 +103,7 @@ internal static partial class ZipTargets
                     ZipEntry y = listed[i];
                     if (!h.RawName.Span.SequenceEqual(y.RawName.Span) || (ushort)h.Method != (ushort)y.Method || h.Flags != y.Flags || h.Crc32 != y.Crc32
                         || h.CompressedSize != y.CompressedSize || h.UncompressedSize != y.UncompressedSize || h.DosTime != y.DosTime || h.DosDate != y.DosDate
-                        || h.ExternalAttributes != y.ExternalAttributes || !h.RawComment.Span.SequenceEqual(y.RawComment.Span))
+                        || h.ExternalAttributes != y.ExternalAttributes || h.VersionMadeBy != y.VersionMadeBy || h.InternalAttributes != y.InternalAttributes || !h.RawComment.Span.SequenceEqual(y.RawComment.Span))
                     {
                         throw new InvalidOperationException($"entry {i} was copied with a different header");
                     }

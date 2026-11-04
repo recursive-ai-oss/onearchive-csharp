@@ -144,6 +144,9 @@ public class ZipRawCopyTests
             Assert.Equal(x.DosTime, y.DosTime);
             Assert.Equal(x.DosDate, y.DosDate);
             Assert.Equal(x.ExternalAttributes, y.ExternalAttributes);
+            Assert.Equal(x.VersionMadeBy, y.VersionMadeBy);
+            Assert.Equal(x.InternalAttributes, y.InternalAttributes);
+            Assert.Equal(x.Kind, y.Kind);
             Assert.True(x.RawComment.Span.SequenceEqual(y.RawComment.Span));
             Assert.Equal(x.ModifiedTime, y.ModifiedTime);
             Assert.Equal(a[i].Raw, b[i].Raw);
@@ -215,9 +218,23 @@ public class ZipRawCopyTests
     [MemberData(nameof(VectorFiles))]
     public void CommittedVectorsCopyRaw(string relative)
     {
+        // The hostile vectors lie about their sizes, so their content cannot be read; they are only copied.
+        Assert.SkipWhen(relative.StartsWith("raw-copy-", StringComparison.Ordinal), "covered by its own test");
         byte[] src = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", relative));
         AssertCopy(src, Password);
         AssertCopy(src, Password, seekableOutput: false, lazy: true);
+    }
+
+    // Found by the zip-raw-copy fuzz target: made-by host 0 (FAT) with the DOS directory bit. Copying it with the writer's own host (Unix)
+    // turned the directory into a file of 8 GiB.
+    [Fact]
+    public void HostSystemOfAFatEntryIsKept()
+    {
+        byte[] src = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "testdata", "raw-copy-version-made-by-zero.zip"));
+        using var reader = new ZipReader(new MemoryStream(Copy(src, new ZipReaderOptions(), null, true)));
+        ZipEntry e = reader.GetNextEntry()!;
+        Assert.Equal(ArchiveEntryKind.Directory, e.Kind);
+        Assert.Equal(0, e.HostSystem);
     }
 
     [Fact]

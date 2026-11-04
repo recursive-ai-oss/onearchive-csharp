@@ -152,7 +152,7 @@ public sealed partial class ZipWriter
             Size = size,
             ExternalAttributes = header.ExternalAttributes,
             InternalAttributes = header.InternalAttributes,
-            VersionMadeBy = header.VersionMadeBy == 0 ? VersionMadeBy : header.VersionMadeBy,
+            VersionMadeBy = header.VersionMadeBy ?? VersionMadeBy,
             RawMethod = (ushort)header.Method,
             Zip64Local = zip64,
             Descriptor = descriptor,

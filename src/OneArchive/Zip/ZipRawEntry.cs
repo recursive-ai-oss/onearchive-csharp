@@ -51,8 +51,8 @@ public sealed class ZipRawEntry
     /// <summary>Gets the entry comment bytes for the central directory (at most 65535). Default none.</summary>
     public ReadOnlyMemory<byte> RawComment { get; init; }
 
-    /// <summary>Gets the "version made by" field. Default 0: the writer uses its own (Unix host, specification 6.3).</summary>
-    public ushort VersionMadeBy { get; init; }
+    /// <summary>Gets the "version made by" field: the host system in the high byte decides how <see cref="ExternalAttributes"/> is read. Default <see langword="null"/>: the writer's own (Unix host, specification 6.3). 0 is a value (FAT host).</summary>
+    public ushort? VersionMadeBy { get; init; }
 
     /// <summary>Gets the "version needed to extract" field. The writer raises it to 20 for a data descriptor and to 45 for zip64. Default 0.</summary>
     public ushort VersionNeeded { get; init; }
