@@ -26,10 +26,10 @@ public sealed partial class ZipReader : ArchiveReader
 {
     private sealed class Rec
     {
-        public ushort VersionMadeBy, VersionNeeded, Flags, Method, InternalAttributes, DosTime;
+        public ushort VersionMadeBy, VersionNeeded, Flags, Method, InternalAttributes, DosTime, DosDate;
         public uint Crc, ExternalAttributes;
         public long CompressedSize, Size, LocalOffset;
-        public byte[] RawName = [];
+        public byte[] RawName = [], RawComment = [];
         public List<ZipExtraField> Extra = [];
         public string Name = string.Empty, Comment = string.Empty;
         public DateTimeOffset? Modified, Accessed, Changed;
@@ -62,6 +62,8 @@ public sealed partial class ZipReader : ArchiveReader
     private bool _currentZip64Descriptor;
     private long _knownTotal;
     private long _unknownTotal;
+    private bool _forwardRaw;
+    private long _rawTotal;
 
     /// <summary>Creates a reader over <paramref name="stream"/>, starting at its current position.</summary>
     /// <param name="stream">A readable stream of zip data. If it can seek, the central directory is used.</param>
@@ -117,6 +119,11 @@ public sealed partial class ZipReader : ArchiveReader
         if (_useDirectory)
         {
             return OpenDirectoryEntry(entry);
+        }
+
+        if (_forwardRaw)
+        {
+            throw new InvalidOperationException("The current entry was opened with OpenRawEntryStream.");
         }
 
         if (!_options.Recovery)
@@ -178,6 +185,74 @@ public sealed partial class ZipReader : ArchiveReader
         }
     }
 
+    /// <summary>
+    /// Opens the entry's stored bytes exactly as the archive holds them: the compressed data, preceded and followed by the
+    /// encryption header and authentication code if the entry is encrypted (the 12-byte traditional header, or the WinZip AES
+    /// salt and password verifier with the 10-byte authentication code after the data). Nothing is decompressed, decrypted or
+    /// checked against the CRC-32, whatever the method, so this also works for methods this library cannot decode and for
+    /// encrypted entries without a password.
+    /// </summary>
+    /// <param name="entry">An entry this reader returned. With a seekable stream it may be any such entry; for a stream read forward-only it must be <see cref="ArchiveReader.CurrentEntry"/>, not yet opened.</param>
+    /// <returns>A read-only stream of <see cref="ZipEntry.CompressedSize"/> bytes (the encryption overhead included). Disposing it does not close the archive.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="entry"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">The entry was not read by this reader, or (forward-only) is not the current entry.</exception>
+    /// <exception cref="InvalidOperationException">Forward-only: the current entry was already opened.</exception>
+    /// <exception cref="ArchiveUnsupportedException">Forward-only: the entry's sizes follow its data in a data descriptor (bit 3), so its length and CRC-32 are not known when it is listed; open a seekable stream.</exception>
+    /// <exception cref="CompressionFormatException">The local header disagrees with the central directory, or the archive ends inside the data (reported when the stream is read).</exception>
+    /// <exception cref="CompressionLimitException">The raw bytes opened so far would pass <see cref="ArchiveLimits.MaxTotalSize"/>.</exception>
+    /// <remarks>
+    /// The raw length of every entry opened counts against <see cref="ArchiveLimits.MaxTotalSize"/> (a running total kept by the reader, separate from the declared sizes that <see cref="GetNextEntry()"/> adds up).
+    /// With <see cref="ZipReaderOptions.Recovery"/> a read error is not added to <see cref="Damage"/>.
+    /// To copy the entry into another archive, build the header with <see cref="ZipRawEntry.FromEntry(ZipEntry)"/> and pass both to <see cref="ZipWriter.WriteRawEntry(ZipRawEntry, Stream)"/>.
+    /// </remarks>
+    public Stream OpenRawEntryStream(ZipEntry entry)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(entry);
+        if (_useDirectory)
+        {
+            bool mine = _options.LazyDirectory
+                ? ReferenceEquals(entry.Owner, _token)
+                : _byOffset is not null && _byOffset.TryGetValue(entry.LocalHeaderOffset, out ZipEntry? known) && ReferenceEquals(known, entry);
+            if (!mine)
+            {
+                throw new ArgumentException("The entry was not read by this ZipReader.", nameof(entry));
+            }
+
+            ChargeRaw(entry.CompressedSize);
+            return Sync.Result(OpenFromDirectoryAsync(entry, false, default, raw: true));
+        }
+
+        if (!ReferenceEquals(entry, CurrentEntry) || _currentRec is not { } rec)
+        {
+            throw new ArgumentException("The zip stream is read forward-only, so only the current entry can be opened.", nameof(entry));
+        }
+
+        if (_entryStream is not null)
+        {
+            throw new InvalidOperationException("The current entry was already opened.");
+        }
+
+        if ((rec.Flags & ZipFormat.FlagDescriptor) != 0 || !rec.SizeKnown)
+        {
+            throw new ArchiveUnsupportedException(ZipFormat.Name, $"raw access to entry '{Printable(rec.Name)}' read forward-only: its sizes and CRC-32 follow the data in a data descriptor (open a seekable stream)");
+        }
+
+        ChargeRaw(rec.CompressedSize);
+        _forwardRaw = true;
+        return _entryStream = new ZipEntryStream(_buf!, false, ZipMethod.Store, rec.CompressedSize, rec.CompressedSize, 0, false, false, false, _meter, this, Limits);
+    }
+
+    private void ChargeRaw(long bytes)
+    {
+        if (bytes > Limits.MaxTotalSize - _rawTotal)
+        {
+            throw new CompressionLimitException(ZipFormat.Name, nameof(ArchiveLimits.MaxTotalSize), Limits.MaxTotalSize, _rawTotal + bytes, runningTotal: true);
+        }
+
+        _rawTotal += bytes;
+    }
+
     internal void NoteUnannouncedBytes(int n)
     {
         _unknownTotal += n;
@@ -195,6 +270,7 @@ public sealed partial class ZipReader : ArchiveReader
             _entryStream?.Invalidate();
             _buf?.Dispose();
             _lazy?.Buf.Dispose();
+            ReleaseDirectory();
             if (!_leaveOpen)
             {
                 _stream.Dispose();
@@ -202,6 +278,15 @@ public sealed partial class ZipReader : ArchiveReader
         }
 
         base.Dispose(disposing);
+    }
+
+    // A disposed reader cannot return or open entries; an enumerable that outlives it must not keep the directory alive.
+    private void ReleaseDirectory()
+    {
+        _entries = null;
+        _byOffset = null;
+        _lazy = null;
+        _currentRec = null;
     }
 
     /// <inheritdoc />
@@ -212,6 +297,7 @@ public sealed partial class ZipReader : ArchiveReader
             _entryStream?.Invalidate();
             _buf?.Dispose();
             _lazy?.Buf.Dispose();
+            ReleaseDirectory();
             if (!_leaveOpen)
             {
                 await _stream.DisposeAsync().ConfigureAwait(false);
@@ -486,6 +572,9 @@ public sealed partial class ZipReader : ArchiveReader
         }
 
         r.RawName = name;
+        r.RawComment = comment;
+        r.DosTime = dosTime;
+        r.DosDate = dosDate;
         r.Extra = ZipFormat.ParseExtra(extra, at + ZipFormat.CentralHeaderSize + nameLen);
 
         // APPNOTE 4.5.3: the zip64 field holds, in this order, exactly those of size, compressed size, offset and disk
@@ -671,6 +760,9 @@ public sealed partial class ZipReader : ArchiveReader
             Comment = r.Comment,
             LocalHeaderOffset = r.LocalOffset,
             RawName = r.RawName,
+            RawComment = r.RawComment,
+            DosTime = r.DosTime,
+            DosDate = r.DosDate,
             ExtraFields = r.Extra,
             UsesZip64 = r.Zip64,
             IsSizeKnown = r.SizeKnown,
@@ -746,6 +838,9 @@ public sealed partial class ZipReader : ArchiveReader
         Size = e.DeclaredSize,
         LocalOffset = e.LocalHeaderOffset,
         RawName = e.RawName.ToArray(),
+        RawComment = e.RawComment.ToArray(),
+        DosTime = e.DosTime,
+        DosDate = e.DosDate,
         Extra = [.. e.ExtraFields],
         Name = e.Name,
         Comment = e.Comment,
@@ -792,10 +887,11 @@ public sealed partial class ZipReader : ArchiveReader
 
     // Opens an entry through the directory: reads its local header, checks it against the directory entry, and returns the
     // decoding stream positioned at the data.
-    private async ValueTask<Stream> OpenFromDirectoryAsync(ZipEntry e, bool async, CancellationToken ct)
+    private async ValueTask<Stream> OpenFromDirectoryAsync(ZipEntry e, bool async, CancellationToken ct, bool raw = false)
     {
-        ZipEncryptionInfo info = CheckSupported(e);
-        if (e.CompressedSize == 0 && e.DeclaredSize == 0 && e.Method == ZipMethod.Store)
+        // A raw open hands out the stored bytes whatever the method and encryption are, so it checks neither.
+        ZipEncryptionInfo info = raw ? default : CheckSupported(e);
+        if (raw ? e.CompressedSize == 0 : e.CompressedSize == 0 && e.DeclaredSize == 0 && e.Method == ZipMethod.Store)
         {
             return new MemoryReadStream(ReadOnlyMemory<byte>.Empty);
         }
@@ -872,6 +968,11 @@ public sealed partial class ZipReader : ArchiveReader
                 throw ZipFormat.Bad(at, $"the data of entry '{Printable(e.Name)}' to end before the next entry or the central directory (the local header's extra field or the compressed size overlaps it)");
             }
 
+            if (raw)
+            {
+                return new ZipEntryStream(buf, true, ZipMethod.Store, e.CompressedSize, e.CompressedSize, 0, false, false, false, _meter, this, Limits);
+            }
+
             ZipDecryptor? crypt = CreateDecryptor(info, e.Name, e.Crc32, dosTime, e.HasDataDescriptor);
             long overhead = crypt is null ? 0 : crypt.HeaderLength + crypt.TrailerLength;
             if (info.ActualMethod == (ushort)ZipMethod.Store && e.CompressedSize - overhead != e.DeclaredSize)
@@ -903,6 +1004,7 @@ public sealed partial class ZipReader : ArchiveReader
         bool failed = _entryFailed;
         _entryFailed = false;
         _wrapper = null;
+        _forwardRaw = false;
         if (_entryStream is not null)
         {
             if (!failed)
@@ -1104,6 +1206,7 @@ public sealed partial class ZipReader : ArchiveReader
         r.Name = ZipFormat.DecodeName(name, r.Flags, ZipFormat.Find(r.Extra, ZipFormat.ExtraUnicodePath), _options.LegacyNameEncoding);
         r.Modified = ZipFormat.FromDos(dosDate, dosTime);
         r.DosTime = dosTime;
+        r.DosDate = dosDate;
         ZipFormat.ReadTimes(r.Extra, ref r.Modified, ref r.Accessed, ref r.Changed);
         _currentZip64Descriptor = r.Zip64;
 

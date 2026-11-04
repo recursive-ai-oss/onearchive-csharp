@@ -61,3 +61,62 @@ the default mode, and the total compressed bytes read still cannot exceed the fi
 
 **Cost.** Enumerating a million tiny entries reads the directory twice, 0.3 s in total, against 1.5 s for the default mode (which
 spends its time in the garbage collector, holding 630 MiB). Extraction of a large entry is the same speed in both modes.
+
+## Raw entry copy
+
+A caller that copies untouched parts of an archive (a document package whose parts did not change, for example) should not decompress and
+recompress them. `ZipReader.OpenRawEntryStream(ZipEntry)` returns an entry's stored bytes and `ZipWriter.WriteRawEntry(ZipRawEntry, Stream)` (with
+`WriteRawEntryAsync`) writes an entry from a header and such a stream. `ZipRawEntry.FromEntry(entry)` makes the header for a copy.
+
+```csharp
+using var reader = new ZipReader(File.OpenRead("in.zip"));
+using var writer = new ZipWriter(File.Create("out.zip"));
+var entries = new List<ZipEntry>();
+while (reader.GetNextEntry() is { } e) entries.Add(e);
+foreach (ZipEntry e in entries)
+{
+    using Stream raw = reader.OpenRawEntryStream(e);
+    writer.WriteRawEntry(ZipRawEntry.FromEntry(e), raw);
+}
+```
+
+**What the raw stream holds.** Exactly `CompressedSize` bytes from the entry's data offset (APPNOTE 4.3.8): the compressed data and, when the
+entry is encrypted, the encryption header before it and the authentication code after it (ZipCrypto's 12 bytes; WinZip AES's salt, 2-byte
+password verifier, data and 10-byte authentication code). No method is decoded, nothing is decrypted, the CRC-32 is not checked, so every
+method works (including ones the reader cannot decode) and encrypted entries need no password. The entry's method, flags, CRC-32, sizes, DOS
+date and time, extra fields, comment and attributes are on `ZipEntry` (`Method`, `Flags`, `Crc32`, `CompressedSize`, `UncompressedSize`,
+`DosDate`, `DosTime`, `ExtraFields`, `RawName`, `RawComment`, `InternalAttributes`, `ExternalAttributes`). For an AES entry the method is 99
+and the real one is in the AES extra field (`CompressionMethod`).
+
+**Modes.**
+- *Seekable* (default, and `LazyDirectory`): any entry the reader returned, in any order. The local header is read and checked against the
+  directory exactly as for an ordinary open (method, name, flags, and sizes and CRC-32 when the entry has no data descriptor), and the data
+  must end before the next entry.
+- *Forward-only* (a stream that cannot seek, or `ForceStreaming`): only the current entry, once, and only if its sizes and CRC-32 are in its local
+  header. An entry with a data descriptor (bit 3) has no known size or CRC-32 at that point, and finding the end of its data means decoding it, so
+  the call raises `ArchiveUnsupportedException` naming the data descriptor; read such an archive from a seekable stream. `ZipRawEntry.FromEntry`
+  refuses an entry whose `IsSizeKnown` is false.
+
+**Limits.** The raw length of every entry opened adds to a running total checked against `ArchiveLimits.MaxTotalSize`, separate from the
+declared sizes that `GetNextEntry` adds (a copied entry is therefore counted once as declared and once as raw). The expansion ratio is 1 by
+construction. The entry count and path limits apply when the entries are listed.
+
+**Writing.** `WriteRawEntry` lays out the entry as an ordinary one and copies the stream unchanged. `ZipWriterOptions.Method`, `Level`,
+`Password` and `RandomBytes` do not apply; `Zip64` and the archive comment do.
+- *Name, comment, attributes.* `RawName` bytes are written as given (1 to 65535 bytes, no NUL); whether they are UTF-8 is bit 11 of `Flags`,
+  which is written as given and not derived. `RawComment` goes to the directory. `VersionMadeBy` null means the writer's own value (Unix host), and 0 is kept as the FAT host it is, because the host decides how the external attributes are read (a directory is the DOS bit on one host and the mode on another);
+  `VersionNeeded` is raised to 20 with a data descriptor and to 45 with zip64.
+- *Sizes and zip64.* The local header has a zip64 field (APPNOTE 4.5.3, both sizes, uncompressed first, 32-bit fields `0xFFFFFFFF`) when
+  `ZipWriterOptions.Zip64` is `Always` or either size is `0xFFFFFFFF` or more; with `Never` such an entry raises `ArgumentException`. The
+  directory record gets a zip64 field for each value that overflows, as for ordinary entries. A zip64 field in `ExtraFields` is never copied,
+  so a copy neither duplicates nor keeps a stale one: whether the copy has zip64 follows the sizes, the offset and the option, not the source.
+- *Data descriptor (bit 3).* `Flags` decides, because ZipCrypto entries with bit 3 take their password check byte from the DOS time instead of the
+  CRC-32 (APPNOTE 6.1.6), so clearing the bit on one breaks it. With bit 3 the local header has CRC-32 0 and zero sizes (the real sizes for the
+  stored method, as the ordinary writer does, so a forward-only reader can find the end) and a descriptor with signature (4.3.9) follows the data:
+  8-byte sizes when the local header has a zip64 field. Without bit 3 the local header holds the final values. The directory has the real values
+  either way. The output stream never needs to seek.
+- *Extra fields.* `ExtraFields` are written, in order, to the local header and the directory record alike, except zip64 (rewritten) and the Android
+  alignment padding `0xD935` (stale after the move). The AES field of an encrypted entry must stay in the list; `FromEntry` keeps it. A reader returns the directory's
+  extra fields (the local header's when reading forward-only), so a local-only field (extra timestamp details) is not carried over.
+- *Data.* The stream must supply exactly `CompressedSize` bytes: fewer, or any byte after them, is an `ArgumentException` for `rawData`, and the
+  writer cannot be continued after it. Nothing checks that the bytes match the method, CRC-32 or size; the writer takes the header's word.

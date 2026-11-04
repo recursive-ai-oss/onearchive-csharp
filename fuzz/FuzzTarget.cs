@@ -71,6 +71,7 @@ internal static class FuzzTargets
         ZipTargets.ReadLazy,
         ZipTargets.ReadEncrypted,
         ZipTargets.RoundTrip,
+        ZipTargets.RawCopy,
         ZipTargets.RoundTripEncrypted,
         ZipTargets.Single,
         SevenZipTargets.Read,
