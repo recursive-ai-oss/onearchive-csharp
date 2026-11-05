@@ -121,8 +121,11 @@ public sealed partial class ZipWriter
         BinaryPrimitives.WriteUInt16LittleEndian(h[10..], header.DosTime);
         BinaryPrimitives.WriteUInt16LittleEndian(h[12..], header.DosDate);
         BinaryPrimitives.WriteUInt32LittleEndian(h[14..], descriptor ? 0 : header.Crc32);
-        BinaryPrimitives.WriteUInt32LittleEndian(h[18..], zip64 ? ZipFormat.Max32 : (sizesInHeader ? (uint)comp : 0));
-        BinaryPrimitives.WriteUInt32LittleEndian(h[22..], zip64 ? ZipFormat.Max32 : (sizesInHeader ? (uint)size : 0));
+        // APPNOTE 4.4.4: sizes deferred to the descriptor are zero in the header, with the zip64 field present and zeroed;
+        // Excel refuses 0xFFFFFFFF there.
+        bool useMax = zip64 && sizesInHeader;
+        BinaryPrimitives.WriteUInt32LittleEndian(h[18..], useMax ? ZipFormat.Max32 : (sizesInHeader ? (uint)comp : 0));
+        BinaryPrimitives.WriteUInt32LittleEndian(h[22..], useMax ? ZipFormat.Max32 : (sizesInHeader ? (uint)size : 0));
         BinaryPrimitives.WriteUInt16LittleEndian(h[26..], (ushort)name.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(h[28..], (ushort)extraLength);
         int at = ZipFormat.LocalHeaderSize;

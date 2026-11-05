@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Fixed
+
+- Zip64 local headers of entries whose sizes follow in a data descriptor now carry zero sizes instead of 0xFFFFFFFF (APPNOTE 4.4.4); Excel refuses the latter. The zip64 extra field stays, with zeroed sizes, and the descriptor still holds 8-byte sizes.
+
 ## [1.2.0-preview.1]
 
 Additive over 1.1.1: no public API was removed or changed, and the bytes the writers produce for ordinary entries are unchanged.

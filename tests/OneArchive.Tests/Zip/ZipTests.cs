@@ -514,6 +514,65 @@ public class ZipTests
         }
     }
 
+    // APPNOTE 4.4.4: sizes deferred to a data descriptor are zero in a zip64 local header, with a zeroed zip64 field (Excel refuses 0xFFFFFFFF).
+    private static void AssertDeferredZip64Headers(byte[] zip, int expectedDeferred)
+    {
+        int found = 0;
+        for (int at = 0; at + 30 <= zip.Length - 4; at++)
+        {
+            if (BinaryPrimitives.ReadUInt32LittleEndian(zip.AsSpan(at)) != 0x04034b50u)
+            {
+                continue;
+            }
+
+            ushort flags = BinaryPrimitives.ReadUInt16LittleEndian(zip.AsSpan(at + 6));
+            ushort method = BinaryPrimitives.ReadUInt16LittleEndian(zip.AsSpan(at + 8));
+            if ((flags & 8) == 0 || method == 0)
+            {
+                continue;
+            }
+
+            int nameLength = BinaryPrimitives.ReadUInt16LittleEndian(zip.AsSpan(at + 26));
+            int extraLength = BinaryPrimitives.ReadUInt16LittleEndian(zip.AsSpan(at + 28));
+            if (extraLength < 20)
+            {
+                continue;
+            }
+
+            Assert.Equal(0u, BinaryPrimitives.ReadUInt32LittleEndian(zip.AsSpan(at + 18)));
+            Assert.Equal(0u, BinaryPrimitives.ReadUInt32LittleEndian(zip.AsSpan(at + 22)));
+            int extra = at + 30 + nameLength;
+            Assert.Equal(1, BinaryPrimitives.ReadUInt16LittleEndian(zip.AsSpan(extra)));
+            Assert.Equal(16, BinaryPrimitives.ReadUInt16LittleEndian(zip.AsSpan(extra + 2)));
+            Assert.Equal(0UL, BinaryPrimitives.ReadUInt64LittleEndian(zip.AsSpan(extra + 4)));
+            Assert.Equal(0UL, BinaryPrimitives.ReadUInt64LittleEndian(zip.AsSpan(extra + 12)));
+            found++;
+        }
+
+        Assert.Equal(expectedDeferred, found);
+    }
+
+    [Fact]
+    public void Zip64DescriptorEntriesHaveZeroLocalSizes()
+    {
+        var options = new ZipWriterOptions { Method = ZipMethod.Deflate, Zip64 = ZipZip64Mode.Always };
+        byte[] zip = Write(Standard, options, seekable: false);
+        AssertDeferredZip64Headers(zip, 3);
+        Assert.Equal(Text(100_000, 1), ReadAll(new MemoryStream(zip))["docs/a.txt"]);
+        Assert.Equal(Text(100_000, 1), ReadAll(new ForwardOnly(new MemoryStream(zip)))["docs/a.txt"]);
+        Assert.Equal(Text(1000, 2), ReadAll(new ForwardOnly(new MemoryStream(zip)))["ünïcödé-日本語.txt"]);
+
+        // A raw copy of descriptor-flagged entries keeps the same shape.
+        byte[] copy = ZipRawCopyTests.Copy(zip, new ZipReaderOptions(), new ZipWriterOptions { Zip64 = ZipZip64Mode.Always }, false);
+        AssertDeferredZip64Headers(copy, 3);
+        Assert.Equal(Text(100_000, 1), ReadAll(new MemoryStream(copy))["docs/a.txt"]);
+        Assert.Equal(Text(100_000, 1), ReadAll(new ForwardOnly(new MemoryStream(copy)))["docs/a.txt"]);
+
+        // With a seekable output the header is patched later and keeps 0xFFFFFFFF with the values in the zip64 field.
+        byte[] patched = Write(Standard, new ZipWriterOptions { Method = ZipMethod.Deflate, Zip64 = ZipZip64Mode.Always }, seekable: true);
+        AssertDeferredZip64Headers(patched, 0);
+    }
+
     [Fact]
     public void ManyEntriesUseZip64EndRecord()
     {
