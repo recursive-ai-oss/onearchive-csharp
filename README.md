@@ -6,7 +6,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](#install)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#licence)
 
-**Status: 1.1.** Every codec and container works, is fuzzed and is covered by interop tests against the reference tools. See [Stability](#stability) for what 1.x promises, the speed section below for where each codec stands, and [CHANGELOG.md](CHANGELOG.md).
+**Status: 1.2.** Every codec and container works, is fuzzed and is covered by interop tests against the reference tools. See [Stability](#stability) for what 1.x promises, the speed section below for where each codec stands, and [CHANGELOG.md](CHANGELOG.md).
 
 ## Packages
 
@@ -205,7 +205,7 @@ Level numbers of different libraries are not comparable (one library's "level 6"
 - **x64:** AMD Ryzen 9 7950X3D (16 cores, 32 threads), Linux, .NET 10.0.402.
 - **arm64:** Apple M2 (8 cores), macOS, .NET 10.0.402.
 - **Candidates** (pinned versions): ZstdSharp.Port 0.8.8, K4os.Compression.LZ4 1.3.8, SharpCompress 1.0.0, SharpZipLib 1.4.2, DotNetZip 1.16.0, BrotliSharpLib 0.3.3, BrotliManagedFast 1.1.0, Lzma.Net 5.8.4.3, LZMA-SDK 22.1.1, System.IO.Hashing 10.0.0. Used only from `bench/`, as packages; never shipped.
-- **Measured** 2026-10-31 on the 1.0.0 code; 1.1 changed no codec, so the rows still stand. Rows below 0.87 are shown as they are and marked.
+- **Measured** 2026-10-31 on the 1.0.0 code; 1.1 and 1.2 changed no codec, so the rows still stand. Rows below 0.87 are shown as they are and marked.
 
 ### Zstandard (against ZstdSharp.Port)
 

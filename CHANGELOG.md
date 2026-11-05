@@ -4,14 +4,9 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
-### Fixed
+## [1.2.0] - 2026-11-06
 
-- A raw-copied zip entry whose `ZipRawEntry.VersionNeeded` was not set got "version needed to extract" 0, which some readers treat as damage. `VersionNeeded` is now `ushort?`: null (the default) picks the value from the method as the ordinary writer does (10 stored, 20 deflate, at least 20 for directories), and an explicit value is still written as given.
-- Zip64 local headers of entries whose sizes follow in a data descriptor now carry zero sizes instead of 0xFFFFFFFF (APPNOTE 4.4.4); Excel refuses the latter. The zip64 extra field stays, with zeroed sizes, and the descriptor still holds 8-byte sizes.
-
-## [1.2.0-preview.1]
-
-Additive over 1.1.1: no public API was removed or changed, and the bytes the writers produce for ordinary entries are unchanged.
+Additive over 1.1.1: no public API was removed or changed, and compressed bytes are unchanged for every codec and level. Zip archives change only in the local headers of zip64 entries whose sizes follow in a data descriptor, and in raw-copied entries written without a "version needed to extract" (see Fixed).
 
 ### Added
 
@@ -20,6 +15,8 @@ Additive over 1.1.1: no public API was removed or changed, and the bytes the wri
 
 ### Fixed
 
+- A raw-copied zip entry whose `ZipRawEntry.VersionNeeded` was not set got "version needed to extract" 0, which some readers treat as damage. `VersionNeeded` is now `ushort?`: null (the default) picks the value from the method as the ordinary writer does (10 stored, 20 deflate, at least 20 for directories), and an explicit value is still written as given.
+- Zip64 local headers of entries whose sizes follow in a data descriptor now carry zero sizes instead of 0xFFFFFFFF (APPNOTE 4.4.4); Excel refuses the latter. The zip64 extra field stays, with zeroed sizes, and the descriptor still holds 8-byte sizes.
 - A disposed `ZipReader` no longer keeps its central directory alive, so an `Archive.EnumerateEntries()` sequence held after the loop does not pin it.
 - Documentation: `Archive.EnumerateEntries()` keeps memory flat for a zip only with `LazyDirectory` (the 1.1.1 note read as if it did on its own).
 
@@ -212,7 +209,9 @@ First preview. Both codecs are preview and their public types carry `[Experiment
 - Input is treated as untrusted: the Zstandard decoder caps the window it will allocate (8 MiB by default), malformed input is a typed error, and every decoder has a fuzz target.
 - NativeAOT, trimming and browser WebAssembly are supported; output is byte-identical on every platform.
 
-[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/recursive-ai-oss/onearchive-csharp/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v1.2.0
+[1.1.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v1.1.1
 [1.1.0]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v1.1.0
 [1.0.0]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v1.0.0
 [0.7.0-preview.1]: https://github.com/recursive-ai-oss/onearchive-csharp/releases/tag/v0.7.0-preview.1
