@@ -6,6 +6,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ### Fixed
 
+- A raw-copied zip entry whose `ZipRawEntry.VersionNeeded` was not set got "version needed to extract" 0, which some readers treat as damage. `VersionNeeded` is now `ushort?`: null (the default) picks the value from the method as the ordinary writer does (10 stored, 20 deflate, at least 20 for directories), and an explicit value is still written as given.
 - Zip64 local headers of entries whose sizes follow in a data descriptor now carry zero sizes instead of 0xFFFFFFFF (APPNOTE 4.4.4); Excel refuses the latter. The zip64 extra field stays, with zeroed sizes, and the descriptor still holds 8-byte sizes.
 
 ## [1.2.0-preview.1]

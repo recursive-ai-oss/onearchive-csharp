@@ -100,7 +100,7 @@ public sealed partial class ZipWriter
             throw new ArgumentException("The entry's extra fields are longer than 65535 bytes.", nameof(header));
         }
 
-        ushort needed = header.VersionNeeded;
+        ushort needed = header.VersionNeeded ?? DefaultVersionNeeded(header, name.Length > 0 && name[^1] == (byte)'/');
         if (descriptor)
         {
             needed = Math.Max(needed, (ushort)20);
@@ -228,5 +228,27 @@ public sealed partial class ZipWriter
         {
             ArrayPool<byte>.Shared.Return(buffer);
         }
+    }
+
+    // The version a raw entry needs when the caller left it unset: the same table the ordinary writer uses for the entry's method
+    // (APPNOTE 4.4.3.2), and at least 20 for a directory. A WinZip AES entry is judged by the method named in its AES field (7 data bytes, the
+    // real method last), as the ordinary writer does.
+    private static ushort DefaultVersionNeeded(ZipRawEntry header, bool directory)
+    {
+        ZipMethod method = header.Method;
+        if (method == ZipMethod.Aes)
+        {
+            foreach (ZipExtraField f in header.ExtraFields)
+            {
+                if (f.Id == ZipEncryptionInfo.ExtraAes && f.Data.Length == 7)
+                {
+                    method = (ZipMethod)BinaryPrimitives.ReadUInt16LittleEndian(f.Data.Span[5..]);
+                    break;
+                }
+            }
+        }
+
+        ushort needed = method switch { ZipMethod.Zstd or ZipMethod.Ppmd => 63, ZipMethod.Deflate => 20, ZipMethod.Deflate64 => 21, ZipMethod.BZip2 => 46, _ => 10 };
+        return directory ? Math.Max(needed, (ushort)20) : needed;
     }
 }
