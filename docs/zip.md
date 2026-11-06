@@ -105,7 +105,7 @@ construction. The entry count and path limits apply when the entries are listed.
 `Password` and `RandomBytes` do not apply; `Zip64` and the archive comment do.
 - *Name, comment, attributes.* `RawName` bytes are written as given (1 to 65535 bytes, no NUL); whether they are UTF-8 is bit 11 of `Flags`,
   which is written as given and not derived. `RawComment` goes to the directory. `VersionMadeBy` null means the writer's own value (Unix host), and 0 is kept as the FAT host it is, because the host decides how the external attributes are read (a directory is the DOS bit on one host and the mode on another);
-  `VersionNeeded` is raised to 20 with a data descriptor and to 45 with zip64.
+  `VersionNeeded` null means the value for the method (10 stored, 20 deflate, 21 deflate64, 46 bzip2, 63 zstd and PPMd, 10 otherwise; at least 20 for a directory) and a set value is kept as given, small or not; `FromEntry` copies the source's value. Either is raised to 20 with a data descriptor and to 45 with zip64.
 - *Sizes and zip64.* The local header has a zip64 field (APPNOTE 4.5.3, both sizes, uncompressed first, 32-bit fields `0xFFFFFFFF`) when
   `ZipWriterOptions.Zip64` is `Always` or either size is `0xFFFFFFFF` or more; with `Never` such an entry raises `ArgumentException`. The
   directory record gets a zip64 field for each value that overflows, as for ordinary entries. A zip64 field in `ExtraFields` is never copied,

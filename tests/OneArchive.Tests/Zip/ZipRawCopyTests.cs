@@ -361,6 +361,48 @@ public class ZipRawCopyTests
         ExtraFields = extra ?? [],
     };
 
+    private static (ushort Local, ushort Central) WrittenVersions(ZipRawEntry header, ZipWriterOptions? options = null)
+    {
+        var ms = new MemoryStream();
+        using (var w = new ZipWriter(ms, options ?? new ZipWriterOptions(), leaveOpen: true))
+        {
+            w.WriteRawEntry(header, new MemoryStream(new byte[header.CompressedSize]));
+        }
+
+        byte[] zip = ms.ToArray();
+        int local = zip.AsSpan().IndexOf(new byte[] { 0x50, 0x4b, 3, 4 });
+        int central = zip.AsSpan().IndexOf(new byte[] { 0x50, 0x4b, 1, 2 });
+        Assert.Equal(0, local);
+        Assert.True(central > 0);
+        return (System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(zip.AsSpan(local + 4)),
+            System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(zip.AsSpan(central + 6)));
+    }
+
+    private static ZipRawEntry Raw(ZipMethod method, ushort? version, ushort flags = 0, byte[]? name = null, long size = 2) => new()
+    {
+        RawName = name ?? "x.bin"u8.ToArray(),
+        Method = method,
+        Flags = flags,
+        CompressedSize = size,
+        UncompressedSize = size,
+        VersionNeeded = version,
+    };
+
+    [Fact]
+    public void UnsetVersionNeededFollowsTheMethod()
+    {
+        Assert.Equal(((ushort)10, (ushort)10), WrittenVersions(Raw(ZipMethod.Store, null)));
+        Assert.Equal(((ushort)20, (ushort)20), WrittenVersions(Raw(ZipMethod.Deflate, null)));
+        Assert.Equal(((ushort)20, (ushort)20), WrittenVersions(Raw(ZipMethod.Store, null, name: "dir/"u8.ToArray(), size: 0)));
+
+        // An explicit value is kept, small ones included; descriptor and zip64 still raise it.
+        Assert.Equal(((ushort)0, (ushort)0), WrittenVersions(Raw(ZipMethod.Store, 0)));
+        Assert.Equal(((ushort)63, (ushort)63), WrittenVersions(Raw(ZipMethod.Store, 63)));
+        Assert.Equal(((ushort)20, (ushort)20), WrittenVersions(Raw(ZipMethod.Deflate, 0, flags: 8)));
+        Assert.Equal(((ushort)45, (ushort)45), WrittenVersions(Raw(ZipMethod.Store, 10), new ZipWriterOptions { Zip64 = ZipZip64Mode.Always }));
+        Assert.Equal(((ushort)45, (ushort)45), WrittenVersions(Raw(ZipMethod.Store, null), new ZipWriterOptions { Zip64 = ZipZip64Mode.Always }));
+    }
+
     [Fact]
     public void ShortAndLongDataAreRefused()
     {

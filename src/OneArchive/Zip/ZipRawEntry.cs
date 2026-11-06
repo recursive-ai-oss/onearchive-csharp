@@ -54,8 +54,13 @@ public sealed class ZipRawEntry
     /// <summary>Gets the "version made by" field: the host system in the high byte decides how <see cref="ExternalAttributes"/> is read. Default <see langword="null"/>: the writer's own (Unix host, specification 6.3). 0 is a value (FAT host).</summary>
     public ushort? VersionMadeBy { get; init; }
 
-    /// <summary>Gets the "version needed to extract" field. The writer raises it to 20 for a data descriptor and to 45 for zip64. Default 0.</summary>
-    public ushort VersionNeeded { get; init; }
+    /// <summary>
+    /// Gets the "version needed to extract" field (APPNOTE 4.4.3.2). Default <see langword="null"/>: the writer picks it from <see cref="Method"/> as the ordinary entry writer does
+    /// (10 for stored, 20 for deflate, and so on; at least 20 for a directory name ending in '/'). A value that is set is written as given, even a small one.
+    /// The writer raises either to 20 when the entry has a data descriptor and to 45 when it needs zip64.
+    /// <see cref="FromEntry(ZipEntry)"/> copies the source entry's value unchanged, so a copy stays faithful to its source.
+    /// </summary>
+    public ushort? VersionNeeded { get; init; }
 
     /// <summary>Gets the internal file attributes. Default 0.</summary>
     public ushort InternalAttributes { get; init; }
