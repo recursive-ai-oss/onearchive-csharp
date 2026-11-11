@@ -1,12 +1,12 @@
 # onearchive
 
-**Compression and archives for .NET, written from first principles in managed code: Zstandard, LZ4, Deflate, Brotli, LZMA/xz, bzip2, PPMd and more, plus zip, tar, 7z, ISO and other containers behind one safe `Archive` API, with the same compressed bytes on every operating system, CPU, runtime and thread count.** Every codec is ours: no native libraries, no P/Invoke, nothing but the .NET base class library at runtime. Extraction never writes outside the target directory, limits on size, expansion and entry count are on by default, and malformed input ends in a typed exception that names the format, the byte offset and what was expected.
+**Compression and archives for .NET, written from first principles in managed code: Zstandard, LZ4, Deflate, Brotli, LZMA/xz, bzip2, PPMd and more, plus zip, tar, 7z, ISO and other containers behind one safe `Archive` API, with the same compressed bytes on every operating system, CPU, runtime and thread count.** Every codec is implemented here: no native libraries, no P/Invoke, nothing but the .NET base class library at runtime. Extraction never writes outside the target directory, limits on size, expansion and entry count are on by default, and malformed input ends in a typed exception that names the format, the byte offset and what was expected.
 
 [![CI](https://github.com/recursive-ai-oss/onearchive-csharp/actions/workflows/ci.yml/badge.svg)](https://github.com/recursive-ai-oss/onearchive-csharp/actions/workflows/ci.yml)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](#install)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#licence)
 
-**Status: 1.2.** Every codec and container works, is fuzzed and is covered by interop tests against the reference tools. See [Stability](#stability) for what 1.x promises, the speed section below for where each codec stands, and [CHANGELOG.md](CHANGELOG.md).
+**Status: stable (1.x).** Every codec and container works, is fuzzed and is covered by interop tests against the reference tools. See [Stability](#stability) for what 1.x promises, the speed section below for where each codec stands, and [CHANGELOG.md](CHANGELOG.md).
 
 ## Packages
 
@@ -198,9 +198,9 @@ From 1.0 the public API follows [semantic versioning](https://semver.org/): brea
 
 ## Speed against the fastest managed .NET libraries
 
-The goal for 1.0 is to be the fastest managed .NET implementation of each codec, with output no more than 1% larger. Each table row is our speed divided by the speed of the **fastest library written entirely in managed code** (1.00 = same speed, above 1.00 = faster), single-threaded, memory to memory, best of three interleaved runs, on `silesia.tar`. Slow levels run on a sample of it (four equally spaced pieces, 10 to 64 MiB in total) so a row finishes in reasonable time; the same sample feeds every candidate. A row passes at 0.87 or better with output within +1%. The native tools (`zstd`, `xz`, `brotli`, zlib-ng) and the .NET base class library's native-backed codecs are measured and kept for information.
+The goal for 1.0 is to be the fastest managed .NET implementation of each codec, with output no more than 1% larger. Each table row is OneCompress's speed divided by the speed of the **fastest library written entirely in managed code** (1.00 = same speed, above 1.00 = faster), single-threaded, memory to memory, best of three interleaved runs, on `silesia.tar`. Slow levels run on a sample of it (four equally spaced pieces, 10 to 64 MiB in total) so a row finishes in reasonable time; the same sample feeds every candidate. A row passes at 0.87 or better with output within +1%. The native tools (`zstd`, `xz`, `brotli`, zlib-ng) and the .NET base class library's native-backed codecs are measured and kept for information.
 
-Level numbers of different libraries are not comparable (one library's "level 6" can trade far more size for speed than another's), so a compression row is also **size-matched**: it is met when some level of ours writes at most 1.01 times the library's bytes at no less than 0.87 times its speed. The notes name the level that meets it. Method, candidates and the size-matched rule: [docs/bench-method.md](docs/bench-method.md).
+Level numbers of different libraries are not comparable (one library's "level 6" can trade far more size for speed than another's), so a compression row is also **size-matched**: it is met when some OneCompress level writes at most 1.01 times the library's bytes at no less than 0.87 times its speed. The notes name the level that meets it. Method, candidates and the size-matched rule: [docs/bench-method.md](docs/bench-method.md).
 
 - **x64:** AMD Ryzen 9 7950X3D (16 cores, 32 threads), Linux, .NET 10.0.402.
 - **arm64:** Apple M2 (8 cores), macOS, .NET 10.0.402.
@@ -263,14 +263,14 @@ No managed library compresses with an LZ4 dictionary, so those rows have no comp
 | Compress quality 0 | 1.07 | 0.94 | +0.9% | |
 | Compress quality 1 | 1.12 | 1.04 | +0.4% | |
 | Compress quality 2 | 0.97 | 0.91 | -0.8% | |
-| Compress quality 4 | 0.60 | 0.51 | -6.6% | met by our quality 3 (1.08 / 0.91) |
-| Compress quality 5 | 0.69 | 0.66 | -7.0% | met by our quality 4 (1.03 / 0.97) |
-| Compress quality 7 | 0.32 | 0.29 | -11.6% | met by our quality 4 (1.03 / 0.95) |
-| Compress quality 9 | 1.09 | 0.73 | -6.2% | arm64 met by our quality 8 (0.91) |
+| Compress quality 4 | 0.60 | 0.51 | -6.6% | met by OneCompress quality 3 (1.08 / 0.91) |
+| Compress quality 5 | 0.69 | 0.66 | -7.0% | met by OneCompress quality 4 (1.03 / 0.97) |
+| Compress quality 7 | 0.32 | 0.29 | -11.6% | met by OneCompress quality 4 (1.03 / 0.95) |
+| Compress quality 9 | 1.09 | 0.73 | -6.2% | arm64 met by OneCompress quality 8 (0.91) |
 | Compress quality 11 | 0.94 | 0.99 | +0.7% | |
 | Decompress (quality 5 stream) | 0.87 | 1.01 | | |
 
-Brotli at qualities 4 to 7 is slower than BrotliManagedFast at the same quality number but writes 7-12% smaller output; those rows are met by size matching, because a lower quality of ours is both within 1% of its size and as fast. Against BrotliSharpLib every quality is met on both machines.
+Brotli at qualities 4 to 7 is slower than BrotliManagedFast at the same quality number but writes 7-12% smaller output; those rows are met by size matching, because a lower OneCompress quality is both within 1% of its size and as fast. Against BrotliSharpLib every quality is met on both machines.
 
 ### LZMA, LZMA2, xz and lzip (against Lzma.Net, SharpCompress and the LZMA SDK package)
 
@@ -281,12 +281,12 @@ Brotli at qualities 4 to 7 is slower than BrotliManagedFast at the same quality 
 | LZMA2 decompress | 1.49 | 1.49 | against SharpCompress |
 | xz compress preset 0 | 1.05 | 1.04 | |
 | xz compress preset 1 | 0.99 | 0.89 | +0.7% |
-| xz compress preset 3 | met by our preset 2 (0.96) | met by preset 2 (0.91) | Lzma.Net's preset 3 writes 5% larger output |
-| xz compress preset 6 | met by our preset 3 (1.52) | met by preset 3 (1.38) | our preset 6 is 14.6% smaller but 0.31 / 0.25 as fast |
+| xz compress preset 3 | met by OneCompress preset 2 (0.96) | met by preset 2 (0.91) | Lzma.Net's preset 3 writes 5% larger output |
+| xz compress preset 6 | met by OneCompress preset 3 (1.52) | met by preset 3 (1.38) | OneCompress preset 6 is 14.6% smaller but 0.31 / 0.25 as fast |
 | xz compress preset 9 | 1.24 | 1.38 | +0.4% |
-| LZMA compress (our preset 7 vs SharpCompress) | 1.20 | 1.17 | +0.3% |
+| LZMA compress (OneCompress preset 7 vs SharpCompress) | 1.20 | 1.17 | +0.3% |
 | lzip decompress | 1.51 | 1.47 | against SharpCompress |
-| lzip compress | met by level 6 (0.92-1.00) | met by levels 5 and 6 (0.97-1.04) | SharpCompress ignores the level and writes 6-10% more than our levels 5 and 6 |
+| lzip compress | met by level 6 (0.92-1.00) | met by levels 5 and 6 (0.97-1.04) | SharpCompress ignores the level and writes 6-10% more than OneCompress levels 5 and 6 |
 
 No managed library compresses LZMA2 on its own, so that row has no comparison.
 
